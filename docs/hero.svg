@@ -52,19 +52,19 @@
   <!-- feature pills -->
   <g font-size="14" fill="#c7cac5">
     <g transform="translate(92 366)">
-      <rect width="150" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
-      <circle cx="22" cy="17" r="3.5" fill="#b5cea5"/>
-      <text x="38" y="22">Real CLI, no harness</text>
+      <rect width="196" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
+      <circle cx="20" cy="17" r="3.5" fill="#b5cea5"/>
+      <text x="36" y="22">Real CLI, no harness</text>
     </g>
-    <g transform="translate(254 366)">
-      <rect width="138" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
-      <circle cx="22" cy="17" r="3.5" fill="#b5cea5"/>
-      <text x="38" y="22">Files + git diff</text>
+    <g transform="translate(300 366)">
+      <rect width="158" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
+      <circle cx="20" cy="17" r="3.5" fill="#b5cea5"/>
+      <text x="36" y="22">Files + git diff</text>
     </g>
-    <g transform="translate(404 366)">
+    <g transform="translate(470 366)">
       <rect width="118" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
-      <circle cx="22" cy="17" r="3.5" fill="#b5cea5"/>
-      <text x="38" y="22">Runs local</text>
+      <circle cx="20" cy="17" r="3.5" fill="#b5cea5"/>
+      <text x="36" y="22">Runs local</text>
     </g>
   </g>
 
