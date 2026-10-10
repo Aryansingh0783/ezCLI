@@ -54,7 +54,7 @@
     <g transform="translate(92 366)">
       <rect width="150" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
       <circle cx="22" cy="17" r="3.5" fill="#b5cea5"/>
-      <text x="38" y="22">Real PTY, no harness</text>
+      <text x="38" y="22">Real CLI, no harness</text>
     </g>
     <g transform="translate(254 366)">
       <rect width="138" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
