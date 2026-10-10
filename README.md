@@ -1,14 +1,19 @@
-# ezCLI
+<p align="center">
+  <img src="docs/hero.svg" alt="ezCLI — run every coding CLI in one window" width="100%">
+</p>
 
-A desktop-style window for the Claude and OpenAI coding CLIs, with a UI modeled on
-Freebuff.
+<p align="center">
+  A desktop-style window for the Claude and OpenAI coding CLIs, with a UI modeled on Freebuff.
+</p>
+
+---
 
 ezCLI is not a harness. Each session spawns the real CLI in a real pseudo-terminal, so
 the agent's own text UI renders unchanged. Nothing is proxied, re-prompted, or rewritten.
 The window adds the parts a bare terminal lacks: tabs, an agent switcher, a file and diff
 browser, and model and mode flags you pick before launch.
 
-![ezCLI launcher](docs/screenshot-launcher.jpg)
+![ezCLI running](docs/screenshot-launcher.jpg)
 
 ## Run it
 
