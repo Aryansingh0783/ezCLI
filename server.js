@@ -495,32 +495,70 @@ function clampDim(value, fallback) {
 
 /* ------------------------------------------------------------------ listen */
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(
-      `\nPort ${PORT} is already in use.\n` +
-        `  Close the other process, or start ezCLI on a different port:\n` +
-        `    PORT=4000 npm start\n`
-    );
-  } else {
-    console.error(`\nezCLI failed to start: ${err.message}\n`);
-  }
-  process.exit(1);
-});
-
-server.listen(PORT, HOST, () => {
-  console.log(`\n  ezCLI  →  http://${HOST}:${PORT}\n`);
-  for (const a of agents) {
-    const resolved = resolveCommand(a.command);
-    console.log(`  ${resolved ? '✓' : '✗'}  ${a.label.padEnd(12)} ${resolved || `${a.command} not on PATH`}`);
-  }
-  console.log('');
-});
-
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    for (const client of wss.clients) client.terminate();
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 1000).unref();
+function start({ host = HOST, port = PORT, quiet = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const onError = (err) => {
+      server.off('listening', onListening);
+      reject(err);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      const addr = server.address();
+      const actualPort = typeof addr === 'object' && addr ? addr.port : port;
+      if (!quiet) {
+        console.log(`\n  ezCLI  →  http://${host}:${actualPort}\n`);
+        for (const a of agents) {
+          const resolved = resolveCommand(a.command);
+          console.log(`  ${resolved ? '✓' : '✗'}  ${a.label.padEnd(12)} ${resolved || `${a.command} not on PATH`}`);
+        }
+        console.log('');
+      }
+      resolve({
+        host,
+        port: actualPort,
+        url: `http://${host}:${actualPort}`,
+        close: () =>
+          new Promise((done) => {
+            for (const client of wss.clients) {
+              try {
+                client.terminate();
+              } catch {
+                /* already gone */
+              }
+            }
+            server.close(() => done());
+            setTimeout(done, 1500).unref();
+          })
+      });
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, host);
   });
+}
+
+module.exports = { start };
+
+// Direct `node server.js` keeps its original behavior.
+if (require.main === module) {
+  start().catch((err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(
+        `\nPort ${PORT} is already in use.\n` +
+          `  Close the other process, or start ezCLI on a different port:\n` +
+          `    PORT=4000 npm start\n`
+      );
+    } else {
+      console.error(`\nezCLI failed to start: ${err.message}\n`);
+    }
+    process.exit(1);
+  });
+
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      for (const client of wss.clients) client.terminate();
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 1000).unref();
+    });
+  }
 }

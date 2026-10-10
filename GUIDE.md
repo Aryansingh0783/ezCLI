@@ -17,9 +17,31 @@ How to run ezCLI and use every part of it.
 
 ## Start the server
 
+You have two ways to launch. Both run the same code and use the same real CLIs.
+
+### Desktop app
+
 ```bash
 cd ezCLI
 npm install
+npm run desktop
+```
+
+A native window opens and the embedded server picks a free port that only the window
+talks to. No browser involved. Close the window to shut everything down.
+
+To build a Windows installer, generate the icons once, then package:
+
+```bash
+npm run icons
+npm run package
+```
+
+The installer lands in `dist/`. On Mac or Linux, use `npm run package:all`.
+
+### Web mode
+
+```bash
 npm start
 ```
 

@@ -5,6 +5,11 @@ Thumbs.db
 *.local
 .env
 
+# electron-builder output
+dist/
+electron.out.log
+electron.err.log
+
 # local tooling (impeccable design detector, installed via npx)
 .claude/
 PRODUCT.md
