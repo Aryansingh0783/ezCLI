@@ -1,0 +1,18 @@
+{
+  "name": "ezcli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ezCLI — a Freebuff-styled GUI shell for the Claude and Codex/ChatGPT command line agents.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "^1.1.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}

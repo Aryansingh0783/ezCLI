@@ -1,0 +1,71 @@
+{
+  "_comment": "Edit this file to change which CLIs the GUI can launch. 'command' is resolved on PATH. Restart the server after editing.",
+  "agents": [
+    {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "vendor": "claude",
+      "icon": "code",
+      "command": "claude",
+      "args": [],
+      "modes": [
+        { "id": "default", "label": "Default", "args": [] },
+        { "id": "plan", "label": "Plan", "args": ["--permission-mode", "plan"] },
+        { "id": "accept-edits", "label": "Accept edits", "args": ["--permission-mode", "acceptEdits"] },
+        { "id": "continue", "label": "Continue", "args": ["--continue"] }
+      ],
+      "models": [
+        { "id": "default", "label": "Default", "args": [] },
+        { "id": "opus", "label": "Opus", "args": ["--model", "opus"] },
+        { "id": "sonnet", "label": "Sonnet", "args": ["--model", "sonnet"] },
+        { "id": "haiku", "label": "Haiku", "args": ["--model", "haiku"] }
+      ]
+    },
+    {
+      "id": "claude-chat",
+      "label": "Claude",
+      "vendor": "claude",
+      "icon": "chat",
+      "command": "claude",
+      "args": [],
+      "modes": [
+        { "id": "chat", "label": "Chat", "args": [] },
+        { "id": "print", "label": "One-shot", "args": ["--print"] }
+      ],
+      "models": [
+        { "id": "default", "label": "Default", "args": [] },
+        { "id": "opus", "label": "Opus", "args": ["--model", "opus"] },
+        { "id": "sonnet", "label": "Sonnet", "args": ["--model", "sonnet"] }
+      ]
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "vendor": "openai",
+      "icon": "code",
+      "command": "codex",
+      "_args_note": "--no-daemon keeps codex in-process; without it codex tries to detach a background server, which fails when the GUI server runs inside a Windows job object.",
+      "args": ["--no-daemon"],
+      "modes": [
+        { "id": "default", "label": "Default", "args": [] },
+        { "id": "auto", "label": "Full auto", "args": ["--full-auto"] },
+        { "id": "resume", "label": "Resume", "args": ["resume", "--last"] }
+      ],
+      "models": [
+        { "id": "default", "label": "Default", "args": [] },
+        { "id": "gpt-5-codex", "label": "gpt-5-codex", "args": ["-m", "gpt-5-codex"] },
+        { "id": "gpt-5", "label": "gpt-5", "args": ["-m", "gpt-5"] }
+      ]
+    },
+    {
+      "id": "chatgpt",
+      "label": "ChatGPT",
+      "vendor": "openai",
+      "icon": "chat",
+      "command": "chatgpt",
+      "args": [],
+      "modes": [{ "id": "default", "label": "Default", "args": [] }],
+      "models": [{ "id": "default", "label": "Default", "args": [] }]
+    }
+  ]
+}
