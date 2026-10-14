@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-msi:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: Build MSI
+        run: cargo tauri build --bundles msi
+        working-directory: ${{ github.workspace }}
+
+      - name: Collect installer
+        id: collect
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI produced." }
+          Write-Host "::notice::built $($msi.Name)  ($([math]::Round($msi.Length/1MB,2)) MB)"
+          "msi_path=$($msi.FullName)" | Out-File $env:GITHUB_OUTPUT -Append
+          "msi_name=$($msi.Name)" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezcli-windows-msi
+          path: ${{ steps.collect.outputs.msi_path }}
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.collect.outputs.msi_path }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

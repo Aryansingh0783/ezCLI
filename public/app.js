@@ -1,5 +1,10 @@
 'use strict';
 
+/* ezCLI frontend — speaks to the Rust backend over the Tauri IPC bridge. */
+
+const invoke = (name, args) => window.__TAURI__.core.invoke(name, args);
+const listen = (event, handler) => window.__TAURI__.event.listen(event, handler);
+
 const $ = (id) => document.getElementById(id);
 
 const FB_THEME = {
@@ -54,12 +59,19 @@ const active = () => state.sessions.find((s) => s.id === state.activeId) || null
 /* ------------------------------------------------------------------- boot */
 
 async function boot() {
+  if (!window.__TAURI__) {
+    document.body.innerHTML =
+      '<div style="padding:40px;font-family:sans-serif;color:#dedfdd">ezCLI needs to run inside the Tauri window.</div>';
+    return;
+  }
   let info;
   try {
-    info = await fetch('/api/agents').then((r) => r.json());
-  } catch {
+    info = await invoke('list_agents');
+  } catch (err) {
     document.body.innerHTML =
-      '<div style="padding:40px;font-family:sans-serif;color:#dedfdd">Could not reach the ezCLI server. Is it still running?</div>';
+      '<div style="padding:40px;font-family:sans-serif;color:#dedfdd">The backend did not respond: ' +
+      esc(String(err)) +
+      '</div>';
     return;
   }
   state.agents = info.agents;
@@ -136,8 +148,6 @@ function renderChips() {
   $('chipModelLabel').textContent = (src.models.find((m) => m.id === modelId) || src.models[0]).label;
   $('chipModeLabel').textContent = (src.modes.find((m) => m.id === modeId) || src.modes[0]).label;
 
-  // A running session's launch flags are fixed; lock the chips so the label
-  // never implies a change that would not take effect until restart.
   const locked = Boolean(s);
   $('chipModel').disabled = locked;
   $('chipMode').disabled = locked;
@@ -229,7 +239,7 @@ function renderStatus() {
 
 /* -------------------------------------------------------------- sessions */
 
-function createSession(agentId, opts = {}) {
+async function createSession(agentId, opts = {}) {
   const a = agent(agentId);
   if (!a) return null;
   if (!a.available) {
@@ -274,93 +284,70 @@ function createSession(agentId, opts = {}) {
     term,
     fit,
     host,
-    ws: null,
-    pendingPrompt: opts.prompt || ''
+    unlisten: []
   };
   state.sessions.push(sess);
 
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/pty`);
-  sess.ws = ws;
+  // Attach the event listeners BEFORE spawning so no byte is dropped
+  // between the Rust side firing the event and us subscribing to it.
+  sess.unlisten.push(
+    await listen(`pty-data:${id}`, (e) => {
+      term.write(e.payload);
+    })
+  );
+  sess.unlisten.push(
+    await listen(`pty-exit:${id}`, (e) => {
+      sess.status = 'exited';
+      term.write(`\r\n\x1b[38;2;148;152;145m-- process exited (code ${e.payload}) --\x1b[0m\r\n`);
+      renderTabs();
+      if (sess.id === state.activeId) renderStatus();
+    })
+  );
 
-  ws.addEventListener('open', () => {
-    fitSession(sess);
-    ws.send(
-      JSON.stringify({
-        type: 'start',
+  // Keystrokes in the terminal go straight to the pty.
+  const dispose = term.onData((d) => {
+    invoke('send_input', { id, data: d }).catch(() => {});
+  });
+  sess.unlisten.push(() => dispose.dispose());
+
+  selectSession(id);
+  switchPane('term');
+
+  // The fit has to happen while the host is visible, otherwise xterm sees
+  // zero cols/rows and the PTY spawns with a comically narrow geometry.
+  requestAnimationFrame(async () => {
+    try {
+      fit.fit();
+    } catch {
+      /* geometry races, retried on resize */
+    }
+    try {
+      const result = await invoke('start_session', {
+        id,
         agentId,
         modelId: sess.modelId,
         modeId: sess.modeId,
         cwd: sess.cwd,
         cols: term.cols,
         rows: term.rows
-      })
-    );
-  });
-
-  ws.addEventListener('message', (ev) => {
-    let m;
-    try {
-      m = JSON.parse(ev.data);
-    } catch {
-      return;
-    }
-    if (m.type === 'data') {
-      term.write(m.data);
-    } else if (m.type === 'started') {
+      });
       sess.status = 'running';
-      sess.command = m.command;
-      sess.cwd = m.cwd;
+      sess.command = result.command;
+      sess.cwd = result.cwd;
       renderTabs();
       if (sess.id === state.activeId) renderStatus();
-      if (sess.pendingPrompt) {
-        const text = sess.pendingPrompt;
-        sess.pendingPrompt = '';
-        setTimeout(() => sendRaw(sess, text + '\r'), 700);
+      if (opts.prompt) {
+        setTimeout(() => invoke('send_input', { id, data: opts.prompt + '\r' }).catch(() => {}), 700);
       }
-    } else if (m.type === 'exit') {
-      sess.status = 'exited';
-      term.write(`\r\n\x1b[38;2;148;152;145m-- process exited (code ${m.exitCode}) --\x1b[0m\r\n`);
-      renderTabs();
-      if (sess.id === state.activeId) renderStatus();
-    } else if (m.type === 'fatal') {
+    } catch (err) {
       sess.status = 'error';
-      term.write(`\r\n\x1b[38;2;224;122;122m${String(m.message).replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
+      term.write(`\r\n\x1b[38;2;224;122;122m${String(err).replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
       renderTabs();
       if (sess.id === state.activeId) renderStatus();
     }
   });
 
-  ws.addEventListener('close', () => {
-    if (sess.status === 'running' || sess.status === 'starting') {
-      sess.status = 'exited';
-      renderTabs();
-      if (sess.id === state.activeId) renderStatus();
-    }
-  });
-  ws.addEventListener('error', () => {
-    if (sess.status === 'starting') {
-      sess.status = 'error';
-      term.write('\r\n\x1b[38;2;224;122;122mConnection to the ezCLI server failed.\x1b[0m\r\n');
-      renderTabs();
-      if (sess.id === state.activeId) renderStatus();
-    }
-  });
-
-  term.onData((d) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'input', data: d }));
-  });
-
-  switchPane('term');
-  selectSession(id);
-  renderTabs();
   return sess;
-}
-
-function sendRaw(sess, data) {
-  if (sess && sess.ws && sess.ws.readyState === WebSocket.OPEN) {
-    sess.ws.send(JSON.stringify({ type: 'input', data }));
-  }
 }
 
 function selectSession(id) {
@@ -382,15 +369,21 @@ function selectSession(id) {
   renderStatus();
 }
 
-function closeSession(id) {
+async function closeSession(id) {
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i === -1) return;
   const s = state.sessions[i];
   try {
-    if (s.ws && s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type: 'kill' }));
-    if (s.ws) s.ws.close();
+    await invoke('kill_session', { id });
   } catch {
-    /* already closing */
+    /* process already gone */
+  }
+  for (const un of s.unlisten) {
+    try {
+      un();
+    } catch {
+      /* ignore */
+    }
   }
   s.term.dispose();
   s.host.remove();
@@ -406,9 +399,7 @@ function fitSession(s) {
   } catch {
     return;
   }
-  if (s.ws && s.ws.readyState === WebSocket.OPEN) {
-    s.ws.send(JSON.stringify({ type: 'resize', cols: s.term.cols, rows: s.term.rows }));
-  }
+  invoke('resize_session', { id: s.id, cols: s.term.cols, rows: s.term.rows }).catch(() => {});
   if (s.id === state.activeId) renderStatus();
 }
 
@@ -445,13 +436,9 @@ async function loadFiles(dir) {
   $('filePreview').innerHTML = '<p class="empty">Select a file to preview it.</p>';
   let data;
   try {
-    data = await fetch(`/api/files?path=${encodeURIComponent(dir)}`).then((r) => r.json());
-  } catch {
-    list.innerHTML = '<li class="side-empty">Could not read the folder.</li>';
-    return;
-  }
-  if (data.error) {
-    list.innerHTML = `<li class="side-empty">${esc(data.error)}</li>`;
+    data = await invoke('list_dir', { path: dir });
+  } catch (err) {
+    list.innerHTML = `<li class="side-empty">${esc(String(err))}</li>`;
     return;
   }
 
@@ -492,12 +479,11 @@ async function previewFile(file) {
   box.innerHTML = '<p class="empty">Loading…</p>';
   let data;
   try {
-    data = await fetch(`/api/file?path=${encodeURIComponent(file)}`).then((r) => r.json());
-  } catch {
-    box.innerHTML = '<p class="empty">Could not read the file.</p>';
+    data = await invoke('read_file', { path: file });
+  } catch (err) {
+    box.innerHTML = `<p class="empty">${esc(String(err))}</p>`;
     return;
   }
-  if (data.error) return void (box.innerHTML = `<p class="empty">${esc(data.error)}</p>`);
   if (data.binary) return void (box.innerHTML = '<p class="empty">Binary file.</p>');
   box.textContent = data.text + (data.truncated ? '\n\n… preview truncated …' : '');
 }
@@ -509,14 +495,13 @@ async function loadChanges(dir) {
   $('gitHead').innerHTML = '';
   let data;
   try {
-    data = await fetch(`/api/git?path=${encodeURIComponent(dir)}`).then((r) => r.json());
+    data = await invoke('git_status', { path: dir });
   } catch {
     list.innerHTML = '<li class="side-empty">Could not run git.</li>';
     return;
   }
 
   if (!data.repo) {
-    $('gitHead').innerHTML = '';
     list.innerHTML = `<li class="side-empty">${esc(data.reason || 'Not a git repository.')}</li>`;
     $('gitPreview').innerHTML = '<p class="empty">Open a session inside a git repository to see changes.</p>';
     return;
@@ -558,13 +543,11 @@ async function showDiff(dir, file, untracked) {
   box.innerHTML = '<p class="empty">Loading…</p>';
   let data;
   try {
-    const q = `path=${encodeURIComponent(dir)}&file=${encodeURIComponent(file)}${untracked ? '&untracked=1' : ''}`;
-    data = await fetch(`/api/diff?${q}`).then((r) => r.json());
-  } catch {
-    box.innerHTML = '<p class="empty">Could not load the diff.</p>';
+    data = await invoke('git_diff', { path: dir, file, untracked });
+  } catch (err) {
+    box.innerHTML = `<p class="empty">${esc(String(err))}</p>`;
     return;
   }
-  if (data.error) return void (box.innerHTML = `<p class="empty">${esc(data.error)}</p>`);
   if (!data.diff) return void (box.innerHTML = `<p class="empty">${esc(data.note || 'No changes.')}</p>`);
 
   box.innerHTML = data.diff
@@ -667,11 +650,9 @@ function wire() {
 
   const startFromHero = () => {
     const prompt = $('heroInput').value.trim();
-    const s = createSession(state.selectedAgentId, { prompt });
-    if (s) {
-      $('heroInput').value = '';
-      autoGrow($('heroInput'));
-    }
+    createSession(state.selectedAgentId, { prompt });
+    $('heroInput').value = '';
+    autoGrow($('heroInput'));
   };
 
   $('newTab').addEventListener('click', () => createSession(state.selectedAgentId));
@@ -704,22 +685,26 @@ function wire() {
   });
   $('btnSend').addEventListener('click', sendComposer);
   $('btnInterrupt').addEventListener('click', () => {
-    sendRaw(active(), '\x03');
     const s = active();
-    if (s && state.pane === 'term') s.term.focus();
+    if (!s) return;
+    invoke('send_input', { id: s.id, data: '\x03' }).catch(() => {});
+    if (state.pane === 'term') s.term.focus();
   });
-  $('btnEsc').addEventListener('click', () => sendRaw(active(), '\x1b'));
+  $('btnEsc').addEventListener('click', () => {
+    const s = active();
+    if (s) invoke('send_input', { id: s.id, data: '\x1b' }).catch(() => {});
+  });
 
   $('navClear').addEventListener('click', () => active() && active().term.clear());
   $('navStop').addEventListener('click', () => {
     const s = active();
-    if (s && s.ws && s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type: 'kill' }));
+    if (s) invoke('kill_session', { id: s.id }).catch(() => {});
   });
-  $('navRestart').addEventListener('click', () => {
+  $('navRestart').addEventListener('click', async () => {
     const s = active();
     if (!s) return;
     const { agentId, modelId, modeId } = s;
-    closeSession(s.id);
+    await closeSession(s.id);
     createSession(agentId, { modelId, modeId });
   });
 
@@ -778,34 +763,33 @@ function wire() {
     );
   });
 
-  const choose = () => {
+  const choose = async () => {
     const dir = window.prompt('Folder new sessions should start in:', state.cwd);
     if (!dir) return;
-    fetch(`/api/files?path=${encodeURIComponent(dir)}`)
-      .then((r) => r.json())
-      .then((r) => {
-        if (r.error) return flashHero(r.error);
-        state.cwd = r.path;
-        renderCwd();
-      })
-      .catch(() => flashHero('Could not open that folder.'));
+    try {
+      const r = await invoke('list_dir', { path: dir });
+      state.cwd = r.path;
+      renderCwd();
+    } catch (err) {
+      flashHero(String(err));
+    }
   };
   $('pickCwd').addEventListener('click', choose);
   $('heroCwd').addEventListener('click', choose);
 
   window.addEventListener('resize', () => fitSession(active()));
   window.addEventListener('beforeunload', () => {
-    state.sessions.forEach((s) => {
+    for (const s of state.sessions) {
       try {
-        s.ws && s.ws.close();
+        invoke('kill_session', { id: s.id });
       } catch {
-        /* ignore */
+        /* best effort */
       }
-    });
+    }
   });
 
   // Ctrl+Alt is the modifier so these never intercept the agent's own
-  // terminal shortcuts (Ctrl+W, Ctrl+C, Ctrl+1 … are all left alone).
+  // terminal shortcuts (Ctrl+W, Ctrl+C, Ctrl+1 are all left alone).
   window.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey && e.altKey) || e.shiftKey || e.metaKey) return;
     const k = e.key.toLowerCase();
@@ -835,18 +819,18 @@ function wire() {
 function sendComposer() {
   const el = $('ptyInput');
   const v = el.value;
-  if (!v.trim() || !active()) return;
-  sendRaw(active(), v + '\r');
+  const s = active();
+  if (!v.trim() || !s) return;
+  invoke('send_input', { id: s.id, data: v + '\r' }).catch(() => {});
   el.value = '';
   autoGrow(el);
 }
 
 async function reloadAgents() {
   try {
-    const r = await fetch('/api/agents/reload', { method: 'POST' }).then((x) => x.json());
-    if (!r.ok) return flashHero(r.error || 'Reload failed.');
+    const list = await invoke('reload_agents');
     const keep = state.selectedAgentId;
-    state.agents = r.agents;
+    state.agents = list;
     if (!agent(keep)) {
       const first = state.agents.find((a) => a.available) || state.agents[0];
       state.selectedAgentId = first ? first.id : null;
@@ -855,8 +839,8 @@ async function reloadAgents() {
     renderAgentList();
     renderChips();
     flashHero('Agents reloaded from agents.json.');
-  } catch {
-    flashHero('Could not reach the server to reload agents.');
+  } catch (err) {
+    flashHero(String(err));
   }
 }
 
