@@ -1316,8 +1316,69 @@ body.resizing-pane .xterm {
 }
 .statusbar code {
   overflow: hidden;
+  min-width: 0;
   font-size: 11px;
   text-overflow: ellipsis;
+}
+#stCmd {
+  flex: 1 1 auto;
+}
+#stCwd {
+  flex: 0 1 clamp(110px, 22vw, 360px);
+  min-width: 0;
+}
+.live-usage {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
+  max-width: min(490px, 48vw);
+  margin-left: 2px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.live-usage-label {
+  flex: none;
+  margin-right: 7px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.live-usage-metrics {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-usage-item {
+  display: inline-flex;
+  gap: 4px;
+}
+.live-usage-item + .live-usage-item::before {
+  content: '·';
+  margin: 0 6px;
+  color: var(--border);
+}
+.live-usage-item b {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.live-usage-item[data-usage='total'],
+.live-usage-item[data-usage='cost'] {
+  color: var(--text);
+}
+.live-usage.unavailable .live-usage-metrics {
+  color: var(--faint);
 }
 .st-state {
   display: inline-flex;
@@ -1348,6 +1409,26 @@ body.resizing-pane .xterm {
 }
 .st-state.error::before {
   background: var(--danger);
+}
+
+@media (max-width: 1180px) {
+  .live-usage-item[data-usage='cached'],
+  .live-usage-item[data-usage='turn'] {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  #stCwd,
+  .live-usage-item:not([data-usage='total']) {
+    display: none;
+  }
+  .live-usage-item[data-usage='total']::before {
+    content: none;
+    margin: 0;
+  }
+  .live-usage {
+    max-width: 180px;
+  }
 }
 
 /* ----------------------------------------------------------------- menus */

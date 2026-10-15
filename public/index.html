@@ -185,6 +185,10 @@
       <footer class="statusbar">
         <span class="st-state" id="stState">idle</span>
         <code id="stCmd">no session</code>
+        <span class="live-usage" id="liveUsage" hidden aria-label="Session usage">
+          <span class="live-usage-label">Usage</span>
+          <span class="live-usage-metrics" id="liveUsageMetrics"></span>
+        </span>
         <span class="grow"></span>
         <code id="stCwd"></code>
         <span id="stSize"></span>
@@ -194,6 +198,7 @@
     <div class="scrim" id="scrim" hidden></div>
     <div class="menu" id="menu" role="menu" hidden></div>
     <div class="toasts" id="toasts" aria-live="polite"></div>
+    <span class="sr-only" id="usageAnnouncer" role="status" aria-live="polite" aria-atomic="true"></span>
 
     <dialog class="sheet" id="helpSheet">
       <h2>Keyboard shortcuts</h2>
@@ -294,6 +299,7 @@
     <script src="/vendor/xterm/lib/xterm.js"></script>
     <script src="/vendor/addon-fit/lib/addon-fit.js"></script>
     <script src="/vendor/addon-web-links/lib/addon-web-links.js"></script>
+    <script src="/usage-parser.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

@@ -11,6 +11,7 @@ const T = window.__TAURI__;
 const invoke = (name, args) => T.core.invoke(name, args);
 const listen = (event, handler) => T.event.listen(event, handler);
 const $ = (id) => document.getElementById(id);
+const Usage = window.ezCliUsage;
 
 /* ------------------------------------------------------------ preferences */
 
@@ -542,6 +543,7 @@ function buildParked(sn) {
     pendingPrompt: '',
     draft: '',
     context: [],
+    usage: Usage.createUsageState(),
     term,
     fit,
     host,
@@ -611,6 +613,7 @@ async function createSession(agentId, opts = {}) {
     pendingPrompt: opts.prompt || '',
     draft: '',
     context: [],
+    usage: Usage.createUsageState(),
     term,
     fit,
     host,
@@ -638,6 +641,9 @@ async function createSession(agentId, opts = {}) {
  *  pty id so a late exit event from a previous process can't touch it. */
 async function launch(s) {
   for (const un of s.unlisten.splice(0)) safe(un);
+  // A relaunch creates a fresh underlying CLI session, so observed metrics
+  // must not leak from the prior process into this one.
+  s.usage = Usage.createUsageState();
   const ptyId = `p${++state.seq}`;
   s.ptyId = ptyId;
   s.status = 'starting';
@@ -647,6 +653,7 @@ async function launch(s) {
   s.unlisten.push(
     await listen(`pty-data:${ptyId}`, (e) => {
       s.term.write(e.payload);
+      const usageChanged = Usage.ingest(s.usage, e.payload);
       s.lastOutputAt = Date.now();
       if (!s.working) {
         s.working = true;
@@ -660,12 +667,16 @@ async function launch(s) {
           updateTabMeta(s);
         }
       }
-      if (s.id === state.activeId) updateScrollButton(s);
+      if (s.id === state.activeId) {
+        updateScrollButton(s);
+        if (usageChanged) renderStatus();
+      }
     })
   );
   s.unlisten.push(
     await listen(`pty-exit:${ptyId}`, (e) => {
       if (s.ptyId !== ptyId) return;
+      Usage.ingest(s.usage, '', true);
       s.status = 'exited';
       s.exitCode = e.payload;
       s.working = false;
@@ -850,6 +861,9 @@ function tick() {
 
 let gitTimer = 0;
 function onIdle(s) {
+  // A conservative multi-line summary is held until the terminal goes quiet,
+  // so a single labelled value can never be mistaken for complete telemetry.
+  Usage.ingest(s.usage, '', true);
   deliverPending(s);
   // The agent probably just edited files; refresh the change count.
   if (s.spaceId === prefs.activeSpace) {
@@ -967,6 +981,7 @@ function renderStatus() {
     $('stCmd').textContent = space() ? `${spaceSessions().length} tab(s) in ${space().name}` : 'no session';
     $('stCwd').textContent = space() ? space().path : '';
     $('stSize').textContent = '';
+    renderLiveUsage(null);
     return;
   }
   const label = s.status === 'running' ? (s.working ? 'working' : 'running') : s.status;
@@ -975,6 +990,54 @@ function renderStatus() {
   $('stCmd').textContent = s.command || (agent(s.agentId) || {}).command || '';
   $('stCwd').textContent = s.cwd;
   $('stSize').textContent = `${s.term.cols}×${s.term.rows}`;
+  renderLiveUsage(s);
+}
+
+function renderLiveUsage(s) {
+  const strip = $('liveUsage');
+  const metrics = $('liveUsageMetrics');
+  const announcer = $('usageAnnouncer');
+  if (!s || !s.usage) {
+    strip.hidden = true;
+    metrics.textContent = '';
+    announcer.textContent = '';
+    return;
+  }
+
+  strip.hidden = false;
+  const usage = s.usage;
+  if (!usage.observed) {
+    strip.classList.add('unavailable');
+    strip.removeAttribute('title');
+    strip.setAttribute('aria-label', 'Usage not reported by this CLI');
+    metrics.textContent = 'Not reported by CLI';
+    announcer.textContent = '';
+    return;
+  }
+
+  strip.classList.remove('unavailable');
+  const hasTokens = (values) => ['input', 'output', 'cached'].some((key) => values[key] != null);
+  const turn = hasTokens(usage.turn) ? Usage.formatTokens(Usage.tokenTotal(usage.turn)) : '—';
+  const total = hasTokens(usage.total) ? Usage.formatTokens(Usage.tokenTotal(usage.total)) : '—';
+  const field = (key, label, value) =>
+    `<span class="live-usage-item" data-usage="${key}"><b>${label}</b>${value}</span>`;
+  const cost = usage.total.cost == null ? '' : field('cost', 'cost', Usage.formatCost(usage.total.cost));
+  metrics.innerHTML = [
+    field('input', 'in', Usage.formatTokens(usage.total.input)),
+    field('output', 'out', Usage.formatTokens(usage.total.output)),
+    field('cached', 'cache', Usage.formatTokens(usage.total.cached)),
+    field('turn', '+turn', turn),
+    field('total', 'total', total),
+    cost
+  ].join('');
+
+  const summary = `Observed session usage: input ${Usage.formatTokens(usage.total.input)} tokens, output ${Usage.formatTokens(usage.total.output)} tokens, cached ${Usage.formatTokens(usage.total.cached)} tokens, current turn ${turn} tokens, session total ${total} tokens${usage.total.cost == null ? '' : `, cost ${Usage.formatCost(usage.total.cost)}`}.`;
+  strip.title = summary;
+  strip.setAttribute('aria-label', summary);
+  if (usage.updatedAt !== usage.announcedAt) {
+    announcer.textContent = summary;
+    usage.announcedAt = usage.updatedAt;
+  }
 }
 
 /* ------------------------------------------------------------- composer */
