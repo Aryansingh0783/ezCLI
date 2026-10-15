@@ -180,8 +180,10 @@ Design (verified against the installed CLIs, see `claude --help`, `codex mcp add
 - Input injection (click/type) comes after screenshot is validated end to end.
 
 Steps:
-1. [ ] capture.rs + unit test (decodes a real capture, checks dimensions)
-2. [ ] mcp_server.rs + JSON-RPC unit tests (no model needed)
+1. [x] capture.rs (`55ac632`). Real capture verified: 1920x1080 -> 1280x720,
+   184 KB PNG, 0.19 s (`test-rust.ps1 --ignored --nocapture real_screen`).
+2. [x] mcp_server.rs (`3f8e52b`). Hooks-based so tests run the real listener
+   over loopback HTTP with stub guard/capture. 13/13 Rust tests pass.
 3. [ ] launch wiring + frontend relaunch flow
 4. [ ] loopback protocol test with real HTTP; then ask Aryan before any
    end-to-end run that spends model tokens
