@@ -34,6 +34,10 @@ pub struct AgentDef {
     pub modes: Vec<Variant>,
     #[serde(default)]
     pub models: Vec<Variant>,
+    /// Per-session reasoning effort choices supported by this CLI. Empty means
+    /// the agent does not expose a portable effort control.
+    #[serde(default)]
+    pub efforts: Vec<Variant>,
     /// How this CLI attaches ezCLI's PC-control MCP server: "claude", "codex"
     /// or "none". Omitted = inferred from the command name, so configs written
     /// before this field existed keep working.
@@ -76,6 +80,13 @@ pub enum McpStyle {
 
 impl AgentDef {
     pub fn mcp_style(&self) -> Option<McpStyle> {
+        // Both built-in Claude entries launch the same executable, but only
+        // the coding-agent preset is allowed to receive PC-control tools.
+        // Keep this guard in Rust so an older ~/.ezcli/agents.json cannot
+        // accidentally turn the chat preset into a privileged backend.
+        if self.id == "claude-chat" {
+            return None;
+        }
         let named = match self.mcp.as_deref().map(str::to_ascii_lowercase).as_deref() {
             Some("claude") => return Some(McpStyle::Claude),
             Some("codex") => return Some(McpStyle::Codex),
@@ -103,6 +114,7 @@ pub struct AgentOut {
     pub args: Vec<String>,
     pub modes: Vec<Variant>,
     pub models: Vec<Variant>,
+    pub efforts: Vec<Variant>,
     pub available: bool,
     pub resolved: Option<String>,
     /// Whether ezCLI knows how to attach PC control to this CLI.
@@ -160,9 +172,25 @@ fn merge_builtin(user: &mut Vec<AgentDef>) {
     let Ok(builtin) = serde_json::from_str::<AgentsFile>(BUILTIN) else {
         return;
     };
-    for a in builtin.agents {
-        if !user.iter().any(|u| u.id == a.id) {
-            user.push(a);
+    for builtin_agent in builtin.agents {
+        if let Some(existing) = user.iter_mut().find(|u| u.id == builtin_agent.id) {
+            // Existing configurations are authoritative, but a missing effort
+            // list is a safe additive capability for an unchanged built-in
+            // command. That lets old first-run configs receive this UI feature
+            // without overwriting a custom command or its launch flags.
+            if existing.efforts.is_empty()
+                && !builtin_agent.efforts.is_empty()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.efforts = builtin_agent.efforts.clone();
+            }
+            // This explicit value makes the built-in boundary visible in the
+            // runtime config too; mcp_style() enforces it independently.
+            if existing.id == "claude-chat" {
+                existing.mcp = Some("none".into());
+            }
+        } else {
+            user.push(builtin_agent);
         }
     }
 }
@@ -250,6 +278,7 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                 args: a.args.clone(),
                 modes: a.modes.clone(),
                 models: a.models.clone(),
+                efforts: a.efforts.clone(),
                 available: resolved.is_some(),
                 resolved,
                 pc_control: a.mcp_style().is_some(),
@@ -261,14 +290,21 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
         .collect()
 }
 
-/// Build the launch argument list for a given mode/model selection. A model
-/// id that isn't one of the static variants is accepted only if it appears in
-/// the catalog the backend itself fetched from the agent, so the frontend still
-/// cannot inject an arbitrary argument.
-pub fn build_argv(a: &AgentDef, mode_id: &str, model_id: &str, catalog: Option<&[String]>) -> Vec<String> {
+/// Build the launch argument list for a given effort/model/mode selection.
+/// A model id that isn't one of the static variants is accepted only if it
+/// appears in the catalog the backend itself fetched from the agent, so the
+/// frontend still cannot inject an arbitrary argument. Global effort and model
+/// flags deliberately precede a mode subcommand such as `codex resume`.
+pub fn build_argv(
+    a: &AgentDef,
+    mode_id: &str,
+    model_id: &str,
+    effort_id: &str,
+    catalog: Option<&[String]>,
+) -> Vec<String> {
     let mut out = a.args.clone();
-    if let Some(m) = a.modes.iter().find(|v| v.id == mode_id) {
-        out.extend(m.args.clone());
+    if let Some(e) = a.efforts.iter().find(|v| v.id == effort_id) {
+        out.extend(e.args.clone());
     }
     if let Some(m) = a.models.iter().find(|v| v.id == model_id) {
         out.extend(m.args.clone());
@@ -278,7 +314,42 @@ pub fn build_argv(a: &AgentDef, mode_id: &str, model_id: &str, catalog: Option<&
             out.push(model_id.to_string());
         }
     }
+    if let Some(m) = a.modes.iter().find(|v| v.id == mode_id) {
+        out.extend(m.args.clone());
+    }
     out
+}
+
+/// portable-pty calls CreateProcessW directly on Windows, which cannot launch
+/// a `.cmd`/`.bat` shim as an executable. npm installs its global CLIs as those
+/// shims, so route them through cmd.exe while keeping the generated arguments
+/// separate. The arguments are still constrained to agents.json or a
+/// backend-validated model catalog.
+pub fn launch_command(resolved: &str, args: &[String]) -> (String, Vec<String>) {
+    let lower = resolved.to_ascii_lowercase();
+    if cfg!(windows) && lower.ends_with(".ps1") {
+        let mut wrapped = vec![
+            "-NoLogo".to_string(),
+            "-NoProfile".to_string(),
+            "-ExecutionPolicy".to_string(),
+            "Bypass".to_string(),
+            "-File".to_string(),
+            resolved.to_string(),
+        ];
+        wrapped.extend(args.iter().cloned());
+        ("powershell.exe".to_string(), wrapped)
+    } else if cfg!(windows) && (lower.ends_with(".cmd") || lower.ends_with(".bat")) {
+        let mut wrapped = vec![
+            "/d".to_string(),
+            "/s".to_string(),
+            "/c".to_string(),
+            resolved.to_string(),
+        ];
+        wrapped.extend(args.iter().cloned());
+        ("cmd.exe".to_string(), wrapped)
+    } else {
+        (resolved.to_string(), args.to_vec())
+    }
 }
 
 #[cfg(test)]
@@ -295,6 +366,7 @@ mod tests {
             args: vec![],
             modes: vec![],
             models: vec![],
+            efforts: vec![],
             mcp: mcp.map(Into::into),
             tier: None,
             models_from: None,
@@ -320,10 +392,23 @@ mod tests {
         let mut a = def("opencode", Some("none"));
         a.models_from = Some(ModelsFrom { args: vec!["models".into()], flag: "-m".into() });
         let cat = vec!["opencode/free-model".to_string()];
-        assert_eq!(build_argv(&a, "x", "opencode/free-model", Some(&cat)), vec!["-m", "opencode/free-model"]);
+        assert_eq!(build_argv(&a, "x", "opencode/free-model", "default", Some(&cat)), vec!["-m", "opencode/free-model"]);
         // Not in the fetched catalog: ignored rather than passed through.
-        assert!(build_argv(&a, "x", "--dangerous", Some(&cat)).is_empty());
-        assert!(build_argv(&a, "x", "opencode/free-model", None).is_empty());
+        assert!(build_argv(&a, "x", "--dangerous", "default", Some(&cat)).is_empty());
+        assert!(build_argv(&a, "x", "opencode/free-model", "default", None).is_empty());
+    }
+
+    #[test]
+    fn global_effort_and_model_flags_precede_a_mode_subcommand() {
+        let mut a = def("codex", Some("codex"));
+        a.args = vec!["--no-daemon".into()];
+        a.efforts = vec![Variant { id: "high".into(), label: "High".into(), args: vec!["-c".into(), "model_reasoning_effort=\"high\"".into()] }];
+        a.models = vec![Variant { id: "gpt".into(), label: "GPT".into(), args: vec!["-m".into(), "gpt-5".into()] }];
+        a.modes = vec![Variant { id: "resume".into(), label: "Resume".into(), args: vec!["resume".into(), "--last".into()] }];
+        assert_eq!(
+            build_argv(&a, "resume", "gpt", "high", None),
+            vec!["--no-daemon", "-c", "model_reasoning_effort=\"high\"", "-m", "gpt-5", "resume", "--last"]
+        );
     }
 
     #[test]
@@ -350,5 +435,104 @@ mod tests {
     fn explicit_mcp_field_wins_including_opt_out() {
         assert_eq!(def("claude", Some("none")).mcp_style(), None);
         assert_eq!(def("my-wrapper", Some("codex")).mcp_style(), Some(McpStyle::Codex));
+    }
+
+    #[test]
+    fn claude_chat_never_inherits_claude_code_pc_control() {
+        let mut chat = def("claude", Some("claude"));
+        chat.id = "claude-chat".into();
+        assert_eq!(chat.mcp_style(), None);
+    }
+
+    #[test]
+    fn old_builtin_entries_receive_effort_options_without_replacing_commands() {
+        let mut user = vec![def("claude", None)];
+        user[0].id = "claude-code".into();
+        merge_builtin(&mut user);
+        assert!(user[0].efforts.iter().any(|e| e.id == "high"));
+        assert_eq!(user[0].command, "claude");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cmd_shims_are_wrapped_for_the_native_pty() {
+        let args = vec!["-m".into(), "opencode/free-model".into()];
+        assert_eq!(
+            launch_command(r"C:\\npm\\opencode.cmd", &args),
+            (
+                "cmd.exe".into(),
+                vec!["/d", "/s", "/c", r"C:\\npm\\opencode.cmd", "-m", "opencode/free-model"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect()
+            )
+        );
+    }
+
+    #[cfg(windows)]
+    fn run_in_native_pty(program: String, args: Vec<String>) -> (portable_pty::ExitStatus, String) {
+        use portable_pty::{native_pty_system, CommandBuilder, PtySize, PtySystem, SlavePty};
+        use std::io::Read;
+
+        let pty = native_pty_system();
+        let pair = pty
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut command = CommandBuilder::new(program);
+        for arg in args {
+            command.arg(arg);
+        }
+        command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
+        command.env_remove("NO_COLOR");
+        command.env("FORCE_COLOR", "3");
+        let mut child = pair.slave.spawn_command(command).unwrap();
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        drop(pair.slave);
+        let reader = std::thread::spawn(move || {
+            let mut output = String::new();
+            reader.read_to_string(&mut output).unwrap();
+            output
+        });
+        let status = child.wait().unwrap();
+        // Keep the ConPTY master alive until its child completes. Dropping it
+        // before wait tears down the pseudo console and makes cmd.exe fail to
+        // initialize; dropping it now lets the reader observe EOF.
+        drop(pair.master);
+        let output = reader.join().unwrap();
+        (status, output)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn batch_shim_runs_in_the_same_native_pty_as_an_agent() {
+        let path = std::env::temp_dir().join(format!("ezcli-pty-shim-{}.cmd", std::process::id()));
+        std::fs::write(&path, "@echo off\r\necho ezcli-pty-shim-ok\r\n").unwrap();
+        let (program, args) = launch_command(&path.to_string_lossy(), &[]);
+        let (status, output) = run_in_native_pty(program, args);
+        let _ = std::fs::remove_file(&path);
+        assert!(status.success(), "batch shim exited with {}: {output}", status.exit_code());
+        assert!(output.contains("ezcli-pty-shim-ok"), "unexpected output: {output}");
+    }
+
+    /// Opt-in integration check for the exact Windows path the app uses.
+    /// `scripts\test-rust.ps1 --ignored --nocapture real_opencode_pty`
+    /// launches npm's opencode.cmd through a native ConPTY, but does not call
+    /// a model or consume provider usage.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "runs the installed OpenCode npm shim in a real native PTY"]
+    fn real_opencode_cmd_shim_starts_in_native_pty() {
+        let resolved = resolve_command("opencode").expect("opencode on PATH");
+        assert!(resolved.to_ascii_lowercase().ends_with(".cmd"));
+        let (program, args) = launch_command(&resolved, &["--version".into()]);
+        let (status, output) = run_in_native_pty(program, args);
+        assert!(status.success(), "opencode exited with {}: {output}", status.exit_code());
+        assert!(output.chars().any(|c| c.is_ascii_digit()), "unexpected output: {output}");
     }
 }

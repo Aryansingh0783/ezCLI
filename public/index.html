@@ -98,6 +98,9 @@
                   <button class="pill-pick" id="homeModel" aria-label="Choose model">
                     <span class="pill-cap">Model</span><span class="pill-val"></span>
                   </button>
+                  <button class="pill-pick" id="homeEffort" aria-label="Choose reasoning effort">
+                    <span class="pill-cap">Effort</span><span class="pill-val"></span>
+                  </button>
                   <button class="pill-pick" id="homeMode" aria-label="Choose mode">
                     <span class="pill-cap">Mode</span><span class="pill-val"></span>
                   </button>
@@ -228,6 +231,19 @@
       <p class="note" id="onboardingSummary"></p>
       <ul class="backend-facts" id="backendFacts" aria-label="Detected setup"></ul>
       <div class="backend-choices" id="backendChoices" role="radiogroup" aria-label="Choose default backend"></div>
+      <section class="onboarding-config" id="onboardingConfig" aria-label="Selected session configuration" hidden>
+        <div class="onboarding-config-head"><span>Selected session</span><strong id="onboardingAgentLabel"></strong></div>
+        <div class="onboarding-config-picks">
+          <button class="onboarding-pick" type="button" id="onboardingModel" aria-label="Choose a model">
+            <span class="onboarding-pick-cap">Model</span><strong id="onboardingModelValue"></strong>
+            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <button class="onboarding-pick" type="button" id="onboardingEffort" aria-label="Choose reasoning effort">
+            <span class="onboarding-pick-cap">Effort</span><strong id="onboardingEffortValue"></strong>
+            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+        </div>
+      </section>
       <div class="free-installs" id="freeInstalls" hidden></div>
       <p class="note onboarding-note">ezCLI only opens local CLIs. It does not send prompts to a model itself, and you can switch backends for any session.</p>
       <div class="row-actions onboarding-actions">

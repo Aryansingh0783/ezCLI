@@ -191,6 +191,7 @@ function snapshotParked() {
       agentId: s.agentId,
       modelId: s.modelId,
       modeId: s.modeId,
+      effortId: s.effortId,
       cwd: s.cwd,
       title: s.title,
       exitCode: s.exitCode,
@@ -226,12 +227,15 @@ const modelLabel = (a, id) => {
   // A saved catalog pick whose catalog hasn't loaded yet still shows its name.
   return isCatalogModel(id) && a.dynamic_models ? id.slice(id.indexOf('/') + 1) : label(a.models, id);
 };
+const effortLabel = (a, id) => label((a && a.efforts) || [], id);
 
 function pick(a) {
   const p = (prefs.picks[a.id] ||= {});
   const known = allModels(a).some((m) => m.id === p.model) || (a.dynamic_models && isCatalogModel(p.model));
   if (!known) p.model = a.models[0] ? a.models[0].id : 'default';
   if (!a.modes.some((m) => m.id === p.mode)) p.mode = a.modes[0] ? a.modes[0].id : 'default';
+  const efforts = a.efforts || [];
+  if (!efforts.some((e) => e.id === p.effort)) p.effort = efforts[0] ? efforts[0].id : 'default';
   return p;
 }
 const label = (list, id) => (list.find((x) => x.id === id) || list[0] || { label: 'Default' }).label;
@@ -495,7 +499,15 @@ function tabMenu(anchor, s, x, y) {
     at: x != null ? { x, y } : null,
     items: [
       { label: 'Rename…', run: () => renameTab(s) },
-      { label: 'Duplicate', run: () => createSession(s.agentId, { modelId: s.modelId, modeId: s.modeId, cwd: s.cwd }) },
+      {
+        label: 'Duplicate',
+        run: () => createSession(s.agentId, {
+          modelId: s.modelId,
+          modeId: s.modeId,
+          effortId: s.effortId,
+          cwd: s.cwd
+        })
+      },
       { label: 'Restart', run: () => restartSession(s) },
       { label: 'Copy folder path', run: () => copy(s.cwd) },
       { sep: true },
@@ -563,6 +575,7 @@ function buildParked(sn) {
     agentId: sn.agentId,
     modelId: sn.modelId,
     modeId: sn.modeId,
+    effortId: sn.effortId || pick(a).effort,
     cwd: sn.cwd,
     title: sn.title,
     status: 'parked',
@@ -634,6 +647,7 @@ async function createSession(agentId, opts = {}) {
     agentId,
     modelId: opts.modelId || p.model,
     modeId: opts.modeId || p.mode,
+    effortId: opts.effortId ?? p.effort,
     cwd: opts.cwd || sp.path,
     title: opts.title || `${a.label} ${count}`,
     status: 'starting',
@@ -753,6 +767,7 @@ async function launch(s) {
       agentId: s.agentId,
       modelId: s.modelId,
       modeId: s.modeId,
+      effortId: s.effortId,
       cwd: s.cwd,
       cols: s.term.cols,
       rows: s.term.rows,
@@ -837,6 +852,7 @@ async function closeSession(id) {
     agentId: s.agentId,
     modelId: s.modelId,
     modeId: s.modeId,
+    effortId: s.effortId,
     cwd: s.cwd,
     spaceId: s.spaceId,
     title: s.title,
@@ -860,7 +876,13 @@ function reopenClosed(entry) {
   prefs.closed = prefs.closed.filter((c) => c !== entry);
   savePrefs();
   if (entry.spaceId && space(entry.spaceId) && entry.spaceId !== prefs.activeSpace) selectSpace(entry.spaceId);
-  createSession(entry.agentId, { modelId: entry.modelId, modeId: entry.modeId, cwd: entry.cwd, title: entry.title });
+  createSession(entry.agentId, {
+    modelId: entry.modelId,
+    modeId: entry.modeId,
+    effortId: entry.effortId,
+    cwd: entry.cwd,
+    title: entry.title
+  });
 }
 
 function closedTabsMenu(anchor) {
@@ -952,6 +974,7 @@ function renderHome() {
     };
     fill('homeAgent', 'Agent', a.label);
     fill('homeModel', 'Model', modelLabel(a, p.model), a.models.length > 0 || a.dynamic_models);
+    fill('homeEffort', 'Effort', effortLabel(a, p.effort), (a.efforts || []).length > 1);
     fill('homeMode', 'Mode', label(a.modes, p.mode), a.modes.length > 1);
   }
 
@@ -1568,11 +1591,25 @@ function openMenu(anchor, { title, items, search, empty, at } = {}) {
   menu.hidden = false;
   $('scrim').hidden = false;
 
-  const r = at ? { left: at.x, bottom: at.y, right: at.x } : anchor.getBoundingClientRect();
-  const left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 10);
-  const top = r.bottom + 6 + menu.offsetHeight > window.innerHeight ? Math.max(8, r.bottom - menu.offsetHeight - (at ? 0 : 40)) : r.bottom + 6;
-  menu.style.left = `${Math.max(8, left)}px`;
-  menu.style.top = `${Math.max(8, top)}px`;
+  // Fit each picker to the usable side of its anchor. A long live model
+  // catalog must scroll inside a framed menu, never spill under the titlebar
+  // or leave the selected control detached from its choices.
+  const r = at
+    ? { left: at.x, right: at.x, top: at.y, bottom: at.y }
+    : anchor.getBoundingClientRect();
+  const inset = 10;
+  const gap = 6;
+  const roomBelow = window.innerHeight - r.bottom - gap - inset;
+  const roomAbove = r.top - gap - inset;
+  const placeBelow = roomBelow >= Math.min(menu.scrollHeight, 260) || roomBelow >= roomAbove;
+  const available = Math.max(120, placeBelow ? roomBelow : roomAbove);
+  menu.style.maxHeight = `${available}px`;
+  const left = Math.min(r.left, window.innerWidth - menu.offsetWidth - inset);
+  const top = placeBelow
+    ? Math.min(r.bottom + gap, window.innerHeight - menu.offsetHeight - inset)
+    : Math.max(inset, r.top - gap - menu.offsetHeight);
+  menu.style.left = `${Math.max(inset, left)}px`;
+  menu.style.top = `${top}px`;
 
   menu.onclick = (e) => {
     const b = e.target.closest('[data-i]');
@@ -1643,6 +1680,27 @@ function modeMenu(anchor) {
         p.mode = m.id;
         savePrefs();
         renderHome();
+        renderOnboardingConfig();
+      }
+    }))
+  });
+}
+
+function effortMenu(anchor, forAgent) {
+  const a = forAgent || agent(prefs.agentId);
+  const efforts = (a && a.efforts) || [];
+  if (!a || efforts.length < 2) return;
+  const p = pick(a);
+  openMenu(anchor, {
+    title: `${a.label} · Effort`,
+    items: efforts.map((effort) => ({
+      label: effort.label,
+      on: effort.id === p.effort,
+      run: () => {
+        p.effort = effort.id;
+        savePrefs();
+        renderHome();
+        renderOnboardingConfig();
       }
     }))
   });
@@ -1660,6 +1718,7 @@ async function modelMenu(anchor, forAgent) {
     p.model = id;
     savePrefs();
     renderHome();
+    renderOnboardingConfig();
   };
   const items = allModels(a).map((m) => ({
     label: m.label,
@@ -1703,6 +1762,7 @@ function chooseAgent(id) {
   prefs.agentId = id;
   savePrefs();
   renderHome();
+  renderOnboardingConfig();
 }
 
 /** Switch a session to a different installed CLI. A running CLI must be
@@ -1725,6 +1785,7 @@ async function switchSessionAgent(s, id) {
   s.agentId = next.id;
   s.modelId = p.model;
   s.modeId = p.mode;
+  s.effortId = p.effort;
   s.command = '';
   s.working = false;
   if (s.status === 'parked') {
@@ -1912,6 +1973,24 @@ function renderFreeInstalls(report) {
     : '';
 }
 
+/** Keep the optional first-run sheet explicit about the agent, model and
+ * reasoning effort that will be used when the user starts their first tab. */
+function renderOnboardingConfig() {
+  const box = $('onboardingConfig');
+  const a = agent(prefs.agentId);
+  if (!a || !a.available) {
+    box.hidden = true;
+    return;
+  }
+  const p = pick(a);
+  box.hidden = false;
+  $('onboardingAgentLabel').textContent = a.label;
+  $('onboardingModelValue').textContent = modelLabel(a, p.model);
+  const effort = $('onboardingEffort');
+  effort.hidden = (a.efforts || []).length < 2;
+  $('onboardingEffortValue').textContent = effortLabel(a, p.effort);
+}
+
 function renderOnboarding() {
   const report = state.backends;
   const recommended = report && agent(report.recommended);
@@ -1931,6 +2010,7 @@ function renderOnboarding() {
       </button>`;
     })
     .join('');
+  renderOnboardingConfig();
 }
 
 function finishOnboarding() {
@@ -2236,6 +2316,8 @@ function wire() {
     }
   });
   $('onboardingSkip').addEventListener('click', finishOnboarding);
+  $('onboardingModel').addEventListener('click', (e) => modelMenu(e.currentTarget));
+  $('onboardingEffort').addEventListener('click', (e) => effortMenu(e.currentTarget));
   $('freeInstalls').addEventListener('click', (e) => {
     const b = e.target.closest('[data-copy-install]');
     if (b) copy(b.dataset.copyInstall);
@@ -2304,6 +2386,7 @@ function wire() {
   $('homeProject').addEventListener('click', (e) => projectMenu(e.currentTarget));
   $('homeAgent').addEventListener('click', (e) => agentOnlyMenu(e.currentTarget));
   $('homeModel').addEventListener('click', (e) => modelMenu(e.currentTarget));
+  $('homeEffort').addEventListener('click', (e) => effortMenu(e.currentTarget));
   $('homeMode').addEventListener('click', (e) => modeMenu(e.currentTarget));
   $('homeSend').addEventListener('click', startFromHome);
   $('homeInput').addEventListener('input', (e) => autoGrow(e.target));

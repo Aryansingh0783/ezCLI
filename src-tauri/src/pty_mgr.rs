@@ -72,6 +72,9 @@ impl SessionStore {
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        // An inherited NO_COLOR conflicts with FORCE_COLOR in Node-based CLIs
+        // (including OpenCode) and prints a warning into the user's terminal.
+        cmd.env_remove("NO_COLOR");
         cmd.env("FORCE_COLOR", "3");
 
         let mut child = pair.slave.spawn_command(cmd)?;

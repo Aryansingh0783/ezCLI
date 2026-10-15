@@ -7,6 +7,7 @@
       "vendor": "claude",
       "icon": "code",
       "command": "claude",
+      "mcp": "claude",
       "args": [],
       "modes": [
         { "id": "default", "label": "Default", "args": [] },
@@ -19,6 +20,14 @@
         { "id": "opus", "label": "Opus", "args": ["--model", "opus"] },
         { "id": "sonnet", "label": "Sonnet", "args": ["--model", "sonnet"] },
         { "id": "haiku", "label": "Haiku", "args": ["--model", "haiku"] }
+      ],
+      "efforts": [
+        { "id": "default", "label": "Agent default", "args": [] },
+        { "id": "low", "label": "Low", "args": ["--effort", "low"] },
+        { "id": "medium", "label": "Medium", "args": ["--effort", "medium"] },
+        { "id": "high", "label": "High", "args": ["--effort", "high"] },
+        { "id": "xhigh", "label": "Extra high", "args": ["--effort", "xhigh"] },
+        { "id": "max", "label": "Max", "args": ["--effort", "max"] }
       ]
     },
     {
@@ -27,6 +36,7 @@
       "vendor": "claude",
       "icon": "chat",
       "command": "claude",
+      "mcp": "none",
       "args": [],
       "modes": [
         { "id": "chat", "label": "Chat", "args": [] },
@@ -36,6 +46,14 @@
         { "id": "default", "label": "Default", "args": [] },
         { "id": "opus", "label": "Opus", "args": ["--model", "opus"] },
         { "id": "sonnet", "label": "Sonnet", "args": ["--model", "sonnet"] }
+      ],
+      "efforts": [
+        { "id": "default", "label": "Agent default", "args": [] },
+        { "id": "low", "label": "Low", "args": ["--effort", "low"] },
+        { "id": "medium", "label": "Medium", "args": ["--effort", "medium"] },
+        { "id": "high", "label": "High", "args": ["--effort", "high"] },
+        { "id": "xhigh", "label": "Extra high", "args": ["--effort", "xhigh"] },
+        { "id": "max", "label": "Max", "args": ["--effort", "max"] }
       ]
     },
     {
@@ -44,6 +62,7 @@
       "vendor": "openai",
       "icon": "code",
       "command": "codex",
+      "mcp": "codex",
       "_args_note": "--no-daemon keeps codex in-process; without it codex tries to detach a background server, which fails when the GUI server runs inside a Windows job object.",
       "args": ["--no-daemon"],
       "modes": [
@@ -55,6 +74,14 @@
         { "id": "default", "label": "Default", "args": [] },
         { "id": "gpt-5-codex", "label": "gpt-5-codex", "args": ["-m", "gpt-5-codex"] },
         { "id": "gpt-5", "label": "gpt-5", "args": ["-m", "gpt-5"] }
+      ],
+      "efforts": [
+        { "id": "default", "label": "Agent default", "args": [] },
+        { "id": "low", "label": "Low", "args": ["-c", "model_reasoning_effort=\"low\""] },
+        { "id": "medium", "label": "Medium", "args": ["-c", "model_reasoning_effort=\"medium\""] },
+        { "id": "high", "label": "High", "args": ["-c", "model_reasoning_effort=\"high\""] },
+        { "id": "xhigh", "label": "Extra high", "args": ["-c", "model_reasoning_effort=\"xhigh\""] },
+        { "id": "max", "label": "Max", "args": ["-c", "model_reasoning_effort=\"max\""] }
       ]
     },
     {

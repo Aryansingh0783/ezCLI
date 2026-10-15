@@ -127,6 +127,7 @@ fn start_session(
     agent_id: String,
     model_id: String,
     mode_id: String,
+    effort_id: String,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
@@ -146,7 +147,13 @@ fn start_session(
         let resolved = agents::resolve_command(&a.command)
             .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
         let catalogs = state.catalogs.lock().unwrap();
-        let mut argv = agents::build_argv(a, &mode_id, &model_id, catalogs.get(&a.id).map(Vec::as_slice));
+        let mut argv = agents::build_argv(
+            a,
+            &mode_id,
+            &model_id,
+            &effort_id,
+            catalogs.get(&a.id).map(Vec::as_slice),
+        );
         drop(catalogs);
         let mut shown = argv.clone();
 
@@ -169,21 +176,7 @@ fn start_session(
             shown.splice(at..at, attach_shown);
         }
 
-        // A .ps1 shim can't be exec'd directly; hand it to PowerShell.
-        let (cmd, final_args) = if cfg!(windows) && resolved.to_lowercase().ends_with(".ps1") {
-            let mut v = vec![
-                "-NoLogo".to_string(),
-                "-NoProfile".to_string(),
-                "-ExecutionPolicy".to_string(),
-                "Bypass".to_string(),
-                "-File".to_string(),
-                resolved.clone(),
-            ];
-            v.extend(argv.iter().cloned());
-            ("powershell.exe".to_string(), v)
-        } else {
-            (resolved.clone(), argv.clone())
-        };
+        let (cmd, final_args) = agents::launch_command(&resolved, &argv);
 
         let resolved_cwd = cwd
             .filter(|c| std::path::Path::new(c).is_dir())
@@ -283,14 +276,9 @@ fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
-    let mut cmd = if cfg!(windows) && resolved.to_lowercase().ends_with(".ps1") {
-        let mut c = Command::new("powershell.exe");
-        c.args(["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", resolved]);
-        c
-    } else {
-        Command::new(resolved)
-    };
-    cmd.args(args)
+    let (program, launch_args) = agents::launch_command(resolved, args);
+    let mut cmd = Command::new(program);
+    cmd.args(launch_args)
         .env("NO_COLOR", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
