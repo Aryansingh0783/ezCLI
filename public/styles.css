@@ -336,7 +336,7 @@ kbd {
   align-items: center;
   gap: 5px;
   margin-top: 3px;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--faint);
   white-space: nowrap;
   overflow: hidden;
@@ -1132,7 +1132,7 @@ body.resizing-pane .xterm {
   align-items: center;
   gap: 2px;
   min-height: 46px;
-  padding: 0 8px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border);
 }
 .explorer-tabs {
@@ -1605,11 +1605,14 @@ body.resizing-pane .xterm {
   align-items: flex-end;
   pointer-events: none;
 }
+/* Status is a small dot before the text rather than a thick side stripe. */
 .toast {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   max-width: 360px;
   padding: 9px 13px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
   border-radius: 8px;
   background: var(--raised);
   box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow) 40%, transparent);
@@ -1618,11 +1621,23 @@ body.resizing-pane .xterm {
   cursor: pointer;
   animation: toast-in 0.18s ease;
 }
-.toast.error {
-  border-left-color: var(--danger);
+.toast::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translateY(-1px);
 }
-.toast.ok {
-  border-left-color: var(--brand);
+.toast.error {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+.toast.error::before {
+  background: var(--danger);
+}
+.toast.ok::before {
+  background: var(--brand);
 }
 @keyframes toast-in {
   from {
@@ -1639,7 +1654,8 @@ body.resizing-pane .xterm {
   border-radius: 12px;
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 18px 60px color-mix(in srgb, var(--shadow) 45%, transparent);
+  /* The dimmed backdrop already reads as elevation: keep the edge, tight shadow. */
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow) 35%, transparent);
 }
 .sheet.wide {
   width: min(640px, calc(100vw - 32px));
@@ -1768,7 +1784,7 @@ body.resizing-pane .xterm {
 .onboarding-pick-cap {
   flex: none;
   color: var(--faint);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1793,7 +1809,7 @@ body.resizing-pane .xterm {
   border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
   border-radius: 999px;
   color: var(--brand);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.4;
@@ -1874,12 +1890,12 @@ body.resizing-pane .xterm {
   font-size: 12.5px;
 }
 .settings-section {
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
+  padding: 0 0 12px;
 }
-.settings-section:first-of-type {
-  border-top: 0;
-  padding-top: 0;
+/* Divider only between sections, with real space below it. */
+.settings-section + .settings-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 .segmented {
   display: inline-flex;
@@ -1947,7 +1963,7 @@ body.resizing-pane .xterm {
 .usage-row.usage-head {
   background: var(--surface-2);
   color: var(--faint);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2050,7 +2066,7 @@ body.resizing-pane .xterm {
 .import-preview-head p {
   color: var(--faint);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .import-preview {
   padding: 14px;
@@ -2089,7 +2105,7 @@ body.resizing-pane .xterm {
   margin: 0 0 5px;
   color: var(--faint);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
