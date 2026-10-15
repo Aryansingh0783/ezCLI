@@ -4,7 +4,7 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-10-15 by Codex (PR 4c validation and launcher repair)
+Last updated: 2026-10-15 by Codex (cloud Ollama routing and hardware guidance)
 
 ---
 
@@ -152,6 +152,78 @@ UI polish rides along in every PR; don't batch it.
 - `BENCHMARKS.md`: tokens-per-task vs raw, for API + web-session backends (note CLI ≈ 0 %).
 
 ## 5. Current status
+
+**Post-PR 4c — Cloud-first Ollama, PC guidance, and truthful agent capability
+UX (CODE COMPLETE in `b949304`; human desktop click-through still needed).**
+
+Aryan's latest direction was to detect the user's PC and route Ollama use to
+Cloud models rather than silently limiting choices by local GPU capacity. The
+implementation deliberately does **not** install software, sign a user in,
+download a model, launch a paid/cloud model without a user choice, or read an
+API key.
+
+- `src-tauri/src/system_profile.rs` returns only coarse, read-only facts: logical
+  CPU threads, total RAM, and the largest non-software GPU's dedicated VRAM. On
+  this PC it returned **16 CPU threads, 31 GiB RAM, NVIDIA GeForce RTX 5070,
+  11,943 MiB VRAM**. Missing DXGI/RAM information fails closed to `null`; it
+  cannot prevent the app from launching.
+- `Ollama Local` and `Ollama Cloud` are separate agents. Local lists only
+  existing `ollama list` models. Cloud gets the live public catalog from
+  `https://ollama.com/api/tags`, derives the exact signed-in CLI alias, then
+  launches only `ollama run <chosen-alias>`. For example,
+  `gemma4:31b` maps to `gemma4:31b-cloud`, while `kimi-k3` maps to
+  `kimi-k3:cloud`.
+- The Cloud menu must have an explicit fresh model choice before a PTY may
+  launch. A stale saved choice is rejected in both the frontend and Rust; a
+  failed start retains the user's typed prompt, and switching an active tab to
+  Cloud first obtains/validates the destination model so it cannot terminate
+  the current CLI prematurely.
+- Cloud inference is remote, so detected hardware never filters its catalog.
+  Entries with nonzero published sizes are shown before unreported-size entries
+  only as a browsing hint, **not** as a quality/coding ranking or auto-choice.
+  Ollama account access and quota are enforced by the user's signed-in CLI.
+- Cloud catalog retrieval uses only `%SystemRoot%\System32\curl.exe` with a
+  fixed, bounded URL/argument list—not a `curl` resolved from a user-writable
+  PATH. On a non-Windows build it retains the existing PATH resolver.
+- The agent set also now includes Antigravity (`agy`) as the personal Google
+  route. Gemini CLI stays available for API-key, Vertex AI, or enterprise
+  configurations; its retired personal-Google flow is explicitly explained.
+- The composer offers a local `@path` **image reference** picker only for
+  OpenCode and Gemini. It does not upload image data, and its provider-side
+  vision handling still needs a real UI/CLI click-through. The UI deliberately
+  hides unimplemented clipboard/launch-time image controls for Claude,
+  Antigravity, Codex, and Ollama rather than pretending they work.
+- The app filters shell executable titles (for example `cmd.exe`) so a Windows
+  npm shim cannot overwrite a session tab with `C:\WINDOWS\system32\cmd.exe`.
+- README now documents the free/backend matrix, Cloud versus Local boundary,
+  manual `ollama signin`, and image-reference limits. The global Codex plugin
+  warning from the incompatible `code-modernization` Claude hooks schema was
+  addressed outside this repo by disabling only that plugin in Codex's config;
+  its backup is `C:\Users\Aryan\.codex\config.toml.ezcli-plugin-warning.bak`.
+
+Validation completed for `b949304`:
+
+- `node --check public/app.js`, JSON parse, and `git diff --check` pass.
+- `powershell -ExecutionPolicy Bypass -File scripts\test-rust.ps1`: **36 pass,
+  6 ignored**.
+- Opt-in live public-catalog test:
+  `scripts\test-rust.ps1 --ignored --nocapture real_ollama_cloud`: **18 Cloud
+  aliases** returned and parsed. It neither installs Ollama nor signs in nor
+  calls a model.
+- `cargo tauri build --debug --no-bundle` passed with the external mingw path,
+  producing `E:\rust\target-ezcli-ollama-cloud\debug\ezcli.exe` with
+  `WebView2Loader.dll` beside it. The currently open
+  `E:\rust\target\debug\ezcli.exe` is an older binary; it does not hot-reload
+  these source changes.
+
+Exact next validation (human desktop click-through): close the older debug app,
+launch the new separate build, choose **Ollama Cloud**, confirm the detected-PC
+advice and live Model menu, select an alias, then run `ollama signin` yourself
+and send a short prompt. Ollama was not installed or authenticated during this
+work. No push, tag, release, or publication occurred. Do not claim universal
+Claude plugins/connectors or provider-model retraining: those require
+provider-specific authentication/contracts and a separate explicit product
+decision.
 
 **PR 4b — PC control over MCP, attached only while granted (COMPLETE; historical
 design record)** (Claude, 2026-10-15). Aryan chose this over always-on tools so PC control costs
@@ -382,6 +454,14 @@ when PR 1 started; latest tag `v1.1.0`.
   automation bridge could not enumerate the Tauri window, so final visual
   click-through remains a human sign-off. No push, tag, release, or publication
   was performed.
+- 2026-10-15 — Codex: committed `b949304` for Cloud-first Ollama routing and
+  read-only PC-profile guidance. Cloud aliases come from the live public Ollama
+  catalog and require an explicit signed-in CLI launch; hardware informs only
+  Local-versus-Cloud guidance. Hardened stale-model/session-switch behavior,
+  fixed the system-curl catalog client, added Antigravity/Gemini migration UX,
+  and kept image references truthful. Standard Rust tests: 36 pass, 6 ignored;
+  live catalog test returned 18 aliases; a separate debug build succeeded.
+  No Ollama install/sign-in/model call, push, tag, release, or publication.
 
 ---
 
