@@ -179,12 +179,26 @@ Design (verified against the installed CLIs, see `claude --help`, `codex mcp add
   control (confirm dialog says it restarts the CLI). Revoke = relaunch without.
 - Input injection (click/type) comes after screenshot is validated end to end.
 
+**Aryan's top priority (2026-10-15): free users must get a working coding
+agent with every ezCLI feature.** Verified fact: Claude Code itself does NOT
+run on the Claude Free plan (Anthropic server-side gate; pricing page lists it
+"No" on Free). ezCLI must NOT try to bypass that. Agreed route for free users:
+- **PR 4c (next after 4b): free agents.** Add to agents.json + detection +
+  first-run wizard routing: **Gemini CLI** (free w/ Google account, MCP-capable),
+  **Freebuff** (`npm i -g freebuff`, free/ad-supported), **local model** via an
+  open-source agent + Ollama, and keep **Codex** labeled "may be free on
+  ChatGPT Free (limited)". Wizard must route a user with no paid plan to one of
+  these instead of a paywall error. Verify each CLI's real flags/MCP support
+  with `--help` before writing its entry.
+- Claude for free users = claude.ai chat via the experimental web backend (PR 5).
+
 Steps:
 1. [x] capture.rs (`55ac632`). Real capture verified: 1920x1080 -> 1280x720,
    184 KB PNG, 0.19 s (`test-rust.ps1 --ignored --nocapture real_screen`).
 2. [x] mcp_server.rs (`3f8e52b`). Hooks-based so tests run the real listener
    over loopback HTTP with stub guard/capture. 13/13 Rust tests pass.
-3. [ ] launch wiring + frontend relaunch flow
+3. [x] launch wiring (`e0a6333`) + frontend relaunch flow (`c627479`).
+   15/15 Rust tests, node check + 7 parser tests pass.
 4. [ ] loopback protocol test with real HTTP; then ask Aryan before any
    end-to-end run that spends model tokens
 5. [ ] README permissions model
