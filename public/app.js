@@ -683,6 +683,8 @@ async function launch(s) {
       if (s.ptyId !== ptyId) return;
       invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
       s.pcControl = false;
+      // Consent covers one process. Relaunching after an exit asks again.
+      s.wantPcControl = false;
       Usage.ingest(s.usage, '', true);
       s.status = 'exited';
       s.exitCode = e.payload;
@@ -716,17 +718,21 @@ async function launch(s) {
       modeId: s.modeId,
       cwd: s.cwd,
       cols: s.term.cols,
-      rows: s.term.rows
+      rows: s.term.rows,
+      pcControl: Boolean(s.wantPcControl)
     });
     s.status = 'running';
     s.command = r.command;
     s.cwd = r.cwd;
+    s.pcControl = Boolean(r.pcControl);
     if (s.pendingPrompt) {
       // If the CLI never goes quiet, deliver the first message anyway.
       setTimeout(() => deliverPending(s), 10000);
     }
   } catch (err) {
     s.status = 'error';
+    // A failed launch must not leave a pending PC-control request behind.
+    s.wantPcControl = false;
     s.term.write(`\r\n\x1b[38;2;231;163;163m${String(err).replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
   }
   updateTabMeta(s);
@@ -744,7 +750,10 @@ function deliverPending(s) {
   sendText(s, text);
 }
 
-async function restartSession(s) {
+async function restartSession(s, { keepPcControl = false } = {}) {
+  // PC-control consent covers one process; only the PC-control chip itself
+  // may carry a fresh grant into the next launch.
+  if (!keepPcControl) s.wantPcControl = false;
   if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
   s.term.write('\r\n\x1b[38;2;106;106;112m── restarting ──\x1b[0m\r\n');
   launch(s);
@@ -968,10 +977,15 @@ function renderHead() {
   if (g && g.repo) $('headBranch').innerHTML = `${ICONS.branch}${esc(g.branch)}`;
   $('actStop').disabled = s.status !== 'running';
   const control = $('headControl');
-  control.disabled = s.status !== 'running' || !s.ptyId;
+  const supportsPc = Boolean(a && a.pc_control);
+  control.disabled = !supportsPc || s.status !== 'running' || !s.ptyId;
   control.classList.toggle('granted', Boolean(s.pcControl));
   control.textContent = s.pcControl ? 'PC control on' : 'PC control off';
-  control.title = s.pcControl ? 'Revoke local PC control for this live session' : 'Grant local PC control for this live session';
+  control.title = !supportsPc
+    ? `PC control isn't available for ${a ? a.label : 'this agent'} yet`
+    : s.pcControl
+      ? 'Restart this session without PC control'
+      : 'Restart this session with PC control (screenshot)';
   $('actRestart').hidden = s.status === 'parked';
   $('actRestart').textContent = s.status === 'running' ? 'Restart' : 'Relaunch';
 
@@ -2261,15 +2275,28 @@ function wire() {
   $('headControl').addEventListener('click', async () => {
     const s = active();
     if (!s || !s.ptyId || s.status !== 'running') return;
+    const a = agent(s.agentId);
+    if (!a || !a.pc_control) return;
     const enabling = !s.pcControl;
-    if (enabling && !(await confirmDialog('Grant PC control?', 'This grants local PC-control permission only to the current live session. It is revoked when the process exits or you turn it off.', 'Grant for this session'))) return;
-    try {
-      s.pcControl = await invoke('set_pc_control', { sessionId: s.ptyId, enabled: enabling });
-      renderHead();
-      toast(s.pcControl ? 'PC control granted for this live session.' : 'PC control revoked.');
-    } catch (err) {
-      toast(String(err), 'error');
-    }
+    // The CLI only learns about tools at launch, so turning PC control on or
+    // off restarts the process. Say so before the user loses their place.
+    const ok = enabling
+      ? await confirmDialog(
+          'Turn on PC control?',
+          `${a.label} restarts with ezCLI's screenshot tool attached, so it can see your primary screen when it decides to. Its current conversation in this tab ends. Permission lasts only for this process and ends when it exits or you turn it off.`,
+          'Restart with PC control'
+        )
+      : await confirmDialog(
+          'Turn off PC control?',
+          `${a.label} restarts without ezCLI's tools. Its current conversation in this tab ends.`,
+          'Restart without it'
+        );
+    if (!ok) return;
+    // Revoke the current process immediately, before the restart completes.
+    await invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
+    s.wantPcControl = enabling;
+    await restartSession(s, { keepPcControl: true });
+    toast(enabling ? 'PC control is on for this session.' : 'PC control is off.');
   });
   $('headAgent').addEventListener('click', (e) => {
     const s = active();
