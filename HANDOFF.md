@@ -161,16 +161,23 @@ Files expected to be touched:
 - `README.md` — exact permission boundary and supported actions.
 
 Steps:
-1. [ ] Audit the existing session lifecycle and Tauri ACL/capability boundary;
+1. [x] Audit the existing session lifecycle and Tauri ACL/capability boundary;
    identify where permission state can be tied to the app's session id.
-2. [ ] Define minimal, testable grant/revoke semantics and a deny-by-default
+2. [x] Define minimal, testable grant/revoke semantics and a deny-by-default
    command guard. Do not install an input/screenshot crate before this boundary
    is explicit.
-3. [ ] Add a per-session UI chip with an intentional grant confirmation and
+3. [x] Add a per-session UI chip with an intentional grant confirmation and
    immediate revoke, with no home-screen redesign.
 4. [ ] Add only the action implementations that can be validated locally, then
    document exact OS/dependency limitations without faking a control run.
 5. [ ] Validate, commit code, and refresh this handoff checkpoint.
+
+Checkpoint on disk (not yet committed): `src-tauri/src/pc_control.rs` defines a
+deny-by-default `DashSet` grant store plus a unit test; `lib.rs` exposes only
+`set_pc_control`; and the session header now has a visible grant/revoke chip.
+The frontend keys consent to the current live PTY id and revokes it on process
+exit, tab close, and relaunch. No input injection, screenshots, shell command,
+or dependency change has been added yet.
 
 Known local validation limit: Rust builds currently stop before compilation
 because `Cargo.lock` needs an update under `--locked`, and `rustfmt` is missing
@@ -179,6 +186,9 @@ do not commit unrelated lockfile churn.
 
 Exact next step: read `pty_mgr.rs`, `lib.rs`, `Cargo.toml`, and the Tauri
 capability manifest to establish the permission boundary and action constraints.
+Then review `enigo` and screenshot capture support for this exact Windows GNU
+toolchain before choosing a narrow first native action; do not claim PC control
+works until an action has been locally validated.
 
 Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
 when PR 1 started; latest tag `v1.1.0`.
