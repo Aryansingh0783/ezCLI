@@ -179,6 +179,12 @@ The frontend keys consent to the current live PTY id and revokes it on process
 exit, tab close, and relaunch. No input injection, screenshots, shell command,
 or dependency change has been added yet.
 
+Native-library audit: current Enigo supports Windows input simulation but its
+current 0.6.1 release requires Rust 1.87; ezCLI declares Rust 1.77. Do not add
+that release without an explicit Rust-version upgrade decision. The current
+Tauri shell also cannot run Rust validation because the committed lock needs an
+update under `--locked` and its GNU toolchain lacks `rustfmt`.
+
 Known local validation limit: Rust builds currently stop before compilation
 because `Cargo.lock` needs an update under `--locked`, and `rustfmt` is missing
 from the active GNU toolchain. Preserve this limit unless it is safely resolved;
