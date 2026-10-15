@@ -24,7 +24,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       # Compiling tauri-cli from source eats 4-6 minutes every build.
@@ -45,15 +45,40 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Build MSI
-        run: cargo tauri build --bundles msi
+        shell: pwsh
+        run: |
+          # `target` is cached for compiler outputs. Bundle artifacts are release
+          # payloads, not compiler outputs: a cached older MSI must never be
+          # considered for this tag.
+          $msiDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/bundle/msi'
+          if (Test-Path -LiteralPath $msiDir) {
+            Remove-Item -LiteralPath $msiDir -Recurse -Force
+          }
+          cargo tauri build --bundles msi
         working-directory: ${{ github.workspace }}
 
       - name: Collect installer
         id: collect
         shell: pwsh
         run: |
-          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
-          if (-not $msi) { throw "No MSI produced." }
+          $tauri = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json
+          $version = [string] $tauri.version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'src-tauri/tauri.conf.json has no usable version.'
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag '$env:GITHUB_REF_NAME' does not match Tauri version '$version'."
+          }
+          $msiDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/bundle/msi'
+          if (-not (Test-Path -LiteralPath $msiDir)) {
+            throw "MSI output directory was not created: $msiDir"
+          }
+          $expectedName = "ezCLI_${version}_x64_en-US.msi"
+          $msi = Get-Item -LiteralPath (Join-Path $msiDir $expectedName) -ErrorAction SilentlyContinue
+          if (-not $msi) {
+            $found = (Get-ChildItem -LiteralPath $msiDir -Filter '*.msi' -File | Select-Object -ExpandProperty Name) -join ', '
+            throw "Expected $expectedName for tauri.conf.json version $version; found: $found"
+          }
           Write-Host "::notice::built $($msi.Name)  ($([math]::Round($msi.Length/1MB,2)) MB)"
           "msi_path=$($msi.FullName)" | Out-File $env:GITHUB_OUTPUT -Append
           "msi_name=$($msi.Name)" | Out-File $env:GITHUB_OUTPUT -Append
