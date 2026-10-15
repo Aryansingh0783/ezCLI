@@ -4,7 +4,7 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-10-15 by Codex (Windows CLI discovery and launch repair)
+Last updated: 2026-10-15 by Codex (fresh model/session routing repair)
 
 ---
 
@@ -159,6 +159,57 @@ UI polish rides along in every PR; don't batch it.
 - `BENCHMARKS.md`: tokens-per-task vs raw, for API + web-session backends (note CLI ≈ 0 %).
 
 ## 5. Current status
+
+**Fresh model/session routing — COMPLETE (`5946989`, 2026-10-15).**
+
+Aryan reported that changing a Model pill appeared to do nothing and every
+new chat reopened the same provider-side conversation. This was two connected
+launch-flow bugs, not a model-provider failure:
+
+- The active-session Model menu previously changed only the pill's local
+  metadata. CLI model flags are launch-time options, so the already running
+  process continued on its original model.
+- ezCLI persisted a mode per agent. Selecting Continue/Resume once meant all
+  later tabs inherited provider-global commands such as Codex `resume --last`,
+  Claude/OpenCode/Freebuff `--continue`, or Gemini `--resume latest`. A
+  parked tab could do the same after an app restart. Those commands do not
+  identify an ezCLI tab; they reopen the CLI's latest external conversation.
+
+The repaired behavior is:
+
+- Choosing another model in a session confirms the consequence, terminates
+  the previous PTY, and launches a fresh CLI process with the chosen model.
+  Terminal scrollback stays visible locally, separated by a clear new-session
+  marker. The success toast appears only after the replacement process is
+  actually running.
+- Built-in Continue/Resume modes now declare `resumesSession: true`. Legacy or
+  custom configs without that field are conservatively recognized from their
+  ids/arguments. At boot, stale saved Continue/Resume choices are reset for
+  both preferences and parked snapshots. An explicit Continue/Resume choice
+  from the home screen is honored for one tab only, then the next new chat
+  returns to a fresh mode. Duplicate/reopen paths also start fresh.
+- A per-session launch epoch prevents an older asynchronous `start_session`
+  result, data event, error, or Stop action from overwriting a newer model
+  switch or leaving an orphaned PTY alive.
+- Rust now refuses a stale static model id instead of silently omitting its
+  model flag and running the provider default. Dynamic catalogs still require
+  a backend-fetched selected model, so Ollama Local/Cloud cannot bypass their
+  explicit live-catalog selection requirement.
+
+Validation for `5946989`:
+
+- `node --check public/app.js` and `node --check public/session-routing.js`;
+  `node --test test\\usage-parser.test.cjs test\\session-routing.test.cjs`:
+  **12 passed / 0 failed**.
+- `powershell -ExecutionPolicy Bypass -File scripts\\test-rust.ps1`:
+  **44 passed / 0 failed / 7 deliberately ignored** (the ignored checks use
+  real installed CLIs, screen capture, or paid/cloud usage).
+- `cargo tauri build --debug --no-bundle` passed at
+  `E:\rust\target-ezcli-path-build\debug\ezcli.exe`; `WebView2Loader.dll` is
+  already beside it. `git diff --check` and agents.json parsing passed.
+- No sign-in, model prompt, provider/cloud use, push, tag, release, or
+  publication occurred. `threejs-animation-multiple-preview/` remains an
+  unrelated untracked workspace and was not touched.
 
 **Windows CLI discovery and launch repair — COMPLETE (`3b82671`, 2026-10-15).**
 
@@ -550,6 +601,14 @@ when PR 1 started; latest tag `v1.1.0`.
   `E:\rust\target-ezcli-path-build\debug\ezcli.exe`. No cloud prompt, sign-in,
   release, push, tag, or publication occurred. The unrelated untracked
   `threejs-animation-multiple-preview/` directory was preserved.
+- 2026-10-15 — Codex: committed `5946989` to make active model changes launch
+  a fresh, selected-model PTY rather than merely relabeling the session. Fixed
+  provider-global Continue/Resume carry-over across new/parked tabs, added
+  launch-epoch race protection, and rejected stale static model ids in Rust.
+  Validation: 12 Node tests and 44 Rust tests pass (7 opt-in tests ignored),
+  plus a successful debug Tauri build at
+  `E:\rust\target-ezcli-path-build\debug\ezcli.exe`. No provider use or
+  publication; the unrelated Three.js preview remains untracked.
 
 ---
 
