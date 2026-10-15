@@ -8,6 +8,7 @@
       "icon": "code",
       "command": "claude",
       "mcp": "claude",
+      "imageTransport": "clipboard_only",
       "args": [],
       "modes": [
         { "id": "default", "label": "Default", "args": [] },
@@ -37,6 +38,7 @@
       "icon": "chat",
       "command": "claude",
       "mcp": "none",
+      "imageTransport": "clipboard_only",
       "args": [],
       "modes": [
         { "id": "chat", "label": "Chat", "args": [] },
@@ -63,6 +65,7 @@
       "icon": "code",
       "command": "codex",
       "mcp": "codex",
+      "imageTransport": "initial_flag",
       "_args_note": "--no-daemon keeps codex in-process; without it codex tries to detach a background server, which fails when the GUI server runs inside a Windows job object.",
       "args": ["--no-daemon"],
       "modes": [
@@ -90,6 +93,7 @@
       "vendor": "openai",
       "icon": "chat",
       "command": "chatgpt",
+      "imageTransport": "none",
       "args": [],
       "modes": [{ "id": "default", "label": "Default", "args": [] }],
       "models": [{ "id": "default", "label": "Default", "args": [] }]
@@ -112,6 +116,22 @@
       "models": [{ "id": "default", "label": "Default", "args": [] }],
       "_modelsFrom_note": "The Model pill is filled from `opencode models`, which lists every model usable right now, including all key-free ones.",
       "modelsFrom": { "args": ["models"], "flag": "-m" },
+      "imageTransport": "interactive_at_reference",
+      "mcp": "none"
+    },
+    {
+      "id": "antigravity",
+      "label": "Antigravity CLI",
+      "vendor": "google",
+      "icon": "code",
+      "command": "agy",
+      "install": "irm https://antigravity.google/cli/install.ps1 | iex",
+      "tier": "free",
+      "_tier_note": "Free personal Google route. Complete the Antigravity sign-in on first launch.",
+      "args": [],
+      "modes": [{ "id": "default", "label": "Default", "args": [] }],
+      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "imageTransport": "clipboard_only",
       "mcp": "none"
     },
     {
@@ -121,8 +141,7 @@
       "icon": "code",
       "command": "gemini",
       "install": "npm install -g @google/gemini-cli",
-      "tier": "free",
-      "_tier_note": "Free with a personal Google account sign-in.",
+      "_tier_note": "For Gemini API-key, Vertex AI, or enterprise configurations. Personal Google sign-in now uses Antigravity CLI.",
       "args": [],
       "modes": [
         { "id": "default", "label": "Default", "args": [] },
@@ -131,7 +150,41 @@
         { "id": "continue", "label": "Continue", "args": ["--resume", "latest"] }
       ],
       "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "imageTransport": "interactive_at_reference",
       "_mcp_note": "Gemini CLI has no per-launch MCP flag; attaching would mean editing the user's settings files, so PC control is off.",
+      "mcp": "none"
+    },
+    {
+      "id": "ollama",
+      "label": "Ollama Local",
+      "vendor": "ollama",
+      "icon": "code",
+      "command": "ollama",
+      "install": "irm https://ollama.com/install.ps1 | iex",
+      "tier": "free",
+      "_tier_note": "Runs models already downloaded on this computer. Your PC profile helps decide whether local is practical; ezCLI never downloads a model for you.",
+      "args": [],
+      "modes": [{ "id": "default", "label": "Run", "args": [] }],
+      "models": [{ "id": "default", "label": "Choose a local model", "args": [] }],
+      "_modelsFrom_note": "The Model pill is filled from `ollama list`; select one before starting and it launches as `ollama run <model>`.",
+      "modelsFrom": { "args": ["list"], "launch": ["run"], "catalog": "ollama", "requireSelection": true },
+      "imageTransport": "initial_positional",
+      "mcp": "none"
+    },
+    {
+      "id": "ollama-cloud",
+      "label": "Ollama Cloud",
+      "vendor": "ollama",
+      "icon": "code",
+      "command": "ollama",
+      "install": "irm https://ollama.com/install.ps1 | iex",
+      "_tier_note": "Runs a signed-in Ollama cloud model remotely. It does not download a model to this PC and may be subject to your Ollama plan and usage limits.",
+      "args": [],
+      "modes": [{ "id": "default", "label": "Run", "args": [] }],
+      "models": [{ "id": "default", "label": "Choose a cloud model", "args": [] }],
+      "_modelsFrom_note": "The Model pill lists Ollama's live public cloud catalog. A selected hosted model launches through its matching `:cloud` or `-cloud` CLI alias; sign in with `ollama signin` first.",
+      "modelsFrom": { "args": [], "launch": ["run"], "catalog": "ollama-cloud", "requireSelection": true },
+      "imageTransport": "initial_positional",
       "mcp": "none"
     },
     {
@@ -149,6 +202,7 @@
         { "id": "continue", "label": "Continue", "args": ["--continue"] }
       ],
       "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "imageTransport": "none",
       "mcp": "none"
     }
   ]

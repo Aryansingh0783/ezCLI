@@ -160,6 +160,7 @@ const state = {
   imports: { catalog: null, selected: null },
   git: {}, // space path -> last git_status result
   catalogs: {}, // agent id -> live model ids from the agent's own catalog
+  systemProfile: null, // coarse local hardware facts, used only for routing advice
   explorer: { view: 'list', root: null, expanded: new Set(), cache: new Map(), filter: '', file: null, diff: null }
 };
 
@@ -171,6 +172,32 @@ const space = (id = prefs.activeSpace) => prefs.spaces.find((x) => x.id === id) 
 const spaceSessions = (id = prefs.activeSpace) => state.sessions.filter((s) => s.spaceId === id);
 const basename = (p) => String(p).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 const spaceIdFor = (path) => String(path).replace(/[\\/]+$/, '').toLowerCase();
+
+/** A `.cmd` shim may set the terminal title to its shell executable. That is
+ * useful shell metadata, but never a useful session name. */
+function isMeaningfulTerminalTitle(title) {
+  const text = String(title ?? '').trim();
+  if (!text || text.length >= 80) return false;
+  const shell = basename(text).toLowerCase();
+  return !['cmd', 'cmd.exe', 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe', 'bash', 'bash.exe', 'sh', 'sh.exe', 'zsh', 'zsh.exe', 'fish', 'fish.exe'].includes(shell);
+}
+
+/* AgentOut will expose this value after the backend reload. The fallback makes
+ * a just-updated frontend truthful with an older local backend too. */
+const IMAGE_TRANSPORT_FALLBACK = Object.freeze({
+  'claude-code': 'clipboard_only',
+  'claude-chat': 'clipboard_only',
+  codex: 'initial_flag',
+  opencode: 'interactive_at_reference',
+  gemini: 'interactive_at_reference',
+  antigravity: 'clipboard_only',
+  freebuff: 'none',
+  chatgpt: 'none'
+});
+function imageTransport(a) {
+  const value = String(a && (a.imageTransport || a.image_transport) || IMAGE_TRANSPORT_FALLBACK[a && a.id] || 'none').toLowerCase();
+  return ['interactive_at_reference', 'clipboard_only', 'initial_flag', 'initial_positional', 'none'].includes(value) ? value : 'none';
+}
 
 /* ------------------------------------------------------------- persistence
  *
@@ -211,28 +238,59 @@ function recordUsage(s) {
   savePrefs();
 }
 
-/** A catalog id like `opencode/deepseek-v4.1-flash-free`. */
-const isCatalogModel = (id) => typeof id === 'string' && /^[A-Za-z0-9][\w.-]*\/[\w.:/@-]+$/.test(id);
+/** A syntactically safe saved dynamic-model id. It remains displayable before
+ * a live catalog has been refreshed, but it is never enough to launch a
+ * require-selection agent by itself. */
+const isCatalogModelId = (a, id) => Boolean(
+  a && a.dynamic_models &&
+  typeof id === 'string' &&
+  /^[A-Za-z0-9][\w.:/@-]*$/.test(id) &&
+  !(a.models || []).some((m) => m.id === id)
+);
+
+/** A dynamic model that this app has actually obtained from the agent or its
+ * documented catalog during the current run. */
+const isLiveCatalogModel = (a, id) => Boolean(
+  isCatalogModelId(a, id) &&
+  Array.isArray(state.catalogs[a.id]) &&
+  state.catalogs[a.id].includes(id)
+);
+
+function catalogModelDisplay(a, id) {
+  if (a && a.id === 'ollama-cloud') return id;
+  const slash = String(id).indexOf('/');
+  return slash >= 0 ? String(id).slice(slash + 1) : id;
+}
 
 /** Static models from agents.json plus, for agents with a live catalog, every
  *  model that catalog reported. Catalog entries keep their full id. */
 function allModels(a) {
-  const cat = (state.catalogs[a.id] || []).map((id) => ({ id, label: id.slice(id.indexOf('/') + 1), provider: id.split('/')[0] }));
-  return [...a.models, ...cat];
+  const staticModels = (a.models || []).filter((m) => !(a.requiresModelSelection && m.id === 'default' && !(m.args || []).length));
+  const cat = (state.catalogs[a.id] || []).map((id) => {
+    const slash = id.indexOf('/');
+    return {
+      id,
+      label: catalogModelDisplay(a, id),
+      provider: slash >= 0 ? id.slice(0, slash) : (a.id === 'ollama-cloud' ? 'cloud' : '')
+    };
+  });
+  return [...staticModels, ...cat];
 }
 const modelLabel = (a, id) => {
   if (!a) return '';
   const m = allModels(a).find((x) => x.id === id);
   if (m) return m.label;
   // A saved catalog pick whose catalog hasn't loaded yet still shows its name.
-  return isCatalogModel(id) && a.dynamic_models ? id.slice(id.indexOf('/') + 1) : label(a.models, id);
+  return isCatalogModelId(a, id) ? catalogModelDisplay(a, id) : label(a.models, id);
 };
 const effortLabel = (a, id) => label((a && a.efforts) || [], id);
 
 function pick(a) {
   const p = (prefs.picks[a.id] ||= {});
-  const known = allModels(a).some((m) => m.id === p.model) || (a.dynamic_models && isCatalogModel(p.model));
-  if (!known) p.model = a.models[0] ? a.models[0].id : 'default';
+  const catalogIsLoaded = Array.isArray(state.catalogs[a.id]);
+  const known = allModels(a).some((m) => m.id === p.model) ||
+    (catalogIsLoaded ? isLiveCatalogModel(a, p.model) : isCatalogModelId(a, p.model));
+  if (!known) p.model = a.requiresModelSelection ? '' : (a.models[0] ? a.models[0].id : 'default');
   if (!a.modes.some((m) => m.id === p.mode)) p.mode = a.modes[0] ? a.modes[0].id : 'default';
   const efforts = a.efforts || [];
   if (!efforts.some((e) => e.id === p.effort)) p.effort = efforts[0] ? efforts[0].id : 'default';
@@ -245,11 +303,38 @@ const label = (list, id) => (list.find((x) => x.id === id) || list[0] || { label
 async function fetchCatalog(a, { quiet = false } = {}) {
   try {
     state.catalogs[a.id] = await invoke('agent_models', { agentId: a.id });
+    // A stored dynamic id is only a display placeholder until it appears in
+    // the catalog refreshed for this app run. Do not let a stale preference
+    // survive into a required-model launch.
+    const p = prefs.picks[a.id];
+    if (a.requiresModelSelection && p && p.model && !isLiveCatalogModel(a, p.model)) {
+      p.model = '';
+      savePrefs();
+    }
     return state.catalogs[a.id];
   } catch (err) {
     if (!quiet) toast(String(err), 'error');
     return state.catalogs[a.id] || [];
   }
+}
+
+/** Resolve a live catalog model before an operation can stop or create a CLI.
+ * The Rust backend repeats this check, but doing it here preserves a user's
+ * prompt and their currently running session when a stored choice went stale. */
+async function resolveRequiredModel(a, requestedModel, { quiet = false } = {}) {
+  if (!a || !a.requiresModelSelection) return requestedModel;
+  if (!Array.isArray(state.catalogs[a.id]) && (a.available || a.catalogAvailableWithoutCommand)) {
+    await fetchCatalog(a, { quiet });
+  }
+  const selected = requestedModel || pick(a).model;
+  if (isLiveCatalogModel(a, selected)) return selected;
+  const p = prefs.picks[a.id];
+  if (p && p.model === selected) {
+    p.model = '';
+    savePrefs();
+  }
+  if (!quiet) toast(`Choose a live ${a.label} model from the Model menu before starting a session.`, 'error');
+  return '';
 }
 
 /* ------------------------------------------------------------------- boot */
@@ -295,6 +380,15 @@ async function boot() {
   } catch {
     state.backends = null;
   }
+  // Hardware facts are advisory only: they help explain when a local Ollama
+  // model may fit, but they never restrict Ollama Cloud models.
+  invoke('detect_system_profile')
+    .then((profile) => {
+      state.systemProfile = profile;
+      renderOnboarding();
+      renderOnboardingConfig();
+    })
+    .catch(() => { state.systemProfile = null; });
 
   // Recreate every tab that was open at last shutdown as a parked session.
   // Nothing has launched yet; the user resumes with one click.
@@ -588,6 +682,9 @@ function buildParked(sn) {
     pendingPrompt: '',
     draft: '',
     context: [],
+    // Image paths are deliberately transient: unlike prompt history or parked
+    // session metadata, a selected local image is never written to localStorage.
+    imageRefs: [],
     usage: Usage.createUsageState(),
     pcControl: false,
     term,
@@ -613,6 +710,8 @@ async function createSession(agentId, opts = {}) {
     return null;
   }
   const p = pick(a);
+  const selectedModel = await resolveRequiredModel(a, opts.modelId || p.model);
+  if (a.requiresModelSelection && !selectedModel) return null;
   const sp = space(opts.spaceId) || space();
   const host = document.createElement('div');
   host.className = 'term-host';
@@ -645,7 +744,7 @@ async function createSession(agentId, opts = {}) {
     ptyId: null,
     spaceId: sp.id,
     agentId,
-    modelId: opts.modelId || p.model,
+    modelId: selectedModel,
     modeId: opts.modeId || p.mode,
     effortId: opts.effortId ?? p.effort,
     cwd: opts.cwd || sp.path,
@@ -660,6 +759,9 @@ async function createSession(agentId, opts = {}) {
     pendingPrompt: opts.prompt || '',
     draft: '',
     context: [],
+    // Image paths are deliberately transient: unlike prompt history or parked
+    // session metadata, a selected local image is never written to localStorage.
+    imageRefs: [],
     usage: Usage.createUsageState(),
     pcControl: false,
     term,
@@ -673,7 +775,7 @@ async function createSession(agentId, opts = {}) {
   term.onScroll(() => s.id === state.activeId && updateScrollButton(s));
   term.onTitleChange((t) => {
     // Some CLIs set a meaningful terminal title; adopt it unless renamed.
-    if (t && t.trim() && !opts.title && t.length < 80) {
+    if (!opts.title && isMeaningfulTerminalTitle(t)) {
       s.title = t.trim();
       renderTabs();
       if (s.id === state.activeId) renderHead();
@@ -692,7 +794,21 @@ async function launch(s) {
   // The backend only passes a catalog model if it fetched that catalog itself;
   // make sure it has, or the session would quietly start on the default model.
   const la = agent(s.agentId);
-  if (la && la.dynamic_models && isCatalogModel(s.modelId) && !state.catalogs[la.id]) {
+  if (la && la.requiresModelSelection) {
+    const selectedModel = await resolveRequiredModel(la, s.modelId, { quiet: true });
+    if (!selectedModel) {
+      s.status = 'error';
+      s.term.write(`\r\n\x1b[38;2;231;163;163mChoose a live ${la.label} model from the Model menu before launching this session.\x1b[0m\r\n`);
+      updateTabMeta(s);
+      renderSpaces();
+      if (s.id === state.activeId) {
+        renderHead();
+        renderStatus();
+      }
+      return;
+    }
+    s.modelId = selectedModel;
+  } else if (la && isCatalogModelId(la, s.modelId) && !state.catalogs[la.id]) {
     await fetchCatalog(la, { quiet: true });
   }
   for (const un of s.unlisten.splice(0)) safe(un);
@@ -803,12 +919,17 @@ function deliverPending(s) {
 }
 
 async function restartSession(s, { keepPcControl = false } = {}) {
+  const a = agent(s.agentId);
+  const selectedModel = await resolveRequiredModel(a, s.modelId);
+  if (a && a.requiresModelSelection && !selectedModel) return false;
+  if (selectedModel) s.modelId = selectedModel;
   // PC-control consent covers one process; only the PC-control chip itself
   // may carry a fresh grant into the next launch.
   if (!keepPcControl) s.wantPcControl = false;
   if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
   s.term.write('\r\n\x1b[38;2;106;106;112m── restarting ──\x1b[0m\r\n');
-  launch(s);
+  await launch(s);
+  return true;
 }
 
 function selectSession(id) {
@@ -954,8 +1075,22 @@ function renderView() {
   const s = active();
   $('home').classList.toggle('is-hidden', Boolean(s));
   $('workspace').classList.toggle('is-active', Boolean(s));
+  renderSessionAgentNotice(s);
   renderHead();
   renderStatus();
+}
+
+function renderSessionAgentNotice(s = active()) {
+  const notice = $('sessionAgentNotice');
+  if (!notice) return;
+  const isGemini = Boolean(s && s.agentId === 'gemini');
+  const isOllamaCloud = Boolean(s && s.agentId === 'ollama-cloud');
+  notice.hidden = !isGemini && !isOllamaCloud;
+  notice.innerHTML = isGemini
+    ? '<strong>Gemini CLI setup:</strong> Personal Google sign-in is no longer supported here. Use Antigravity CLI for a personal account; Gemini CLI needs a Gemini API key, Vertex AI, or an enterprise setup.'
+    : isOllamaCloud
+      ? '<strong>Ollama Cloud:</strong> This tab launches a remote model. It requires an Ollama sign-in from your own terminal (`ollama signin`); ezCLI never handles your account or API key.'
+      : '';
 }
 
 function renderHome() {
@@ -963,6 +1098,10 @@ function renderHome() {
   const a = agent(prefs.agentId);
   $('homeTitle').textContent = sp ? `What should we work on in ${sp.name}?` : 'What should we work on?';
   $('homeProjectLabel').textContent = sp ? ellipsisLeft(sp.path, 48) : 'Choose a folder';
+  const routeNotice = $('homeRouteNotice');
+  const routeAdvice = ollamaRouteAdvice(a);
+  routeNotice.hidden = !routeAdvice;
+  routeNotice.textContent = routeAdvice;
   if (a) {
     const p = pick(a);
     const caret =
@@ -1132,24 +1271,58 @@ function renderLiveUsage(s) {
 function renderContext() {
   const s = active();
   const box = $('composerContext');
-  if (!s || !s.context.length) {
+  const files = s && Array.isArray(s.context) ? s.context : [];
+  const images = s && Array.isArray(s.imageRefs) ? s.imageRefs : [];
+  renderImageAttachControl(s);
+  if (!s || (!files.length && !images.length)) {
     box.hidden = true;
     box.innerHTML = '';
     return;
   }
   box.hidden = false;
-  box.innerHTML = s.context
+  const filePills = files
     .map(
       (p, i) => `<span class="context-pill" title="${esc(p)}"><span>@${esc(p)}</span>
       <button data-ctx="${i}" aria-label="Remove ${esc(p)}">${ICONS.close}</button></span>`
     )
     .join('');
+  const imagePills = images
+    .map(
+      (p, i) => `<span class="context-pill image-context" title="Image reference only — ezCLI sends this local path, not image data: ${esc(p)}"><span class="context-kind">Image ref</span><span>@${esc(p)}</span>
+      <button data-image-ref="${i}" aria-label="Remove image reference ${esc(p)}">${ICONS.close}</button></span>`
+    )
+    .join('');
+  box.innerHTML = filePills + imagePills;
   box.querySelectorAll('[data-ctx]').forEach((b) =>
     b.addEventListener('click', () => {
       s.context.splice(Number(b.dataset.ctx), 1);
       renderContext();
     })
   );
+  box.querySelectorAll('[data-image-ref]').forEach((b) =>
+    b.addEventListener('click', () => {
+      s.imageRefs.splice(Number(b.dataset.imageRef), 1);
+      renderContext();
+    })
+  );
+}
+
+function renderImageAttachControl(s = active()) {
+  const button = $('btnAttachImage');
+  if (!button) return;
+  const a = s && agent(s.agentId);
+  const transport = imageTransport(a);
+  button.dataset.imageTransport = transport;
+  // The terminal webview can currently implement only a local `@path`
+  // reference. Do not surface a control for a CLI's theoretical clipboard or
+  // launch-time image syntax until that syntax is actually wired end to end.
+  const usable = Boolean(s && a && transport === 'interactive_at_reference');
+  button.hidden = !usable;
+  button.disabled = !usable;
+  if (!usable) return;
+  const copy = `Add an image reference for ${a.label} (sends a local @path only)`;
+  button.title = copy;
+  button.setAttribute('aria-label', copy);
 }
 
 function addToChat(absPath) {
@@ -1159,6 +1332,45 @@ function addToChat(absPath) {
   if (!s.context.includes(rel)) s.context.push(rel);
   renderContext();
   $('ptyInput').focus();
+}
+
+const IMAGE_FILE_EXTENSIONS = ['avif', 'bmp', 'gif', 'heic', 'heif', 'jpeg', 'jpg', 'png', 'svg', 'tif', 'tiff', 'webp'];
+const isImageFile = (path) => new RegExp(`\\.(${IMAGE_FILE_EXTENSIONS.join('|')})$`, 'i').test(String(path));
+
+async function chooseImageReferences() {
+  const s = active();
+  const a = s && agent(s.agentId);
+  if (!s || !a) return toast('Open a session first, then add an image reference.');
+  const transport = imageTransport(a);
+  if (transport !== 'interactive_at_reference') {
+    toast(`${a.label} does not have an image-reference route implemented in ezCLI yet.`, 'error');
+    return;
+  }
+
+  let chosen;
+  const options = {
+    multiple: true,
+    defaultPath: s.cwd || state.homeCwd,
+    filters: [{ name: 'Images', extensions: IMAGE_FILE_EXTENSIONS }]
+  };
+  try {
+    chosen = T.dialog && T.dialog.open
+      ? await T.dialog.open(options)
+      : await invoke('plugin:dialog|open', { options });
+  } catch (err) {
+    toast(`Couldn’t choose an image: ${String(err)}`, 'error');
+    return;
+  }
+  const paths = (Array.isArray(chosen) ? chosen : chosen ? [chosen] : []).filter(isImageFile);
+  if (!paths.length) return;
+  if (!Array.isArray(s.imageRefs)) s.imageRefs = [];
+  for (const absPath of paths) {
+    const ref = relativeTo(absPath, s.cwd);
+    if (!s.imageRefs.includes(ref)) s.imageRefs.push(ref);
+  }
+  renderContext();
+  $('ptyInput').focus();
+  toast(`Added ${paths.length} image reference${paths.length === 1 ? '' : 's'} as local @path text. ezCLI does not upload image data; visual support depends on ${a.label}.`, 'ok');
 }
 
 function relativeTo(p, base) {
@@ -1196,16 +1408,22 @@ function sendComposer() {
   const s = active();
   if (!s) return;
   const v = el.value;
-  if (!v.trim() && !s.context.length) return;
+  const files = Array.isArray(s.context) ? s.context : [];
+  const images = Array.isArray(s.imageRefs) ? s.imageRefs : [];
+  if (!v.trim() && !files.length && !images.length) return;
   if (s.status !== 'running') {
     toast('This session is not running.', 'error', () => restartSession(s));
     return;
   }
-  const ctx = s.context.map((p) => `@${p}`).join(' ');
-  const text = ctx ? `${ctx} ${v}`.trim() : v;
+  const fileRefs = files.map((p) => `@${p}`).join(' ');
+  // This is intentionally a path reference, not image bytes or an upload.
+  // An interactive CLI may inspect it; a CLI without vision support may not.
+  const imageRefs = images.map((p) => `[Image reference — local path only: @${p}]`).join('\n');
+  const text = [fileRefs, imageRefs, v].filter(Boolean).join('\n').trim();
   pushHistory(v);
   sendText(s, text);
   s.context = [];
+  s.imageRefs = [];
   s.draft = '';
   el.value = '';
   histPos = -1;
@@ -1712,7 +1930,7 @@ function effortMenu(anchor, forAgent) {
 async function modelMenu(anchor, forAgent) {
   const a = forAgent || agent(prefs.agentId);
   if (!a) return;
-  if (a.dynamic_models && !state.catalogs[a.id] && a.available) await fetchCatalog(a);
+  if (a.dynamic_models && !state.catalogs[a.id] && (a.available || a.catalogAvailableWithoutCommand)) await fetchCatalog(a);
   const p = pick(a);
   const choose = (id) => {
     p.model = id;
@@ -1726,6 +1944,12 @@ async function modelMenu(anchor, forAgent) {
     on: m.id === p.model,
     run: () => choose(m.id)
   }));
+  if (a.id === 'ollama-cloud') {
+    items.unshift(
+      { label: 'Live cloud catalog — known sizes first', hint: 'Unreported sizes are unranked; account limits apply', disabled: true },
+      { sep: true }
+    );
+  }
   if (a.dynamic_models) {
     items.push({ sep: true });
     items.push({
@@ -1740,6 +1964,9 @@ async function modelMenu(anchor, forAgent) {
   openMenu(anchor, {
     title: `${a.label} · Model`,
     search: items.length > 8 ? 'Search models' : '',
+    empty: a.id === 'ollama-cloud'
+      ? 'No cloud models were returned. Check your connection and refresh.'
+      : 'No models were returned. Refresh after the CLI is ready.',
     items
   });
 }
@@ -1770,6 +1997,16 @@ function chooseAgent(id) {
 async function switchSessionAgent(s, id) {
   const next = agent(id);
   if (!s || !next || !next.available || next.id === s.agentId) return;
+  // A required live model must be selected before we even ask the user to
+  // replace their current process. If there is no valid choice, leave this
+  // session exactly as it is and open the destination's model menu instead.
+  const nextPick = pick(next);
+  const nextModel = await resolveRequiredModel(next, nextPick.model, { quiet: true });
+  if (next.requiresModelSelection && !nextModel) {
+    toast(`Choose a live ${next.label} model, then switch this session again.`, 'error');
+    await modelMenu($('headModel'), next);
+    return;
+  }
   const running = s.status === 'running' || s.status === 'starting';
   if (running) {
     const ok = await confirmDialog(
@@ -1781,13 +2018,21 @@ async function switchSessionAgent(s, id) {
   }
 
   if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
-  const p = pick(next);
+  const droppedImageRefs = Array.isArray(s.imageRefs) ? s.imageRefs.length : 0;
   s.agentId = next.id;
-  s.modelId = p.model;
-  s.modeId = p.mode;
-  s.effortId = p.effort;
+  s.modelId = nextModel || nextPick.model;
+  s.modeId = nextPick.mode;
+  s.effortId = nextPick.effort;
+  // A path reference was selected for the previous agent's declared route.
+  // Never carry it into a different backend by accident.
+  s.imageRefs = [];
   s.command = '';
   s.working = false;
+  if (s.id === state.activeId) {
+    renderContext();
+    renderView();
+  }
+  if (droppedImageRefs) toast('Removed transient image references after switching backends.');
   if (s.status === 'parked') {
     renderAll();
     snapshotParked();
@@ -1795,7 +2040,7 @@ async function switchSessionAgent(s, id) {
   }
 
   s.term.writeln(`\r\n\x1b[38;2;106;106;112m── switching to ${next.label} ──\x1b[0m\r\n`);
-  launch(s);
+  await launch(s);
 }
 
 function projectMenu(anchor) {
@@ -1940,6 +2185,31 @@ function renderImportPreview() {
       .join('')}${chat.messages.length > visible.length ? '<p class="note import-more">Preview limited to the first 120 imported messages.</p>' : ''}</div>`;
 }
 
+function systemProfileSummary(profile = state.systemProfile) {
+  if (!profile) return 'Hardware profile unavailable';
+  const cores = Number(profile.logicalCpuCores ?? profile.logical_cpu_cores);
+  const memory = Number(profile.totalMemoryGib ?? profile.total_memory_gib);
+  const gpu = profile.gpuName ?? profile.gpu_name;
+  const vram = Number(profile.gpuVramMib ?? profile.gpu_vram_mib);
+  const parts = [];
+  if (Number.isFinite(cores) && cores > 0) parts.push(`${cores} CPU threads`);
+  if (Number.isFinite(memory) && memory > 0) parts.push(`${memory} GiB RAM`);
+  if (gpu) {
+    const vramText = Number.isFinite(vram) && vram > 0 ? `, ${(Math.round(vram / 102.4) / 10).toFixed(1)} GiB VRAM` : '';
+    parts.push(`${gpu}${vramText}`);
+  }
+  return parts.length ? parts.join(' · ') : 'Hardware profile unavailable';
+}
+
+function ollamaRouteAdvice(a) {
+  if (!a || !['ollama', 'ollama-cloud'].includes(a.id)) return '';
+  const profile = systemProfileSummary();
+  if (a.id === 'ollama-cloud') {
+    return `Ollama Cloud runs remotely. Detected: ${profile}. Your PC does not limit the cloud catalog; install Ollama and complete “ollama signin” before starting. ezCLI will not install, sign in, or download a model for you.`;
+  }
+  return `Ollama Local uses this PC: ${profile}. Choose Cloud for models that do not fit locally. ezCLI lists only downloaded local models and never pulls one automatically.`;
+}
+
 function backendFacts(report) {
   if (!report) return ['Could not check your installed backends. You can choose one from the home screen.'];
   const facts = [];
@@ -1951,6 +2221,7 @@ function backendFacts(report) {
     if (a) facts.push(`${a.label} found (free)`);
   }
   if (report.ollama) facts.push('Ollama found, so OpenCode can also use local models');
+  if (state.systemProfile) facts.push(`PC profile: ${systemProfileSummary()}`);
   if (report.anthropicKey && !report.claudeCli) facts.push('Anthropic API key configured');
   if (report.openaiKey && !report.codexCli) facts.push('OpenAI API key configured');
   return facts.length ? facts : ['No supported CLI or configured sign-in was detected yet.'];
@@ -1977,9 +2248,13 @@ function renderFreeInstalls(report) {
  * reasoning effort that will be used when the user starts their first tab. */
 function renderOnboardingConfig() {
   const box = $('onboardingConfig');
+  const geminiNotice = $('onboardingGeminiNotice');
+  const ollamaNotice = $('onboardingOllamaNotice');
   const a = agent(prefs.agentId);
   if (!a || !a.available) {
     box.hidden = true;
+    if (geminiNotice) geminiNotice.hidden = true;
+    if (ollamaNotice) ollamaNotice.hidden = true;
     return;
   }
   const p = pick(a);
@@ -1989,6 +2264,12 @@ function renderOnboardingConfig() {
   const effort = $('onboardingEffort');
   effort.hidden = (a.efforts || []).length < 2;
   $('onboardingEffortValue').textContent = effortLabel(a, p.effort);
+  if (geminiNotice) geminiNotice.hidden = a.id !== 'gemini';
+  if (ollamaNotice) {
+    const advice = ollamaRouteAdvice(a);
+    ollamaNotice.hidden = !advice;
+    ollamaNotice.textContent = advice;
+  }
 }
 
 function renderOnboarding() {
@@ -2167,10 +2448,13 @@ function newSession() {
   $('homeInput').focus();
 }
 
-function startFromHome() {
+async function startFromHome() {
   const prompt = $('homeInput').value.trim();
+  const created = await createSession(prefs.agentId, { prompt });
+  // A required-model chooser can decline a launch. Keep the draft intact so
+  // the user can select a model without having to rewrite their request.
+  if (!created) return;
   if (prompt) pushHistory(prompt);
-  createSession(prefs.agentId, { prompt });
   $('homeInput').value = '';
   autoGrow($('homeInput'));
 }
@@ -2417,7 +2701,7 @@ function wire() {
     if (!s) return;
     const a = agent(s.agentId);
     if (!a) return;
-    if (a.dynamic_models && !state.catalogs[a.id]) await fetchCatalog(a);
+    if (a.dynamic_models && !state.catalogs[a.id] && (a.available || a.catalogAvailableWithoutCommand)) await fetchCatalog(a);
     const models = allModels(a);
     openMenu(anchor, {
       title: `${a.label} · Model`,
@@ -2512,6 +2796,7 @@ function wire() {
     }
   });
   $('btnSend').addEventListener('click', sendComposer);
+  $('btnAttachImage').addEventListener('click', chooseImageReferences);
   $('btnHistory').addEventListener('click', (e) => historyMenu(e.currentTarget));
   $('btnInterrupt').addEventListener('click', () => {
     const s = active();

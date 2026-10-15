@@ -690,6 +690,24 @@ kbd {
   background: var(--raised);
   color: var(--text);
 }
+.context-pill.image-context {
+  border-color: color-mix(in srgb, var(--warn) 48%, var(--border));
+  background: color-mix(in srgb, var(--warn) 7%, var(--surface-2));
+}
+.context-pill .context-kind {
+  flex: none;
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.attachment-btn {
+  gap: 5px;
+}
+.attachment-btn[data-image-transport='interactive_at_reference'] {
+  color: var(--muted);
+}
 .send-btn {
   display: grid;
   place-items: center;
@@ -830,6 +848,17 @@ kbd {
 .home .composer-box textarea {
   min-height: 64px;
 }
+.home-route-note {
+  margin: 10px 2px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--brand) 5%, var(--surface));
+  color: var(--muted);
+  text-align: left;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
 .suggested-prompts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -912,6 +941,27 @@ kbd {
   height: 42px;
   padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--border);
+}
+.agent-notice {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--warn) 44%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--warn) 7%, var(--surface-2));
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.agent-notice strong {
+  color: var(--warn);
+  font-weight: 650;
+}
+.session-agent-notice {
+  margin: 8px 12px 0;
+  padding: 7px 10px;
+}
+.onboarding-agent-notice {
+  margin-top: 11px;
+  padding: 8px 10px;
 }
 .head-title {
   overflow: hidden;

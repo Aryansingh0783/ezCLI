@@ -112,6 +112,7 @@
                 </div>
               </div>
 
+              <p class="home-route-note" id="homeRouteNotice" role="status" hidden></p>
               <div class="suggested-prompts" id="suggested" aria-label="Suggested next steps"></div>
               <div class="agent-strip" id="agentStrip" role="radiogroup" aria-label="Agent"></div>
             </div>
@@ -137,6 +138,7 @@
                 </button>
               </div>
             </div>
+            <div class="agent-notice session-agent-notice" id="sessionAgentNotice" role="alert" hidden></div>
             <div class="terminal-panel">
               <div class="term-hosts" id="termHosts"></div>
               <button class="scroll-bottom-btn" id="scrollBottom" hidden aria-label="Jump to latest output">
@@ -154,6 +156,10 @@
                   <button class="chip" id="btnHistory" title="Prompt history" aria-label="Prompt history">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
                     History
+                  </button>
+                  <button class="chip attachment-btn" id="btnAttachImage" title="Add an image reference" aria-label="Add an image reference" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l9.1-9.1a4 4 0 0 1 5.7 5.7l-9.1 9.1a2 2 0 0 1-2.8-2.8l8.4-8.4" /></svg>
+                    Image reference
                   </button>
                   <span class="grow"></span>
                   <button class="send-btn" id="btnSend" aria-label="Send" title="Send">
@@ -243,6 +249,8 @@
             <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
           </button>
         </div>
+        <p class="agent-notice onboarding-agent-notice" id="onboardingGeminiNotice" role="status" hidden><strong>Gemini CLI setup:</strong> Personal Google sign-in is no longer supported here. Use Antigravity CLI for a personal account; Gemini CLI needs a Gemini API key, Vertex AI, or an enterprise setup.</p>
+        <p class="agent-notice onboarding-agent-notice" id="onboardingOllamaNotice" role="status" hidden></p>
       </section>
       <div class="free-installs" id="freeInstalls" hidden></div>
       <p class="note onboarding-note">ezCLI only opens local CLIs. It does not send prompts to a model itself, and you can switch backends for any session.</p>

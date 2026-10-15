@@ -34,6 +34,10 @@ pub struct AgentDef {
     pub modes: Vec<Variant>,
     #[serde(default)]
     pub models: Vec<Variant>,
+    /// How the CLI accepts user-selected images. This is capability metadata
+    /// only; the frontend must still implement the corresponding transfer.
+    #[serde(default, rename = "imageTransport")]
+    pub image_transport: Option<String>,
     /// Per-session reasoning effort choices supported by this CLI. Empty means
     /// the agent does not expose a portable effort control.
     #[serde(default)]
@@ -57,12 +61,43 @@ pub struct AgentDef {
     pub install: Option<String>,
 }
 
-/// Run `<command> <args>` to list models (one `provider/model` per line), then
-/// launch a chosen one with `<flag> <model>`.
+/// Run `<command> <args>` to list models, then launch a chosen one with an
+/// explicitly declared token sequence plus the validated model id.
 #[derive(Deserialize, Clone, Debug)]
 pub struct ModelsFrom {
     pub args: Vec<String>,
-    pub flag: String,
+    /// Legacy one-token model prefix, e.g. `-m`. Kept optional so older
+    /// editable configs continue to work while launch supports subcommands.
+    #[serde(default)]
+    pub flag: Option<String>,
+    /// Literal tokens placed before a selected dynamic model, e.g. `["run"]`
+    /// for `ollama run <model>`. Preferred over `flag` when present.
+    #[serde(default)]
+    pub launch: Vec<String>,
+    /// Parser contract for this catalog. Omitted keeps the established
+    /// provider/model parser; `ollama` accepts only verified `ollama list`
+    /// table rows and their bare model names.
+    #[serde(default)]
+    pub catalog: Option<String>,
+    /// Some dynamic catalogs have no safe static default. In that case a
+    /// session must not launch until the user has selected a model returned by
+    /// the live catalog (for example, `ollama run <model>`).
+    #[serde(default, rename = "requireSelection")]
+    pub require_selection: bool,
+}
+
+impl ModelsFrom {
+    fn launch_args(&self) -> Option<&[String]> {
+        if !self.launch.is_empty() {
+            Some(&self.launch)
+        } else {
+            self.flag.as_ref().map(std::slice::from_ref)
+        }
+    }
+
+    pub fn is_ollama_cloud(&self) -> bool {
+        self.catalog.as_deref() == Some("ollama-cloud")
+    }
 }
 
 /// The agents.json shipped with the app. New built-in agents are merged into a
@@ -115,6 +150,8 @@ pub struct AgentOut {
     pub modes: Vec<Variant>,
     pub models: Vec<Variant>,
     pub efforts: Vec<Variant>,
+    #[serde(rename = "imageTransport")]
+    pub image_transport: String,
     pub available: bool,
     pub resolved: Option<String>,
     /// Whether ezCLI knows how to attach PC control to this CLI.
@@ -123,6 +160,14 @@ pub struct AgentOut {
     pub free: bool,
     /// The Model pill can be filled from the agent's own catalog.
     pub dynamic_models: bool,
+    /// This catalog is safe to fetch before the CLI is installed because it
+    /// comes from a fixed public endpoint, not from a user-supplied command.
+    #[serde(rename = "catalogAvailableWithoutCommand")]
+    pub catalog_available_without_command: bool,
+    /// A dynamic catalog can deliberately omit a runnable default. The UI
+    /// uses this to ask for a live model pick before it creates a PTY.
+    #[serde(rename = "requiresModelSelection")]
+    pub requires_model_selection: bool,
     pub install: Option<String>,
 }
 
@@ -184,6 +229,33 @@ fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.efforts = builtin_agent.efforts.clone();
             }
+            // `imageTransport` was introduced after the first-run config.
+            // Add it only to an unchanged built-in command; custom adapters
+            // keep their explicit (or intentionally absent) capability.
+            let image_missing = existing
+                .image_transport
+                .as_deref()
+                .map(str::trim)
+                .map_or(true, str::is_empty);
+            if image_missing
+                && builtin_agent.image_transport.is_some()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.image_transport = builtin_agent.image_transport.clone();
+            }
+            // Gemini CLI's personal Google sign-in now redirects users to
+            // Antigravity. Old stock configs still say `tier: free`; clear
+            // only that stale routing hint while preserving any user-supplied
+            // modes, models, arguments, and configured API/Vertex setup.
+            if existing.id == "gemini"
+                && existing.command.eq_ignore_ascii_case("gemini")
+                && existing
+                    .tier
+                    .as_deref()
+                    .is_some_and(|tier| tier.eq_ignore_ascii_case("free"))
+            {
+                existing.tier = None;
+            }
             // This explicit value makes the built-in boundary visible in the
             // runtime config too; mcp_style() enforces it independently.
             if existing.id == "claude-chat" {
@@ -214,6 +286,121 @@ pub fn parse_catalog(stdout: &str) -> Vec<String> {
             l.len() <= 200 && starts_ok && ok(p, "") && ok(m, ":/@")
         })
         .map(str::to_string)
+        .collect();
+    out.sort();
+    out.dedup();
+    out.truncate(1000);
+    out
+}
+
+/// Parse a catalog using the explicitly declared format for its agent. Most
+/// agents use provider/model ids; Ollama prints a table with bare model names.
+/// Keeping the latter separate means an arbitrary table or diagnostic cannot
+/// become a `run` argument merely because it contains whitespace-separated
+/// text.
+pub fn parse_catalog_for(from: &ModelsFrom, stdout: &str) -> Vec<String> {
+    match from.catalog.as_deref() {
+        Some("ollama") => parse_ollama_catalog(stdout),
+        _ => parse_catalog(stdout),
+    }
+}
+
+const MAX_OLLAMA_CLOUD_CATALOG_BYTES: usize = 2 * 1024 * 1024;
+const MAX_OLLAMA_CLOUD_MODELS: usize = 200;
+
+#[derive(Deserialize)]
+struct OllamaCloudTags {
+    models: Vec<OllamaCloudTag>,
+}
+
+#[derive(Deserialize)]
+struct OllamaCloudTag {
+    name: String,
+    #[serde(default)]
+    size: u64,
+}
+
+/// Parse Ollama's public hosted-model catalog into the exact model aliases
+/// accepted by a signed-in local Ollama CLI. The hosted API calls a model such
+/// as `gemma4:31b`; the CLI's cloud alias is `gemma4:31b-cloud`. Untagged
+/// hosted names use the documented `:cloud` tag instead.
+///
+/// No arbitrary network text reaches argv: the response is bounded, each name
+/// is allowlisted, the derived name is validated again, and the result is
+/// capped before it is stored in the session catalog.
+pub fn parse_ollama_cloud_catalog(stdout: &str) -> Result<Vec<String>, String> {
+    if stdout.len() > MAX_OLLAMA_CLOUD_CATALOG_BYTES {
+        return Err("Ollama's cloud catalog response was too large.".into());
+    }
+    let tags: OllamaCloudTags = serde_json::from_str(stdout)
+        .map_err(|_| "Ollama's cloud catalog returned an invalid response.".to_string())?;
+    let mut unique = std::collections::BTreeMap::<String, u64>::new();
+    for tag in tags.models.into_iter().take(MAX_OLLAMA_CLOUD_MODELS) {
+        if let Some(alias) = ollama_cloud_alias(&tag.name) {
+            let size = unique.entry(alias).or_default();
+            *size = (*size).max(tag.size);
+        }
+    }
+    let mut out: Vec<(String, u64)> = unique.into_iter().collect();
+    // The catalog does not expose a quality or coding rank. A nonzero
+    // published size is only a useful browsing hint; a zero value means the
+    // provider did not report a comparable size, so keep those entries
+    // deliberately unranked after known-size entries.
+    out.sort_by(|(left_name, left_size), (right_name, right_size)| {
+        match (*left_size > 0, *right_size > 0) {
+            (true, true) => right_size
+                .cmp(left_size)
+                .then_with(|| left_name.cmp(right_name)),
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            (false, false) => left_name.cmp(right_name),
+        }
+    });
+    Ok(out.into_iter().map(|(name, _)| name).collect())
+}
+
+/// Convert a hosted API identifier into the equivalent CLI cloud alias.
+/// `foo:tag` becomes `foo:tag-cloud`; `foo` becomes `foo:cloud`. The function
+/// is deliberately idempotent so an already-cloud name cannot acquire a
+/// second suffix.
+fn ollama_cloud_alias(hosted: &str) -> Option<String> {
+    if !safe_ollama_model_name(hosted) {
+        return None;
+    }
+    let cloud = if hosted.ends_with(":cloud") || hosted.ends_with("-cloud") {
+        hosted.to_owned()
+    } else if hosted.contains(':') {
+        format!("{hosted}-cloud")
+    } else {
+        format!("{hosted}:cloud")
+    };
+    safe_ollama_model_name(&cloud).then_some(cloud)
+}
+
+fn safe_ollama_model_name(name: &str) -> bool {
+    name.len() <= 200
+        && name.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.:/@".contains(c))
+        && !name.contains("://")
+}
+
+fn parse_ollama_catalog(stdout: &str) -> Vec<String> {
+    let mut out: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| {
+            let mut columns = line.split_whitespace();
+            let name = columns.next()?;
+            let digest = columns.next()?;
+            // `ollama list` emits NAME, a short hexadecimal model id, then
+            // size and modified columns. Requiring that id drops headers,
+            // connection errors, and other non-table output before it can be
+            // reused as a launch argument.
+            let looks_like_digest = digest.len() >= 7 && digest.chars().all(|c| c.is_ascii_hexdigit());
+            let safe_name = safe_ollama_model_name(name);
+            (looks_like_digest && safe_name).then(|| name.to_string())
+        })
         .collect();
     out.sort();
     out.dedup();
@@ -279,15 +466,47 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                 modes: a.modes.clone(),
                 models: a.models.clone(),
                 efforts: a.efforts.clone(),
+                image_transport: image_transport(a).to_string(),
                 available: resolved.is_some(),
                 resolved,
                 pc_control: a.mcp_style().is_some(),
                 free: a.tier.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("free")),
                 dynamic_models: a.models_from.is_some(),
+                catalog_available_without_command: a
+                    .models_from
+                    .as_ref()
+                    .is_some_and(ModelsFrom::is_ollama_cloud),
+                requires_model_selection: a
+                    .models_from
+                    .as_ref()
+                    .is_some_and(|from| from.require_selection),
                 install: a.install.clone(),
             }
         })
         .collect()
+}
+
+/// Only ship recognised transport contracts to the UI. A manually edited
+/// config remains usable for CLI launching, but it cannot make the UI promise
+/// an attachment path that the backend/front end do not actually implement.
+fn image_transport(a: &AgentDef) -> &'static str {
+    match a.image_transport.as_deref() {
+        Some("interactive_at_reference") => "interactive_at_reference",
+        Some("initial_flag") => "initial_flag",
+        Some("initial_positional") => "initial_positional",
+        Some("clipboard_only") => "clipboard_only",
+        _ => "none",
+    }
+}
+
+/// Whether a model satisfies an agent's catalog-selection requirement. This
+/// is enforced by the Rust launch path as well as the frontend, so a stale
+/// saved preference cannot accidentally run a bare `ollama` process.
+pub fn model_selection_is_valid(a: &AgentDef, model_id: &str, catalog: Option<&[String]>) -> bool {
+    !a.models_from
+        .as_ref()
+        .is_some_and(|from| from.require_selection)
+        || catalog.is_some_and(|models| models.iter().any(|model| model == model_id))
 }
 
 /// Build the launch argument list for a given effort/model/mode selection.
@@ -310,8 +529,10 @@ pub fn build_argv(
         out.extend(m.args.clone());
     } else if let (Some(from), Some(cat)) = (&a.models_from, catalog) {
         if cat.iter().any(|c| c == model_id) {
-            out.push(from.flag.clone());
-            out.push(model_id.to_string());
+            if let Some(launch) = from.launch_args() {
+                out.extend(launch.iter().cloned());
+                out.push(model_id.to_string());
+            }
         }
     }
     if let Some(m) = a.modes.iter().find(|v| v.id == mode_id) {
@@ -366,6 +587,7 @@ mod tests {
             args: vec![],
             modes: vec![],
             models: vec![],
+            image_transport: None,
             efforts: vec![],
             mcp: mcp.map(Into::into),
             tier: None,
@@ -390,12 +612,86 @@ mod tests {
     #[test]
     fn catalog_models_are_only_used_when_the_backend_fetched_them() {
         let mut a = def("opencode", Some("none"));
-        a.models_from = Some(ModelsFrom { args: vec!["models".into()], flag: "-m".into() });
+        a.models_from = Some(ModelsFrom {
+            args: vec!["models".into()],
+            flag: Some("-m".into()),
+            launch: vec![],
+            catalog: None,
+            require_selection: false,
+        });
         let cat = vec!["opencode/free-model".to_string()];
         assert_eq!(build_argv(&a, "x", "opencode/free-model", "default", Some(&cat)), vec!["-m", "opencode/free-model"]);
         // Not in the fetched catalog: ignored rather than passed through.
         assert!(build_argv(&a, "x", "--dangerous", "default", Some(&cat)).is_empty());
         assert!(build_argv(&a, "x", "opencode/free-model", "default", None).is_empty());
+    }
+
+    #[test]
+    fn ollama_catalog_keeps_only_verified_table_rows() {
+        let from = ModelsFrom {
+            args: vec!["list".into()],
+            flag: None,
+            launch: vec!["run".into()],
+            catalog: Some("ollama".into()),
+            require_selection: true,
+        };
+        let out = "NAME ID SIZE MODIFIED\nllama3.2:latest a80c4f17acd5 2.0 GB 2 days ago\nregistry.ollama.ai/acme/vision:latest deadbeef 4.1 GB yesterday\nError: could not connect to Ollama\n--not-a-model deadbeef 1 GB now\nhttp://not-a-model deadbeef 1 GB now\n";
+        assert_eq!(
+            parse_catalog_for(&from, out),
+            vec![
+                "llama3.2:latest".to_string(),
+                "registry.ollama.ai/acme/vision:latest".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn ollama_cloud_catalog_derives_exact_signed_in_cli_aliases() {
+        let out = r#"{
+          "models": [
+            {"name":"gemma4:31b", "size":310},
+            {"name":"gpt-oss:120b", "size":1200},
+            {"name":"kimi-k2.7-code"},
+            {"name":"gemma4:31b-cloud"},
+            {"name":"https://not-a-model"},
+            {"name":"--not-a-model"}
+          ]
+        }"#;
+        assert_eq!(
+            parse_ollama_cloud_catalog(out).unwrap(),
+            vec![
+                "gpt-oss:120b-cloud".to_string(),
+                "gemma4:31b-cloud".to_string(),
+                "kimi-k2.7-code:cloud".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn ollama_cloud_catalog_rejects_invalid_or_oversized_data() {
+        assert!(parse_ollama_cloud_catalog("not json").is_err());
+        assert!(parse_ollama_cloud_catalog(&"x".repeat(MAX_OLLAMA_CLOUD_CATALOG_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn ollama_dynamic_model_uses_run_subcommand() {
+        let mut a = def("ollama", Some("none"));
+        a.models_from = Some(ModelsFrom {
+            args: vec!["list".into()],
+            flag: None,
+            launch: vec!["run".into()],
+            catalog: Some("ollama".into()),
+            require_selection: true,
+        });
+        let cat = vec!["llama3.2:latest".to_string()];
+        assert_eq!(
+            build_argv(&a, "default", "llama3.2:latest", "default", Some(&cat)),
+            vec!["run", "llama3.2:latest"]
+        );
+        assert!(build_argv(&a, "default", "--bad", "default", Some(&cat)).is_empty());
+        assert!(model_selection_is_valid(&a, "llama3.2:latest", Some(&cat)));
+        assert!(!model_selection_is_valid(&a, "default", Some(&cat)));
+        assert!(!model_selection_is_valid(&a, "llama3.2:latest", None));
     }
 
     #[test]
@@ -418,9 +714,39 @@ mod tests {
         merge_builtin(&mut user);
         assert_eq!(user.iter().filter(|a| a.id == "claude-code").count(), 1);
         assert_eq!(user[0].command, "my-claude", "user's edit wins");
-        for id in ["opencode", "gemini", "freebuff"] {
+        for id in ["opencode", "antigravity", "gemini", "ollama", "ollama-cloud", "freebuff"] {
             assert!(user.iter().any(|a| a.id == id), "missing built-in {id}");
         }
+    }
+
+    #[test]
+    fn google_and_local_builtin_routes_have_safe_declared_launches() {
+        let mut user = vec![];
+        merge_builtin(&mut user);
+
+        let antigravity = user.iter().find(|a| a.id == "antigravity").unwrap();
+        assert_eq!(antigravity.command, "agy");
+        assert!(antigravity.args.is_empty());
+        assert_eq!(antigravity.tier.as_deref(), Some("free"));
+        assert_eq!(antigravity.image_transport.as_deref(), Some("clipboard_only"));
+
+        let gemini = user.iter().find(|a| a.id == "gemini").unwrap();
+        assert_eq!(gemini.tier, None);
+        assert_eq!(gemini.image_transport.as_deref(), Some("interactive_at_reference"));
+
+        let ollama = user.iter().find(|a| a.id == "ollama").unwrap();
+        let from = ollama.models_from.as_ref().unwrap();
+        assert_eq!(from.args, vec!["list"]);
+        assert_eq!(from.launch, vec!["run"]);
+        assert_eq!(from.catalog.as_deref(), Some("ollama"));
+        assert!(from.require_selection);
+        assert_eq!(ollama.image_transport.as_deref(), Some("initial_positional"));
+
+        let cloud = user.iter().find(|a| a.id == "ollama-cloud").unwrap();
+        let cloud_from = cloud.models_from.as_ref().unwrap();
+        assert!(cloud_from.is_ollama_cloud());
+        assert!(cloud_from.require_selection);
+        assert_eq!(cloud_from.launch, vec!["run"]);
     }
 
     #[test]
@@ -451,6 +777,38 @@ mod tests {
         merge_builtin(&mut user);
         assert!(user[0].efforts.iter().any(|e| e.id == "high"));
         assert_eq!(user[0].command, "claude");
+    }
+
+    #[test]
+    fn old_stock_gemini_free_marker_migrates_to_antigravity_route() {
+        let mut user = vec![def("gemini", Some("none"))];
+        user[0].id = "gemini".into();
+        user[0].tier = Some("free".into());
+        merge_builtin(&mut user);
+        let gemini = user.iter().find(|a| a.id == "gemini").unwrap();
+        assert_eq!(gemini.tier, None);
+        assert_eq!(gemini.image_transport.as_deref(), Some("interactive_at_reference"));
+        assert!(user.iter().any(|a| a.id == "antigravity" && a.tier.as_deref() == Some("free")));
+    }
+
+    #[test]
+    fn custom_gemini_command_keeps_its_user_chosen_tier() {
+        let mut user = vec![def("company-gemini", Some("none"))];
+        user[0].id = "gemini".into();
+        user[0].tier = Some("free".into());
+        merge_builtin(&mut user);
+        assert_eq!(user[0].tier.as_deref(), Some("free"));
+    }
+
+    #[test]
+    fn image_transport_is_a_safelisted_runtime_capability() {
+        let mut user = vec![def("claude", None)];
+        user[0].id = "claude-code".into();
+        merge_builtin(&mut user);
+        assert_eq!(describe(&user)[0].image_transport, "clipboard_only");
+
+        user[0].image_transport = Some("not-a-real-transport".into());
+        assert_eq!(describe(&user)[0].image_transport, "none");
     }
 
     #[cfg(windows)]

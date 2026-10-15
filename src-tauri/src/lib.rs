@@ -13,6 +13,7 @@ mod mcp_server;
 mod open_in;
 mod pc_control;
 mod pty_mgr;
+mod system_profile;
 
 use agents::{AgentDef, AgentOut};
 use pty_mgr::{SessionStore, SpawnArgs};
@@ -147,12 +148,19 @@ fn start_session(
         let resolved = agents::resolve_command(&a.command)
             .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
         let catalogs = state.catalogs.lock().unwrap();
+        let catalog = catalogs.get(&a.id).map(Vec::as_slice);
+        if !agents::model_selection_is_valid(a, &model_id, catalog) {
+            return Err(format!(
+                "Choose a live model from {}'s Model menu before starting this session.",
+                a.label
+            ));
+        }
         let mut argv = agents::build_argv(
             a,
             &mode_id,
             &model_id,
             &effort_id,
-            catalogs.get(&a.id).map(Vec::as_slice),
+            catalog,
         );
         drop(catalogs);
         let mut shown = argv.clone();
@@ -270,8 +278,9 @@ fn git_diff(
     git_api::git_diff(&path, &file, untracked.unwrap_or(false)).map_err(|e| e.to_string())
 }
 
-/// Run an agent's own model-listing command with a hidden console and a hard
-/// timeout. Used only for agents that declare `modelsFrom` in agents.json.
+/// Run a fixed model-catalog command with a hidden console and a hard timeout.
+/// The command and every argument come from trusted built-in routing or the
+/// user-owned agents.json, never from the webview.
 fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
@@ -282,7 +291,7 @@ fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
         .env("NO_COLOR", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -292,33 +301,97 @@ fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
 
     let mut child = cmd.spawn().map_err(|e| format!("could not run the model list: {e}"))?;
     let mut stdout = child.stdout.take().ok_or("no output pipe")?;
+    let mut stderr = child.stderr.take().ok_or("no error pipe")?;
     // Read on a thread so a chatty child can't block on a full pipe while we wait.
     let reader = std::thread::spawn(move || {
         let mut s = String::new();
         let _ = std::io::Read::read_to_string(&mut stdout, &mut s);
         s
     });
+    let error_reader = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = std::io::Read::read_to_string(&mut stderr, &mut s);
+        s
+    });
     let started = Instant::now();
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) if started.elapsed() > Duration::from_secs(30) => {
                 let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                let _ = error_reader.join();
                 return Err("listing models took longer than 30 s".into());
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(50)),
             Err(e) => return Err(e.to_string()),
         }
+    };
+    let output = reader.join().map_err(|_| "model list reader failed".to_string())?;
+    let error = error_reader
+        .join()
+        .map_err(|_| "model list error reader failed".to_string())?;
+    if !status.success() {
+        let diagnostic: String = error
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("catalog command failed")
+            .chars()
+            .take(300)
+            .collect();
+        return Err(format!("could not list models (exit {:?}): {diagnostic}", status.code()));
     }
-    reader.join().map_err(|_| "model list reader failed".to_string())
+    Ok(output)
 }
 
-/// Fetch the models an agent can use right now (for OpenCode: every key-free
-/// model plus any provider the user connected). Triggered by the user opening
-/// the Model menu or pressing refresh, never per turn.
+const OLLAMA_CLOUD_TAGS_URL: &str = "https://ollama.com/api/tags";
+
+/// This fixed, read-only request retrieves the public Ollama cloud catalog; it
+/// never sees an Ollama credential and it deliberately disables a user's curl
+/// config.
+fn ollama_cloud_catalog_command() -> Result<(String, Vec<String>), String> {
+    // Never resolve `curl` through PATH: opening the Model menu is an
+    // automatic, fixed network request, and a user-writable PATH directory
+    // must not be able to substitute the executable. Windows ships curl in
+    // its system directory; there is deliberately no PATH fallback here.
+    #[cfg(windows)]
+    let curl = {
+        let system_root = std::env::var_os("SystemRoot")
+            .ok_or_else(|| "Windows SystemRoot is unavailable; cannot retrieve Ollama's cloud catalog.".to_string())?;
+        let path = std::path::PathBuf::from(system_root)
+            .join("System32")
+            .join("curl.exe");
+        if !path.is_file() {
+            return Err("Windows system curl.exe is unavailable; cannot retrieve Ollama's cloud catalog.".into());
+        }
+        path.to_string_lossy().into_owned()
+    };
+    #[cfg(not(windows))]
+    let curl = agents::resolve_command("curl")
+        .ok_or_else(|| "curl is required to retrieve Ollama's public cloud model catalog.".to_string())?;
+    Ok((
+        curl,
+        vec![
+            "--disable".into(),
+            "--fail".into(),
+            "--silent".into(),
+            "--show-error".into(),
+            "--max-time".into(),
+            "20".into(),
+            "--max-filesize".into(),
+            (2 * 1024 * 1024).to_string(),
+            OLLAMA_CLOUD_TAGS_URL.into(),
+        ],
+    ))
+}
+
+/// Fetch the models an agent can use right now. OpenCode queries its own live
+/// list; Ollama Cloud queries its documented public catalog. Triggered only by
+/// opening the Model menu or pressing refresh, never per turn.
 #[tauri::command]
 async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let (resolved, args) = {
+    let (resolved, args, from) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
             .iter()
@@ -327,15 +400,25 @@ async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Ve
         let from = a
             .models_from
             .as_ref()
-            .ok_or_else(|| format!("{} doesn't publish a model list.", a.label))?;
-        let resolved = agents::resolve_command(&a.command)
-            .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
-        (resolved, from.args.clone())
+            .ok_or_else(|| format!("{} doesn't publish a model list.", a.label))?
+            .clone();
+        let (resolved, args) = if from.is_ollama_cloud() {
+            ollama_cloud_catalog_command()?
+        } else {
+            let resolved = agents::resolve_command(&a.command)
+                .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
+            (resolved, from.args.clone())
+        };
+        (resolved, args, from)
     };
     let stdout = tauri::async_runtime::spawn_blocking(move || run_catalog(&resolved, &args))
         .await
         .map_err(|e| e.to_string())??;
-    let list = agents::parse_catalog(&stdout);
+    let list = if from.is_ollama_cloud() {
+        agents::parse_ollama_cloud_catalog(&stdout)?
+    } else {
+        agents::parse_catalog_for(&from, &stdout)
+    };
     state.catalogs.lock().unwrap().insert(agent_id, list.clone());
     Ok(list)
 }
@@ -344,6 +427,13 @@ async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Ve
 fn detect_backends(state: State<AppState>) -> backends::BackendReport {
     let defs = state.agents.lock().unwrap().clone();
     backends::detect(&defs)
+}
+
+/// Return coarse, read-only local hardware facts for recommendation UI. This
+/// never starts Ollama, scans files, or calls an external executable.
+#[tauri::command]
+fn detect_system_profile() -> system_profile::SystemProfile {
+    system_profile::detect()
 }
 
 /// Scan local transcript stores off the command thread, then hold recognized
@@ -503,6 +593,7 @@ pub fn run() {
             git_status,
             git_diff,
             detect_backends,
+            detect_system_profile,
             agent_models,
             list_imports,
             read_imported_chat,
@@ -529,6 +620,19 @@ mod tests {
         let out = run_catalog(&resolved, &["models".to_string()]).unwrap();
         let list = agents::parse_catalog(&out);
         eprintln!("{} models via {resolved}: {:?}", list.len(), list);
+        assert!(!list.is_empty());
+    }
+
+    /// Opt-in: reads Ollama's public cloud catalog. It does not install
+    /// Ollama, sign in, call a model, or use a credential.
+    /// `scripts\test-rust.ps1 --ignored --nocapture real_ollama_cloud`
+    #[test]
+    #[ignore = "reads Ollama's public cloud model catalog"]
+    fn real_ollama_cloud_catalog_lists_models() {
+        let (curl, args) = ollama_cloud_catalog_command().expect("system curl");
+        let out = run_catalog(&curl, &args).expect("public catalog request");
+        let list = agents::parse_ollama_cloud_catalog(&out).expect("valid Ollama catalog");
+        eprintln!("{} Ollama Cloud model aliases: {:?}", list.len(), list);
         assert!(!list.is_empty());
     }
 }

@@ -31,7 +31,7 @@ pub struct BackendReport {
     pub anthropic_key: bool,
     /// OPENAI_API_KEY is set in the environment.
     pub openai_key: bool,
-    /// `ollama` resolves on PATH (local models for OpenCode).
+    /// `ollama` resolves on PATH (local models for Ollama or OpenCode).
     pub ollama: bool,
     /// Ids of free-tier agents whose command is installed.
     pub free_ready: Vec<String>,
@@ -180,6 +180,14 @@ mod tests {
         // e.g. `claude` installed but no paid sign-in: must not pick Claude Code.
         let (id, why) = recommend(&agents(), Ready { claude: false, openai: false }, &free());
         assert_eq!(id.as_deref(), Some("opencode"));
+        assert!(why.contains("free"));
+    }
+
+    #[test]
+    fn antigravity_can_be_the_free_personal_google_route() {
+        let free = vec!["antigravity".into()];
+        let (id, why) = recommend(&agents(), Ready { claude: false, openai: false }, &free);
+        assert_eq!(id.as_deref(), Some("antigravity"));
         assert!(why.contains("free"));
     }
 

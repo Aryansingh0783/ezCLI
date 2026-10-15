@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A desktop-style window for Claude, Codex, OpenCode, Gemini CLI and Freebuff, with a UI modeled on Freebuff.
+  A desktop-style window for Claude, Codex, OpenCode, Antigravity, Gemini CLI, Ollama and Freebuff, with a UI modeled on Freebuff.
 </p>
 
 ---
@@ -39,7 +39,10 @@ provider is free.
 | Backend | Free route | PC control | Install / setup |
 | --- | --- | --- | --- |
 | OpenCode | Yes. It includes key-free models and can also use connected providers or local Ollama. Its Model menu is refreshed from `opencode models`. | No | `npm install -g opencode-ai` |
-| Gemini CLI | Yes, with a personal Google-account sign-in. | No | `npm install -g @google/gemini-cli` |
+| Antigravity CLI | Yes, with a personal Google-account sign-in. It is the supported personal-Google route. | No | `irm https://antigravity.google/cli/install.ps1 \| iex` |
+| Gemini CLI | Not through personal Google login. Use a Gemini API key, Vertex AI, or an enterprise configuration. | No | `npm install -g @google/gemini-cli` |
+| Ollama Local | Yes, after you choose a model that is already downloaded locally. The app detects coarse PC capacity to explain this route, but never pulls a model itself. | No | `irm https://ollama.com/install.ps1 \| iex` |
+| Ollama Cloud | Your signed-in Ollama account and its usage/plan limits apply. The Model pill reads Ollama's live public cloud catalog; it launches the matching Cloud CLI alias without a model download. | No | Install Ollama, then run `ollama signin` yourself |
 | Freebuff | Yes, ad-supported. It chooses models server-side and completes its own setup on first use. | No | `npm install -g freebuff` |
 | Claude Code | No Claude Free-plan route. Use a paid Claude plan or API access. | Yes | `npm install -g @anthropic-ai/claude-code` |
 | Codex | Account/API access dependent. Some ChatGPT Free accounts may have limited access, but ezCLI does not assume it as its fallback. | Yes | `npm install -g @openai/codex` |
@@ -50,6 +53,21 @@ PC control is currently screenshot-only. It is attached at launch and can be
 used only by **Claude Code** and **Codex**; switching it on or off restarts the
 session.
 
+### Ollama: local capacity versus cloud capacity
+
+ezCLI reads only coarse local facts—logical CPU cores, total RAM, and the
+largest dedicated GPU VRAM—to explain whether a downloaded local model is
+likely to be practical. Those facts **never** filter or cap the Cloud model
+menu: cloud inference runs remotely. Entries with a published nonzero size
+appear before entries that do not report a comparable size; this is only a
+browsing hint, not a claimed quality or coding ranking. Account access,
+quotas, and model availability are ultimately enforced by Ollama when the CLI
+starts.
+
+ezCLI does not install Ollama, run `ollama signin`, download a model, or handle
+an Ollama API key. It uses the signed-in local CLI only after you choose a live
+catalog entry.
+
 ## Current features
 
 - **Sessions survive restarts.** Every open tab comes back as a "parked" tab on next
@@ -58,6 +76,12 @@ session.
   the launcher make the configuration explicit before a CLI starts. Claude and
   Codex expose their supported effort levels; agents that do not expose one
   retain their own default. The live session head gets its own Model chip too.
+- **Truthful image references.** The composer currently exposes a local
+  `@path` image-reference picker only for OpenCode and Gemini. It does not
+  upload image bytes, simulate clipboard pastes, or pretend every model has
+  vision. Claude/Antigravity clipboard flows and Codex/Ollama launch-time
+  image syntax are deliberately hidden until ezCLI implements and verifies
+  those routes end to end.
 - **Usage view.** Honest local counters, plus one-click shortcuts to the Anthropic Console
   and OpenAI Dashboard where the real billing lives.
 - **Local chat import.** A read-only picker for recognized Claude Code transcripts. It never
@@ -94,7 +118,7 @@ cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_1.0.
 | Area | Behaviour |
 | --- | --- |
 | Session tabs | One pseudo-terminal per tab. A colored dot shows running, exited, or failed. |
-| Agent switcher | Claude Code, Claude, Codex, ChatGPT, OpenCode, Gemini CLI and Freebuff. A CLI that is not on PATH shows as disabled instead of failing on launch. |
+| Agent switcher | Claude Code, Claude, Codex, ChatGPT, OpenCode, Antigravity CLI, Gemini CLI, Ollama Local, Ollama Cloud and Freebuff. A CLI that is not on PATH shows as disabled instead of failing on launch. |
 | Model, effort and mode chips | Map to real CLI flags from `agents.json`. You set them before launch; a running session locks them until you restart. |
 | Terminal | xterm.js with the Freebuff dark palette and JetBrains Mono. Full color, cursor, and live resize. |
 | Files pane | Browse the session folder and preview any text file, up to 256 KB. |
@@ -150,7 +174,9 @@ Detected on a typical setup:
 - Codex, from `codex --no-daemon`
 - ChatGPT, disabled until a `chatgpt` binary is on PATH
 - OpenCode, from `opencode` (live model list via `opencode models`)
-- Gemini CLI, from `gemini`
+- Antigravity CLI, from `agy` (personal Google route)
+- Gemini CLI, from `gemini` (API-key, Vertex AI or enterprise route)
+- Ollama Local / Cloud, from `ollama` (Cloud catalog is read from Ollama's public endpoint; `ollama signin` remains user-controlled)
 - Freebuff, from `freebuff`
 
 ### Why Codex passes `--no-daemon`
