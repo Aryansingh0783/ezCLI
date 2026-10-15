@@ -142,57 +142,43 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**COMPLETE — PR 3: local chat import** (Codex, 2026-10-15)
+**IN PROGRESS — PR 4: local PC-control permission foundation** (Codex, 2026-10-15)
 
-Landed in `fa212ab feat: add read-only Claude Code chat import`.
+Prerequisites complete: PR 1 (`c951ecb`), PR 2 (`58ce7b9`), and PR 3
+(`fa212ab feat: add read-only Claude Code chat import`).
 
-Delivered a read-only, local-file transcript foundation. It locates the verified
-Claude Code store, normalizes explicit user/assistant text into a common schema,
-and lets the user explicitly preview an imported conversation without cloud API
-access, credential collection, or hidden context injection.
+Goal: establish explicit, per-session, revocable local-control permission state
+before any action reaches the host. The capability must be visibly disabled by
+default, backend-independent, and never grant itself from a prompt or CLI output.
 
-Files changed:
-- `src-tauri/src/import.rs` (new) — source discovery, bounded local parsing,
-  normalization, in-memory opaque-id cache, and two unit tests.
-- `src-tauri/src/lib.rs` — narrow read-only commands, background discovery,
-  and state wiring.
-- `public/app.js`, `public/index.html`, `public/styles.css` — explicit import
-  entry point, picker, and preview UI. The home hero and Agent/Model/Mode pills
-  remain unchanged.
-- `README.md` — verified Claude Code paths and an updated Tauri-only runtime
-  description (removes the obsolete Node/WebSocket claim).
+Files expected to be touched:
+- `src-tauri/src/pc_control.rs` (new) — permission state and deliberately
+  narrow local-control command surface.
+- `src-tauri/src/lib.rs`, `src-tauri/Cargo.toml`, and `capabilities/` — command
+  wiring and only the minimum required native permission/dependency changes.
+- `public/app.js`, `public/index.html`, `public/styles.css` — visible session
+  permission chip and revoke flow, preserving the home hero/pills.
+- `README.md` — exact permission boundary and supported actions.
 
-Completed:
-1. [x] Audit session persistence, Tauri capability boundaries, and the local
-   Claude Code directory without writing to it. The sampled files were not
-   uniformly clean JSONL, so malformed/unsupported records are skipped.
-2. [x] Define the common schema and bounded parsing: 600 discovered files, 150
-   conversations, 16 MB/file, 4,000 records/file, 400 messages/chat, and
-   32,000 characters/message.
-3. [x] Implement Claude Code discovery/parsing with isolated tests. The only
-   supported paths are `%USERPROFILE%\\.claude\\projects\\**\\*.jsonl` on Windows
-   and `~/.claude/projects/**/*.jsonl` on macOS/Linux.
-4. [x] Add a keyboard-accessible Settings → Import local chats picker and
-   read-only preview. File paths stay in the Rust process; the webview receives
-   only opaque ids after a fresh scan.
-5. [x] Validate the frontend/diff and record the Rust-toolchain limitation.
+Steps:
+1. [ ] Audit the existing session lifecycle and Tauri ACL/capability boundary;
+   identify where permission state can be tied to the app's session id.
+2. [ ] Define minimal, testable grant/revoke semantics and a deny-by-default
+   command guard. Do not install an input/screenshot crate before this boundary
+   is explicit.
+3. [ ] Add a per-session UI chip with an intentional grant confirmation and
+   immediate revoke, with no home-screen redesign.
+4. [ ] Add only the action implementations that can be validated locally, then
+   document exact OS/dependency limitations without faking a control run.
+5. [ ] Validate, commit code, and refresh this handoff checkpoint.
 
-Validation passed: `node --check public/app.js`, `node --test
-test/usage-parser.test.cjs` (7 existing frontend tests), and `git diff --check`.
-The Impeccable detector still reports only its three pre-existing unrelated
-findings. Rust validation is blocked before compiling this code: `cargo check
---locked` reports that the pre-existing `Cargo.lock` needs an update, while
-`rustfmt` is not installed for the active GNU toolchain. No lockfile change,
-build, release, or local transcript write was attempted.
+Known local validation limit: Rust builds currently stop before compilation
+because `Cargo.lock` needs an update under `--locked`, and `rustfmt` is missing
+from the active GNU toolchain. Preserve this limit unless it is safely resolved;
+do not commit unrelated lockfile churn.
 
-Known scope boundary: Claude Desktop, ChatGPT desktop, and Codex remain visibly
-unavailable. Do not add guessed paths or parsers; verify a real local format
-first. Imports are preview-only in this PR—starting a fresh CLI session does
-not continue a chat or inject its text.
-
-Exact next step: start PR 4, local PC-control permission plumbing. Inspect the
-current Tauri capability model and build a per-session, explicitly revocable
-permission state before adding any input/screenshot/shell integration.
+Exact next step: read `pty_mgr.rs`, `lib.rs`, `Cargo.toml`, and the Tauri
+capability manifest to establish the permission boundary and action constraints.
 
 Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
 when PR 1 started; latest tag `v1.1.0`.
