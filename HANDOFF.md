@@ -191,6 +191,21 @@ run on the Claude Free plan (Anthropic server-side gate; pricing page lists it
   these instead of a paywall error. Verify each CLI's real flags/MCP support
   with `--help` before writing its entry.
 - Claude for free users = claude.ai chat via the experimental web backend (PR 5).
+- **"Access to all the free models" (Aryan, 2026-10-15):** serve this through ONE
+  multi-provider open-source agent (OpenCode, npm `opencode-ai`) rather than a
+  CLI per model: OpenRouter's free `:free` models (one free key), Ollama local
+  models, Gemini. Fill the Model pill from live catalogs (OpenRouter public
+  model list filtered to $0 pricing; `ollama list`) instead of a hardcoded list.
+  A catalog fetch is not telemetry, but make it explicit (refresh button), never
+  per-turn.
+- Machine state: gemini / freebuff / opencode / aider / ollama are NOT installed
+  here (only claude + codex). npm versions seen: freebuff 0.2.27,
+  @google/gemini-cli 0.64.0, opencode-ai 1.19.0. Installing them to read real
+  `--help` output needs Aryan's approval (downloads). Ollama is a large separate
+  installer plus multi-GB models: detect it, don't install it.
+
+**PR 4b status:** done and committed (`ffea610` docs) except an end-to-end run of
+a live CLI calling `screenshot`, which spends model tokens; ask Aryan first.
 
 Steps:
 1. [x] capture.rs (`55ac632`). Real capture verified: 1920x1080 -> 1280x720,
