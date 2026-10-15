@@ -159,6 +159,7 @@ const state = {
   seq: 0,
   imports: { catalog: null, selected: null },
   git: {}, // space path -> last git_status result
+  catalogs: {}, // agent id -> live model ids from the agent's own catalog
   explorer: { view: 'list', root: null, expanded: new Set(), cache: new Map(), filter: '', file: null, diff: null }
 };
 
@@ -209,13 +210,43 @@ function recordUsage(s) {
   savePrefs();
 }
 
+/** A catalog id like `opencode/deepseek-v4.1-flash-free`. */
+const isCatalogModel = (id) => typeof id === 'string' && /^[A-Za-z0-9][\w.-]*\/[\w.:/@-]+$/.test(id);
+
+/** Static models from agents.json plus, for agents with a live catalog, every
+ *  model that catalog reported. Catalog entries keep their full id. */
+function allModels(a) {
+  const cat = (state.catalogs[a.id] || []).map((id) => ({ id, label: id.slice(id.indexOf('/') + 1), provider: id.split('/')[0] }));
+  return [...a.models, ...cat];
+}
+const modelLabel = (a, id) => {
+  if (!a) return '';
+  const m = allModels(a).find((x) => x.id === id);
+  if (m) return m.label;
+  // A saved catalog pick whose catalog hasn't loaded yet still shows its name.
+  return isCatalogModel(id) && a.dynamic_models ? id.slice(id.indexOf('/') + 1) : label(a.models, id);
+};
+
 function pick(a) {
   const p = (prefs.picks[a.id] ||= {});
-  if (!a.models.some((m) => m.id === p.model)) p.model = a.models[0] ? a.models[0].id : 'default';
+  const known = allModels(a).some((m) => m.id === p.model) || (a.dynamic_models && isCatalogModel(p.model));
+  if (!known) p.model = a.models[0] ? a.models[0].id : 'default';
   if (!a.modes.some((m) => m.id === p.mode)) p.mode = a.modes[0] ? a.modes[0].id : 'default';
   return p;
 }
 const label = (list, id) => (list.find((x) => x.id === id) || list[0] || { label: 'Default' }).label;
+
+/** Ask an agent for its live model list (e.g. OpenCode's key-free models).
+ *  Runs only when the user opens the Model menu or presses refresh. */
+async function fetchCatalog(a, { quiet = false } = {}) {
+  try {
+    state.catalogs[a.id] = await invoke('agent_models', { agentId: a.id });
+    return state.catalogs[a.id];
+  } catch (err) {
+    if (!quiet) toast(String(err), 'error');
+    return state.catalogs[a.id] || [];
+  }
+}
 
 /* ------------------------------------------------------------------- boot */
 
@@ -422,7 +453,7 @@ function fmtElapsed(ms) {
 
 function tabMeta(s) {
   const a = agent(s.agentId);
-  const model = a ? label(a.models, s.modelId) : '';
+  const model = modelLabel(a, s.modelId);
   let st;
   if (s.status === 'parked') st = 'parked';
   else if (s.status === 'starting') st = 'starting';
@@ -644,6 +675,12 @@ async function createSession(agentId, opts = {}) {
  *  pty id so a late exit event from a previous process can't touch it. */
 async function launch(s) {
   if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
+  // The backend only passes a catalog model if it fetched that catalog itself;
+  // make sure it has, or the session would quietly start on the default model.
+  const la = agent(s.agentId);
+  if (la && la.dynamic_models && isCatalogModel(s.modelId) && !state.catalogs[la.id]) {
+    await fetchCatalog(la, { quiet: true });
+  }
   for (const un of s.unlisten.splice(0)) safe(un);
   // A relaunch creates a fresh underlying CLI session, so observed metrics
   // must not leak from the prior process into this one.
@@ -914,7 +951,7 @@ function renderHome() {
       el.innerHTML = `<span class="pill-cap">${cap}</span><span class="pill-val">${esc(val)}</span>${caret}`;
     };
     fill('homeAgent', 'Agent', a.label);
-    fill('homeModel', 'Model', label(a.models, p.model), a.models.length > 0);
+    fill('homeModel', 'Model', modelLabel(a, p.model), a.models.length > 0 || a.dynamic_models);
     fill('homeMode', 'Mode', label(a.modes, p.mode), a.modes.length > 1);
   }
 
@@ -923,7 +960,7 @@ function renderHome() {
       (x) => `<button class="agent-option ${x.id === prefs.agentId ? 'selected' : ''}" data-agent="${esc(x.id)}"
         role="radio" aria-checked="${x.id === prefs.agentId}" ${x.available ? '' : 'disabled'}
         title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH`)}">
-        ${ICONS[x.icon] || ICONS.term}<span>${esc(x.label)}</span>${x.available ? '' : '<span class="off">not installed</span>'}
+        ${ICONS[x.icon] || ICONS.term}<span>${esc(x.label)}</span>${x.free ? '<span class="free-badge">Free</span>' : ''}${x.available ? '' : '<span class="off">not installed</span>'}
       </button>`
     )
     .join('');
@@ -967,7 +1004,7 @@ function renderHead() {
   // which model is actually driving the running process.
   const modelEl = $('headModel');
   if (modelEl) {
-    const name = a ? label(a.models, s.modelId) : '';
+    const name = modelLabel(a, s.modelId);
     modelEl.hidden = !name;
     modelEl.textContent = name;
   }
@@ -1614,21 +1651,37 @@ function modeMenu(anchor) {
 /** Model picker for the currently selected agent. Lives on its own on the
  *  home screen (next to the agent pill) so changing model takes one click,
  *  not a submenu dive. */
-function modelMenu(anchor, forAgent) {
+async function modelMenu(anchor, forAgent) {
   const a = forAgent || agent(prefs.agentId);
   if (!a) return;
+  if (a.dynamic_models && !state.catalogs[a.id] && a.available) await fetchCatalog(a);
   const p = pick(a);
+  const choose = (id) => {
+    p.model = id;
+    savePrefs();
+    renderHome();
+  };
+  const items = allModels(a).map((m) => ({
+    label: m.label,
+    hint: m.provider || '',
+    on: m.id === p.model,
+    run: () => choose(m.id)
+  }));
+  if (a.dynamic_models) {
+    items.push({ sep: true });
+    items.push({
+      label: 'Refresh model list',
+      hint: state.catalogs[a.id] ? `${state.catalogs[a.id].length} available` : '',
+      run: async () => {
+        await fetchCatalog(a);
+        modelMenu(anchor, a);
+      }
+    });
+  }
   openMenu(anchor, {
     title: `${a.label} · Model`,
-    items: a.models.map((m) => ({
-      label: m.label,
-      on: m.id === p.model,
-      run: () => {
-        p.model = m.id;
-        savePrefs();
-        renderHome();
-      }
-    }))
+    search: items.length > 8 ? 'Search models' : '',
+    items
   });
 }
 
@@ -1829,29 +1882,51 @@ function renderImportPreview() {
 function backendFacts(report) {
   if (!report) return ['Could not check your installed backends. You can choose one from the home screen.'];
   const facts = [];
-  if (report.claudeCli) facts.push('Claude Code found on PATH');
-  if (report.codexCli) facts.push('Codex found on PATH');
+  if (report.claudeCli) facts.push(report.claudeSignin || report.anthropicKey ? 'Claude Code found and signed in' : 'Claude Code found, but no sign-in. It needs a Claude Pro or Max plan, or an API key.');
+  if (report.codexCli) facts.push(report.codexSignin || report.openaiKey ? 'Codex found and signed in' : 'Codex found, not signed in yet');
   if (report.chatgptCli) facts.push('ChatGPT CLI found on PATH');
-  if (report.claudeSignin) facts.push('Claude sign-in detected');
-  if (report.anthropicKey) facts.push('Anthropic API key configured');
-  if (report.openaiKey) facts.push('OpenAI API key configured');
+  for (const id of report.freeReady || []) {
+    const a = agent(id);
+    if (a) facts.push(`${a.label} found (free)`);
+  }
+  if (report.ollama) facts.push('Ollama found, so OpenCode can also use local models');
+  if (report.anthropicKey && !report.claudeCli) facts.push('Anthropic API key configured');
+  if (report.openaiKey && !report.codexCli) facts.push('OpenAI API key configured');
   return facts.length ? facts : ['No supported CLI or configured sign-in was detected yet.'];
+}
+
+/** Free agents the user doesn't have yet, with the exact install command. */
+function renderFreeInstalls(report) {
+  const box = $('freeInstalls');
+  if (!box) return;
+  const missing = ((report && report.freeMissing) || []).map(agent).filter((a) => a && a.install);
+  box.hidden = !missing.length;
+  box.innerHTML = missing.length
+    ? `<p class="note">Free agents you can add. Install one, then reopen ezCLI:</p>${missing
+        .map(
+          (a) => `<div class="install-row"><span class="install-name">${esc(a.label)}</span>
+          <code>${esc(a.install)}</code>
+          <button class="btn quiet" data-copy-install="${esc(a.install)}">Copy</button></div>`
+        )
+        .join('')}`
+    : '';
 }
 
 function renderOnboarding() {
   const report = state.backends;
   const recommended = report && agent(report.recommended);
   $('onboardingSummary').textContent = recommended && recommended.available
-    ? `${recommended.label} is the recommended starting backend for this computer.`
-    : 'Choose a local CLI when you are ready. You can change it for each session.';
+    ? `${recommended.label} is the recommended start. ${report.reason || ''}`.trim()
+    : (report && report.reason) || 'Choose a local CLI when you are ready. You can change it for each session.';
   $('backendFacts').innerHTML = backendFacts(report).map((fact) => `<li>${esc(fact)}</li>`).join('');
+  renderFreeInstalls(report);
   $('backendChoices').innerHTML = state.agents
     .map((a) => {
       const selected = a.id === prefs.agentId;
       const recommendedClass = recommended && a.id === recommended.id ? ' recommended' : '';
       return `<button class="backend-choice${selected ? ' selected' : ''}${recommendedClass}" data-onboarding-agent="${esc(a.id)}"
         role="radio" aria-checked="${selected}" ${a.available ? '' : 'disabled'}>
-        <span class="backend-choice-main">${ICONS[a.icon] || ICONS.term}<span>${esc(a.label)}</span></span>
+        <span class="backend-choice-main">${ICONS[a.icon] || ICONS.term}<span>${esc(a.label)}</span>${a.free ? '<span class="free-badge">Free</span>' : ''}</span>
         <span class="backend-choice-status">${a.available ? (recommended && a.id === recommended.id ? 'Recommended' : 'Installed') : 'Not installed'}</span>
       </button>`;
     })
@@ -2161,6 +2236,10 @@ function wire() {
     }
   });
   $('onboardingSkip').addEventListener('click', finishOnboarding);
+  $('freeInstalls').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-copy-install]');
+    if (b) copy(b.dataset.copyInstall);
+  });
   $('onboardingContinue').addEventListener('click', finishOnboarding);
   $('backendChoices').addEventListener('click', (e) => {
     const choice = e.target.closest('[data-onboarding-agent]');
@@ -2249,15 +2328,20 @@ function wire() {
     const s = active();
     if (s) launch(s);
   });
-  $('headModel').addEventListener('click', (e) => {
+  $('headModel').addEventListener('click', async (e) => {
+    const anchor = e.currentTarget;
     const s = active();
     if (!s) return;
     const a = agent(s.agentId);
     if (!a) return;
-    openMenu(e.currentTarget, {
+    if (a.dynamic_models && !state.catalogs[a.id]) await fetchCatalog(a);
+    const models = allModels(a);
+    openMenu(anchor, {
       title: `${a.label} · Model`,
-      items: a.models.map((m) => ({
+      search: models.length > 8 ? 'Search models' : '',
+      items: models.map((m) => ({
         label: m.label,
+        hint: m.provider || '',
         on: m.id === s.modelId,
         run: () => {
           if (m.id === s.modelId) return;

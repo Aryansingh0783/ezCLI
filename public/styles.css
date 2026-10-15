@@ -1642,6 +1642,51 @@ body.resizing-pane .xterm {
 .backend-choice.recommended .backend-choice-status {
   color: var(--brand);
 }
+
+/* "Free" marks agents that work without any paid plan. */
+.free-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  border-radius: 999px;
+  color: var(--brand);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.free-installs {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.free-installs .note {
+  margin: 0 0 8px;
+}
+.install-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.install-name {
+  flex: none;
+  width: 92px;
+  font-size: 12.5px;
+}
+.install-row code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .onboarding-note {
   margin: 14px 0 0;
   line-height: 1.45;
