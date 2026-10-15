@@ -142,36 +142,34 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**COMPLETE — PR 1: backend detection + first-run wizard** (Codex, 2026-10-15)
+**IN PROGRESS — PR 2: live CLI usage strip** (Codex, 2026-10-15)
 
-Commit: `c951ecb feat: detect local AI backends` on `main`.
+Prerequisite complete: PR 1 landed in `c951ecb feat: detect local AI backends`.
 
-Delivered:
-- `src-tauri/src/backends.rs` probes PATH for Claude Code, Codex, and ChatGPT;
-  checks only the *presence* of Claude auth metadata and Anthropic/OpenAI env
-  keys; it never reads or returns credential values. It recommends a configured
-  Claude or OpenAI agent and has focused recommendation tests.
-- `detect_backends` is registered in `lib.rs` and returns its camel-cased report
-  to the frontend.
-- First run opens a **modeless** (non-blocking) dialog after the app is usable.
-  It shows detection facts, recommends an installed local CLI, persists either
-  selection or skip in `prefs.onboarded`, and supports keyboard radio selection.
-- A session-header Backend chip now switches an individual session. Switching a
-  live session asks for confirmation, then stops and relaunches it with that
-  agent's saved model/mode defaults.
+Goal: parse usage/cost summaries that the active CLI already writes to its PTY
+stream and surface only observed values in a persistent status strip. This adds
+**zero model tokens**, never invents a cost, and must remain useful when a CLI
+does not expose usage telemetry.
 
-Validation:
-- `node --check public/app.js` and `git diff --check` passed before commit.
-- Impeccable detector no longer reports onboarding issues. Its remaining three
-  findings are existing, untouched explorer/settings/sidebar rules.
-- Rust local verification remains unavailable on this PC: `cargo fmt` has no
-  installed `rustfmt`; `cargo check` is blocked by missing GNU `dlltool.exe`
-  after dependency compilation. `Cargo.lock` churn from that check was removed.
-  CI on `windows-latest` remains the build authority.
+Files being touched:
+- `public/app.js` — per-session usage state, stream parser, turn/session deltas,
+  and status-strip rendering.
+- `public/index.html` — compact persistent usage markup in the existing footer.
+- `public/styles.css` — responsive Freebuff-aligned strip styles and accessible
+  visual states.
 
-**Exact next step:** begin PR 2 (live CLI usage strip) by updating this section
-to `IN PROGRESS`, listing its touched files, and committing HANDOFF.md before
-editing code.
+Steps:
+1. [x] Reconcile the refreshed user brief and screenshot with the approved
+   Tauri roadmap; preserve the home hero and Agent/Model/Mode pills.
+2. [ ] Define conservative parsers and test vectors for CLI-emitted summaries.
+3. [ ] Add per-session observed-usage state and connect it to `pty-data`.
+4. [ ] Render input/output/cached, per-turn delta, session total, and observed
+   cost in the persistent footer without crowding command/cwd data.
+5. [ ] Parse-check, inspect the UI, commit code, and refresh §5/§6.
+
+Known local validation limit: Rust builds remain blocked by the missing GNU
+`dlltool.exe`; this PR only changes the static frontend, so `node --check`,
+diff hygiene, and a bounded visual/static pass are the local checks.
 
 Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
 when PR 1 started; latest tag `v1.1.0`.
