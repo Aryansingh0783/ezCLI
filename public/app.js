@@ -1375,7 +1375,7 @@ function renderContext() {
   const s = active();
   const box = $('composerContext');
   const files = s && Array.isArray(s.context) ? s.context : [];
-  const images = s && Array.isArray(s.imageRefs) ? s.imageRefs : [];
+  const images = attachmentsOf(s);
   renderImageAttachControl(s);
   if (!s || (!files.length && !images.length)) {
     box.hidden = true;
@@ -1389,13 +1389,7 @@ function renderContext() {
       <button data-ctx="${i}" aria-label="Remove ${esc(p)}">${ICONS.close}</button></span>`
     )
     .join('');
-  const imagePills = images
-    .map(
-      (p, i) => `<span class="context-pill image-context" title="Image reference only — ezCLI sends this local path, not image data: ${esc(p)}"><span class="context-kind">Image ref</span><span>@${esc(p)}</span>
-      <button data-image-ref="${i}" aria-label="Remove image reference ${esc(p)}">${ICONS.close}</button></span>`
-    )
-    .join('');
-  box.innerHTML = filePills + imagePills;
+  box.innerHTML = filePills + attachmentPills(s);
   box.querySelectorAll('[data-ctx]').forEach((b) =>
     b.addEventListener('click', () => {
       s.context.splice(Number(b.dataset.ctx), 1);
@@ -1410,22 +1404,253 @@ function renderContext() {
   );
 }
 
+/* ---------------------------------------------------------- attachments
+ *
+ * ezCLI never uploads media. It hands each CLI a local file the way that CLI
+ * really reads pictures, chosen by the agent's declared image transport:
+ *   interactive_at_reference  an @path mention (OpenCode, Gemini). Both read
+ *                             inside the project only, so files from elsewhere
+ *                             are copied into a git-ignored .ezcli-attachments
+ *                             folder in the session folder first.
+ *   clipboard_only,           Claude Code and Codex attach an image path that
+ *   initial_flag              arrives as a bracketed paste. Without bracketed
+ *                             paste the quoted path goes in the prompt instead.
+ *   initial_positional        `ollama run` loads image paths in the prompt
+ *                             (multimodal models only).
+ * Only Gemini reads video. For every other agent a video becomes a few still
+ * frames sampled with the user's own ffmpeg. */
+
+const IMAGE_FILE_EXTENSIONS = ['avif', 'bmp', 'gif', 'heic', 'heif', 'jpeg', 'jpg', 'png', 'tif', 'tiff', 'webp'];
+const VIDEO_FILE_EXTENSIONS = ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'wmv', 'mpeg', 'mpg', '3gp'];
+const extRe = (list) => new RegExp(`\\.(${list.join('|')})$`, 'i');
+const isImageFile = (path) => extRe(IMAGE_FILE_EXTENSIONS).test(String(path));
+const isVideoFile = (path) => extRe(VIDEO_FILE_EXTENSIONS).test(String(path));
+const NATIVE_VIDEO_TRANSPORT_AGENTS = new Set(['gemini']);
+const VIDEO_FRAME_COUNT = 6;
+const FFMPEG_INSTALL = 'winget install Gyan.FFmpeg';
+
+function attachTransport(a) {
+  const t = imageTransport(a);
+  return t === 'none' ? null : t;
+}
+
+/** Older code stored bare path strings; normalise to attachment objects. */
+function attachmentsOf(s) {
+  if (!s) return [];
+  if (!Array.isArray(s.imageRefs)) s.imageRefs = [];
+  s.imageRefs = s.imageRefs.map((x) => (typeof x === 'string' ? { kind: 'image', path: x } : x)).filter((x) => x && x.path);
+  return s.imageRefs;
+}
+
+const isInside = (p, base) => {
+  const norm = (x) => String(x).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  return Boolean(base) && norm(p).startsWith(norm(base) + '/');
+};
+
 function renderImageAttachControl(s = active()) {
   const button = $('btnAttachImage');
   if (!button) return;
   const a = s && agent(s.agentId);
-  const transport = imageTransport(a);
-  button.dataset.imageTransport = transport;
-  // The terminal webview can currently implement only a local `@path`
-  // reference. Do not surface a control for a CLI's theoretical clipboard or
-  // launch-time image syntax until that syntax is actually wired end to end.
-  const usable = Boolean(s && a && transport === 'interactive_at_reference');
+  const transport = attachTransport(a);
+  button.dataset.imageTransport = transport || 'none';
+  const usable = Boolean(s && a && transport);
   button.hidden = !usable;
   button.disabled = !usable;
   if (!usable) return;
-  const copy = `Add an image reference for ${a.label} (sends a local @path only)`;
+  const video = NATIVE_VIDEO_TRANSPORT_AGENTS.has(a.id) ? 'videos' : 'videos (as sampled frames)';
+  const copy = `Attach images or ${video} for ${a.label}. You can also paste a screenshot or drop files here.`;
   button.title = copy;
   button.setAttribute('aria-label', copy);
+}
+
+/** A file path the target CLI can read for an @mention: inside the session
+ *  folder and free of spaces. Anything else is copied in first. */
+async function workspaceCopy(s, path) {
+  if (isInside(path, s.cwd) && !/\s/.test(relativeTo(path, s.cwd))) return path;
+  return invoke('stage_attachment', { path, workspace: s.cwd });
+}
+
+async function addAttachments(paths, s = active()) {
+  const a = s && agent(s.agentId);
+  if (!s || !a) return toast('Open a session first, then attach files to it.');
+  const transport = attachTransport(a);
+  const media = paths.filter((p) => isImageFile(p) || isVideoFile(p));
+  const others = paths.filter((p) => !media.includes(p));
+  others.forEach((p) => addToChat(p));
+  if (!media.length) return;
+  if (!transport) {
+    toast(`${a.label} cannot read images or video through its CLI, so nothing was attached.`, 'error');
+    return;
+  }
+  const atRef = transport === 'interactive_at_reference';
+  const list = attachmentsOf(s);
+  let added = 0;
+  for (const original of media) {
+    try {
+      if (isImageFile(original)) {
+        const path = atRef ? await workspaceCopy(s, original) : original;
+        if (!list.some((x) => x.path === path)) list.push({ kind: 'image', path });
+        added++;
+      } else if (NATIVE_VIDEO_TRANSPORT_AGENTS.has(a.id)) {
+        const path = await workspaceCopy(s, original);
+        if (!list.some((x) => x.path === path)) list.push({ kind: 'video', path, name: basename(original) });
+        added++;
+      } else {
+        toast(`Sampling ${VIDEO_FRAME_COUNT} frames from ${basename(original)}…`);
+        const got = await invoke('extract_video_frames', {
+          path: original,
+          count: VIDEO_FRAME_COUNT,
+          workspace: atRef ? s.cwd : null
+        });
+        list.push({ kind: 'video', path: original, name: basename(original), duration: got.duration, frames: got.frames });
+        added++;
+      }
+    } catch (err) {
+      if (String(err).includes('FFMPEG_MISSING')) {
+        toast(`Videos need ffmpeg to sample frames for ${a.label}. Install it with: ${FFMPEG_INSTALL} — then try again. Click to copy.`, 'error', () => copy(FFMPEG_INSTALL));
+      } else {
+        toast(`Couldn’t attach ${basename(original)}: ${String(err)}`, 'error');
+      }
+    }
+  }
+  if (s.id === state.activeId) {
+    renderContext();
+    $('ptyInput').focus();
+  }
+  if (added) toast(`Attached ${added} file${added === 1 ? '' : 's'} for ${a.label}. They stay on this PC; the CLI reads them locally.`, 'ok');
+}
+
+async function chooseImageReferences() {
+  const s = active();
+  const a = s && agent(s.agentId);
+  if (!s || !a) return toast('Open a session first, then attach files to it.');
+  if (!attachTransport(a)) {
+    toast(`${a.label} cannot read images or video through its CLI.`, 'error');
+    return;
+  }
+  let chosen;
+  const options = {
+    multiple: true,
+    defaultPath: s.cwd || state.homeCwd,
+    filters: [
+      { name: 'Images and videos', extensions: [...IMAGE_FILE_EXTENSIONS, ...VIDEO_FILE_EXTENSIONS] },
+      { name: 'Images', extensions: IMAGE_FILE_EXTENSIONS },
+      { name: 'Videos', extensions: VIDEO_FILE_EXTENSIONS }
+    ]
+  };
+  try {
+    chosen = T.dialog && T.dialog.open ? await T.dialog.open(options) : await invoke('plugin:dialog|open', { options });
+  } catch (err) {
+    toast(`Couldn’t open the file picker: ${String(err)}`, 'error');
+    return;
+  }
+  const paths = Array.isArray(chosen) ? chosen : chosen ? [chosen] : [];
+  if (paths.length) await addAttachments(paths, s);
+}
+
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+
+/** Ctrl+V of a screenshot (Win+Shift+S) or a copied image. */
+async function pasteImages(e) {
+  const items = [...((e.clipboardData && e.clipboardData.items) || [])].filter(
+    (i) => i.kind === 'file' && /^image\//i.test(i.type)
+  );
+  if (!items.length) return;
+  e.preventDefault();
+  const s = active();
+  const a = s && agent(s.agentId);
+  if (!s || !a) return toast('Open a session first, then paste the image.');
+  const transport = attachTransport(a);
+  if (!transport) return toast(`${a.label} cannot read images through its CLI.`, 'error');
+  const list = attachmentsOf(s);
+  for (const item of items) {
+    const blob = item.getAsFile();
+    if (!blob) continue;
+    try {
+      const path = await invoke('save_pasted_image', {
+        data: await blobToBase64(blob),
+        mime: blob.type,
+        workspace: transport === 'interactive_at_reference' ? s.cwd : null
+      });
+      list.push({ kind: 'image', path, name: 'Pasted image' });
+    } catch (err) {
+      toast(`Couldn’t paste the image: ${String(err)}`, 'error');
+    }
+  }
+  renderContext();
+}
+
+/** Files dropped anywhere on the window go to the active session. Tauri
+ *  delivers real paths for native drops, so nothing is read into memory. */
+function wireFileDrop() {
+  const composer = $('ptyComposer');
+  const off = () => composer.classList.remove('drop-ready');
+  listen('tauri://drag-enter', () => active() && composer.classList.add('drop-ready'));
+  listen('tauri://drag-leave', off);
+  listen('tauri://drag-drop', (e) => {
+    off();
+    const paths = (e.payload && e.payload.paths) || [];
+    if (!paths.length || !active()) return;
+    addAttachments(paths);
+  });
+}
+
+/** The text a CLI receives for one attached file. */
+function attachmentRef(transport, s, path) {
+  if (transport === 'interactive_at_reference') return `@${relativeTo(path, s.cwd)}`;
+  if (transport === 'initial_positional') return path;
+  return /\s/.test(path) ? `"${path}"` : path;
+}
+
+const fmtSeconds = (t) => `${Number(t).toFixed(1)}s`;
+
+/* Verified live: Claude Code and Codex turn a pasted image path into an
+ * "[Image #n]" attachment in their own composer. */
+const PASTE_ATTACH_AGENTS = new Set(['claude-code', 'claude-chat', 'codex']);
+
+/** Prompt lines describing the attachments, plus the image paths to paste
+ *  first when the CLI attaches pasted image paths itself. */
+function attachmentPrompt(s, a) {
+  const transport = attachTransport(a);
+  const paste = Boolean(a && PASTE_ATTACH_AGENTS.has(a.id) && s.term && s.term.modes && s.term.modes.bracketedPasteMode);
+  const lines = [];
+  const pastes = [];
+  const ref = (path) => {
+    if (!paste) return attachmentRef(transport, s, path);
+    pastes.push(path);
+    return `[Image #${pastes.length}]`;
+  };
+  for (const x of attachmentsOf(s)) {
+    if (x.kind === 'image') {
+      lines.push(`Image: ${ref(x.path)}${paste ? ` (${x.name || basename(x.path)})` : ''}`);
+    } else if (!x.frames) {
+      lines.push(`Video: ${attachmentRef(transport, s, x.path)}`);
+    } else {
+      const total = x.duration ? ` (${fmtSeconds(x.duration)} long)` : '';
+      lines.push(`Frames sampled from the video "${x.name}"${total}, in order:`);
+      for (const f of x.frames) lines.push(`  at ${fmtSeconds(f.at)}: ${ref(f.path)}`);
+    }
+  }
+  return { lines, pastes };
+}
+function attachmentPills(s) {
+  return attachmentsOf(s)
+    .map((x, i) => {
+      const name = x.name || basename(x.path);
+      const kind = x.kind === 'image' ? 'Image' : x.frames ? `Video · ${x.frames.length} frames` : 'Video';
+      const tip = x.frames
+        ? `${x.frames.length} still frames sampled locally from ${x.path}`
+        : `Local file, read by the CLI on this PC: ${x.path}`;
+      return `<span class="context-pill image-context" title="${esc(tip)}"><span class="context-kind">${esc(kind)}</span><span>${esc(name)}</span>
+      <button data-image-ref="${i}" aria-label="Remove ${esc(name)}">${ICONS.close}</button></span>`;
+    })
+    .join('');
 }
 
 function addToChat(absPath) {
@@ -1435,45 +1660,6 @@ function addToChat(absPath) {
   if (!s.context.includes(rel)) s.context.push(rel);
   renderContext();
   $('ptyInput').focus();
-}
-
-const IMAGE_FILE_EXTENSIONS = ['avif', 'bmp', 'gif', 'heic', 'heif', 'jpeg', 'jpg', 'png', 'svg', 'tif', 'tiff', 'webp'];
-const isImageFile = (path) => new RegExp(`\\.(${IMAGE_FILE_EXTENSIONS.join('|')})$`, 'i').test(String(path));
-
-async function chooseImageReferences() {
-  const s = active();
-  const a = s && agent(s.agentId);
-  if (!s || !a) return toast('Open a session first, then add an image reference.');
-  const transport = imageTransport(a);
-  if (transport !== 'interactive_at_reference') {
-    toast(`${a.label} does not have an image-reference route implemented in ezCLI yet.`, 'error');
-    return;
-  }
-
-  let chosen;
-  const options = {
-    multiple: true,
-    defaultPath: s.cwd || state.homeCwd,
-    filters: [{ name: 'Images', extensions: IMAGE_FILE_EXTENSIONS }]
-  };
-  try {
-    chosen = T.dialog && T.dialog.open
-      ? await T.dialog.open(options)
-      : await invoke('plugin:dialog|open', { options });
-  } catch (err) {
-    toast(`Couldn’t choose an image: ${String(err)}`, 'error');
-    return;
-  }
-  const paths = (Array.isArray(chosen) ? chosen : chosen ? [chosen] : []).filter(isImageFile);
-  if (!paths.length) return;
-  if (!Array.isArray(s.imageRefs)) s.imageRefs = [];
-  for (const absPath of paths) {
-    const ref = relativeTo(absPath, s.cwd);
-    if (!s.imageRefs.includes(ref)) s.imageRefs.push(ref);
-  }
-  renderContext();
-  $('ptyInput').focus();
-  toast(`Added ${paths.length} image reference${paths.length === 1 ? '' : 's'} as local @path text. ezCLI does not upload image data; visual support depends on ${a.label}.`, 'ok');
 }
 
 function relativeTo(p, base) {
@@ -1506,25 +1692,36 @@ function pushHistory(text) {
   savePrefs();
 }
 
-function sendComposer() {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Paste each image path on its own so the CLI recognises it as an image. */
+async function pasteImagePaths(s, paths) {
+  if (!paths.length || !(s.term.modes && s.term.modes.bracketedPasteMode)) return;
+  for (const p of paths) {
+    await invoke('send_input', { id: s.ptyId, data: `\x1b[200~${p}\x1b[201~` }).catch(() => {});
+    await sleep(150);
+  }
+}
+
+async function sendComposer() {
   const el = $('ptyInput');
   const s = active();
   if (!s) return;
   const v = el.value;
   const files = Array.isArray(s.context) ? s.context : [];
-  const images = Array.isArray(s.imageRefs) ? s.imageRefs : [];
+  const images = attachmentsOf(s);
   if (!v.trim() && !files.length && !images.length) return;
   if (s.status !== 'running') {
     toast('This session is not running.', 'error', () => restartSession(s));
     return;
   }
   const fileRefs = files.map((p) => `@${p}`).join(' ');
-  // This is intentionally a path reference, not image bytes or an upload.
-  // An interactive CLI may inspect it; a CLI without vision support may not.
-  const imageRefs = images.map((p) => `[Image reference — local path only: @${p}]`).join('\n');
-  const text = [fileRefs, imageRefs, v].filter(Boolean).join('\n').trim();
+  // Local paths in the form this CLI reads; ezCLI never uploads the files.
+  const media = attachmentPrompt(s, agent(s.agentId));
+  const ask = v.trim() || (images.length ? 'Look at the attached media.' : '');
+  const text = [fileRefs, ...media.lines, ask].filter(Boolean).join('\n').trim();
   pushHistory(v);
-  sendText(s, text);
+  // Clear first so a second Enter during the paste can't send twice.
   s.context = [];
   s.imageRefs = [];
   s.draft = '';
@@ -1532,6 +1729,8 @@ function sendComposer() {
   histPos = -1;
   autoGrow(el);
   renderContext();
+  await pasteImagePaths(s, media.pastes);
+  sendText(s, text);
 }
 
 let histPos = -1;
@@ -2142,7 +2341,7 @@ async function switchSessionAgent(s, id) {
     renderContext();
     renderView();
   }
-  if (droppedImageRefs) toast('Removed transient image references after switching backends.');
+  if (droppedImageRefs) toast('Removed attachments after switching agents; attach them again for this one.');
   if (s.status === 'parked') {
     renderAll();
     snapshotParked();
@@ -2973,6 +3172,8 @@ function wire() {
   });
   $('btnSend').addEventListener('click', sendComposer);
   $('btnAttachImage').addEventListener('click', chooseImageReferences);
+  $('ptyInput').addEventListener('paste', pasteImages);
+  wireFileDrop();
   $('btnHistory').addEventListener('click', (e) => historyMenu(e.currentTarget));
   $('btnInterrupt').addEventListener('click', () => {
     const s = active();

@@ -10,6 +10,7 @@ mod files_api;
 mod git_api;
 mod import;
 mod mcp_server;
+mod media;
 mod open_in;
 mod pc_control;
 mod pty_mgr;
@@ -484,6 +485,31 @@ fn pc_control_allowed(state: &AppState, session_id: &str) -> bool {
     state.pc_control.allowed(session_id) && state.sessions.is_live(session_id)
 }
 
+/// Save an image pasted into the composer and return its local path.
+#[tauri::command]
+fn save_pasted_image(data: String, mime: String, workspace: Option<String>) -> Result<String, String> {
+    media::save_pasted_image(&data, &mime, workspace.as_deref())
+}
+
+/// Copy an attachment into the session folder for CLIs that only read there.
+#[tauri::command]
+fn stage_attachment(path: String, workspace: String) -> Result<String, String> {
+    media::stage_into_workspace(&path, &workspace)
+}
+
+/// Sample still frames from a local video with the user's ffmpeg. Runs off
+/// the command thread because ffmpeg can take a few seconds.
+#[tauri::command]
+async fn extract_video_frames(
+    path: String,
+    count: Option<u32>,
+    workspace: Option<String>,
+) -> Result<media::VideoFrames, String> {
+    tauri::async_runtime::spawn_blocking(move || media::extract_video_frames(&path, count.unwrap_or(6), workspace.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn open_targets() -> Vec<open_in::OpenTarget> {
     open_in::detect()
@@ -574,6 +600,7 @@ pub fn run() {
         .setup(|app| {
             // Stale per-session config files from a crashed run hold dead tokens.
             let _ = std::fs::remove_dir_all(mcp_config_dir());
+            std::thread::spawn(media::prune_old_attachments);
             let handle = app.handle().clone();
             let server = mcp_server::McpServer::start(mcp_server::Hooks {
                 allowed: Box::new(move |pty_id| pc_control_allowed(&handle.state::<AppState>(), pty_id)),
@@ -601,7 +628,10 @@ pub fn run() {
             set_pc_control,
             open_targets,
             open_in,
-            running_sessions
+            running_sessions,
+            save_pasted_image,
+            stage_attachment,
+            extract_video_frames
         ])
         .run(tauri::generate_context!())
         .expect("ezCLI failed to launch");

@@ -691,22 +691,22 @@ kbd {
   color: var(--text);
 }
 .context-pill.image-context {
-  border-color: color-mix(in srgb, var(--warn) 48%, var(--border));
-  background: color-mix(in srgb, var(--warn) 7%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
 }
 .context-pill .context-kind {
   flex: none;
-  color: var(--warn);
-  font-size: 10px;
+  color: var(--accent);
+  font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .attachment-btn {
   gap: 5px;
 }
-.attachment-btn[data-image-transport='interactive_at_reference'] {
-  color: var(--muted);
+.composer-box.drop-ready {
+  border-color: var(--accent);
+  border-style: dashed;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .send-btn {
   display: grid;
