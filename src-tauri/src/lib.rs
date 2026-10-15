@@ -138,7 +138,7 @@ fn start_session(
     app: AppHandle,
 ) -> Result<StartResult, String> {
     let want_pc = pc_control.unwrap_or(false);
-    let (cmd, argv_for_log, final_args, resolved_cwd) = {
+    let (launch, argv_for_log, resolved_cwd) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
             .iter()
@@ -184,22 +184,22 @@ fn start_session(
             shown.splice(at..at, attach_shown);
         }
 
-        let (cmd, final_args) = agents::launch_command(&resolved, &argv);
+        let launch = agents::launch_command(&resolved, &argv).map_err(|e| e.to_string())?;
 
         let resolved_cwd = cwd
             .filter(|c| std::path::Path::new(c).is_dir())
             .unwrap_or_else(default_start_dir);
 
         let argv_for_log = format!("{} {}", a.command, shown.join(" "));
-        (cmd, argv_for_log, final_args, resolved_cwd)
+        (launch, argv_for_log, resolved_cwd)
     };
 
     let spawned = state.sessions.spawn(
         app,
         SpawnArgs {
             id: id.clone(),
-            cmd,
-            args: final_args,
+            cmd: launch.program,
+            args: launch.args,
             cwd: Some(resolved_cwd.clone()),
             cols,
             rows,
@@ -285,10 +285,11 @@ fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
-    let (program, launch_args) = agents::launch_command(resolved, args);
-    let mut cmd = Command::new(program);
-    cmd.args(launch_args)
+    let launch = agents::launch_command(resolved, args).map_err(|e| e.to_string())?;
+    let mut cmd = Command::new(&launch.program);
+    cmd.args(&launch.args)
         .env("NO_COLOR", "1")
+        .env("PATH", agents::effective_path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -634,5 +635,91 @@ mod tests {
         let list = agents::parse_ollama_cloud_catalog(&out).expect("valid Ollama catalog");
         eprintln!("{} Ollama Cloud model aliases: {:?}", list.len(), list);
         assert!(!list.is_empty());
+    }
+
+    /// End to end through ezCLI's own launch path: the shipped Ollama Cloud
+    /// agent definition, the live catalog, `build_argv` (which only accepts a
+    /// catalog model), `launch_command`, and a real PTY. Needs Ollama installed
+    /// and `ollama signin` done by the user. It spends Cloud usage, so it is
+    /// deliberately double-gated and requires an explicit model choice:
+    /// `$env:EZCLI_LIVE_OLLAMA_TEST='1'; $env:EZCLI_OLLAMA_TEST_MODEL='<alias>'`
+    /// `scripts\test-rust.ps1 --ignored --nocapture live_ollama_cloud`
+    #[test]
+    #[ignore = "spends Ollama Cloud usage; needs ollama installed and signed in"]
+    fn live_ollama_cloud_answers_through_the_ezcli_launch_path() {
+        use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+        use std::io::Read;
+
+        assert_eq!(
+            std::env::var("EZCLI_LIVE_OLLAMA_TEST").as_deref(),
+            Ok("1"),
+            "set EZCLI_LIVE_OLLAMA_TEST=1 only when you approve Cloud usage"
+        );
+        let requested_model = std::env::var("EZCLI_OLLAMA_TEST_MODEL")
+            .expect("set EZCLI_OLLAMA_TEST_MODEL to one model shown by the live catalog");
+
+        let builtin: serde_json::Value = serde_json::from_str(agents::BUILTIN).unwrap();
+        let entry = builtin["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == "ollama-cloud")
+            .expect("ollama-cloud in agents.json")
+            .clone();
+        let agent: agents::AgentDef = serde_json::from_value(entry).unwrap();
+
+        let (curl, args) = ollama_cloud_catalog_command().expect("system curl");
+        let catalog = agents::parse_ollama_cloud_catalog(&run_catalog(&curl, &args).unwrap()).unwrap();
+        assert!(
+            catalog.contains(&requested_model),
+            "requested model {requested_model:?} was not in the live catalog"
+        );
+        let model = requested_model;
+
+        let mut argv = agents::build_argv(&agent, "default", &model, "default", Some(&catalog));
+        assert_eq!(argv, vec!["run".to_string(), model.clone()], "launch args come from config + catalog");
+        argv.push("Reply with exactly EZCLI_OLLAMA_OK and nothing else.".into());
+
+        let resolved = agents::resolve_command("ollama").expect("ollama on PATH");
+        let launch = agents::launch_command(&resolved, &argv).expect("safe Ollama launch command");
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 30, cols: 140, pixel_width: 0, pixel_height: 0 })
+            .unwrap();
+        let mut cmd = CommandBuilder::new(&launch.program);
+        cmd.args(&launch.args);
+        cmd.env("PATH", agents::effective_path());
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        let mut killer = child.clone_killer();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let out = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            String::from_utf8_lossy(&buf).into_owned()
+        });
+        // Watchdog: a hung remote call must not hang the test run forever.
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&done);
+        std::thread::spawn(move || {
+            for _ in 0..180 {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                if flag.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+            }
+            let _ = killer.kill();
+        });
+        let status = child.wait().unwrap();
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+        drop(pair.master);
+        let text = out.join().unwrap();
+        eprintln!("model={model} exit={}\n--- output ---\n{}", status.exit_code(), text.trim());
+        assert!(text.contains("EZCLI_OLLAMA_OK"), "the cloud model did not answer");
     }
 }

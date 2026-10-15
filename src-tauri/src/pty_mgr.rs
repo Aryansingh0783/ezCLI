@@ -7,6 +7,7 @@
 use anyhow::{anyhow, Result};
 use dashmap::DashMap;
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -37,6 +38,30 @@ pub struct SpawnArgs {
 
 const MAX_SESSIONS: usize = 24;
 
+/// Build the command exactly as an interactive agent session receives it.
+/// Keeping this separate makes the PATH contract testable without a Tauri
+/// `AppHandle`: the executable ezCLI resolves and the child it launches must
+/// see the same refreshed PATH.
+fn session_command(args: &SpawnArgs, child_path: OsString) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(&args.cmd);
+    for a in &args.args {
+        cmd.arg(a);
+    }
+    if let Some(cwd) = &args.cwd {
+        cmd.cwd(cwd);
+    }
+    // Same merged PATH used to find the CLI, so a shim such as claude.cmd can
+    // also find `node` when ezCLI was started with a stale PATH.
+    cmd.env("PATH", child_path);
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    // An inherited NO_COLOR conflicts with FORCE_COLOR in Node-based CLIs
+    // (including OpenCode) and prints a warning into the user's terminal.
+    cmd.env_remove("NO_COLOR");
+    cmd.env("FORCE_COLOR", "3");
+    cmd
+}
+
 impl SessionStore {
     pub fn new() -> Self {
         Self {
@@ -63,19 +88,7 @@ impl SessionStore {
             pixel_height: 0,
         })?;
 
-        let mut cmd = CommandBuilder::new(&args.cmd);
-        for a in &args.args {
-            cmd.arg(a);
-        }
-        if let Some(cwd) = &args.cwd {
-            cmd.cwd(cwd);
-        }
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("COLORTERM", "truecolor");
-        // An inherited NO_COLOR conflicts with FORCE_COLOR in Node-based CLIs
-        // (including OpenCode) and prints a warning into the user's terminal.
-        cmd.env_remove("NO_COLOR");
-        cmd.env("FORCE_COLOR", "3");
+        let cmd = session_command(&args, crate::agents::effective_path());
 
         let mut child = pair.slave.spawn_command(cmd)?;
         let killer = child.clone_killer();
@@ -184,5 +197,99 @@ impl SessionStore {
         } else {
             Err(anyhow!("unknown session"))
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use crate::agents;
+    use portable_pty::{native_pty_system, PtySize};
+    use std::io::Read;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct TempTree(PathBuf);
+
+    impl Drop for TempTree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn temp_tree() -> TempTree {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "ezcli-path-pty-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        TempTree(root)
+    }
+
+    #[test]
+    fn refreshed_path_finds_and_launches_a_cmd_shim_with_its_dependency() {
+        let root = temp_tree();
+        // This has spaces and deliberately runs through a `.cmd` shim, the
+        // hard case that fails when CreateProcessW launches it directly.
+        let cli_dir = root.0.join("fresh cli shim");
+        let node_dir = root.0.join("fresh node dependency");
+        let stale_dir = root.0.join("stale inherited path");
+        std::fs::create_dir_all(&cli_dir).unwrap();
+        std::fs::create_dir_all(&node_dir).unwrap();
+        std::fs::create_dir_all(&stale_dir).unwrap();
+        std::fs::write(
+            cli_dir.join("fake-agent.cmd"),
+            "@echo off\r\ncall node-like.cmd\r\necho EZCLI_SHIM_OK [%1] [%2]\r\n",
+        )
+        .unwrap();
+        std::fs::write(node_dir.join("node-like.cmd"), "@echo off\r\necho EZCLI_DEPENDENCY_OK\r\n").unwrap();
+
+        // The stale parent location deliberately has neither executable. The
+        // two following folders stand in for fresh registry/install sources.
+        let merged = agents::merge_path_dirs(vec![stale_dir, cli_dir.clone(), node_dir]);
+        let resolved = agents::resolve_command_on_path("fake-agent", &merged).expect("fresh CLI discovery");
+        assert!(
+            resolved.eq_ignore_ascii_case(&cli_dir.join("fake-agent.cmd").to_string_lossy()),
+            "resolved {resolved:?} from an unexpected folder"
+        );
+
+        let launch = agents::launch_command(
+            &resolved,
+            &["--config".to_string(), r"C:\Users\Jane Smith\ezcli.json".to_string()],
+        )
+        .unwrap();
+        let args = SpawnArgs {
+            id: "test".to_string(),
+            cmd: launch.program,
+            args: launch.args,
+            cwd: None,
+            cols: 120,
+            rows: 24,
+        };
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 120,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut child = pair.slave.spawn_command(session_command(&args, merged)).unwrap();
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        drop(pair.slave);
+        let output = std::thread::spawn(move || {
+            let mut text = String::new();
+            reader.read_to_string(&mut text).unwrap();
+            text
+        });
+        let status = child.wait().unwrap();
+        drop(pair.master);
+        let output = output.join().unwrap();
+
+        assert!(status.success(), "shim exited with {}: {output}", status.exit_code());
+        assert!(output.contains("EZCLI_DEPENDENCY_OK"), "dependency was not found through the child PATH: {output}");
+        assert!(output.contains("EZCLI_SHIM_OK [--config] [\"C:\\Users\\Jane Smith\\ezcli.json\"]"), "arguments were not preserved: {output}");
     }
 }

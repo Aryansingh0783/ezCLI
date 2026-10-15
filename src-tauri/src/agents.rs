@@ -8,6 +8,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -418,17 +419,125 @@ fn default_variant() -> Variant {
 
 /// Walks PATH (and PATHEXT on Windows, so a `.cmd` npm shim resolves the
 /// same as an `.exe`) and returns the absolute path of the first match.
-pub fn resolve_command(cmd: &str) -> Option<String> {
-    let as_path = Path::new(cmd);
-    if as_path.components().count() > 1 {
-        return if as_path.is_file() {
-            Some(cmd.to_string())
-        } else {
-            None
-        };
+/// The PATH ezCLI searches and hands to every CLI it launches.
+///
+/// A process started from the Start menu or a desktop shortcut inherits
+/// Explorer's PATH from login time, so a CLI installed afterwards (npm,
+/// Claude's native installer, WinGet...) is invisible until the user signs out
+/// and back in. That made ezCLI report installed CLIs as "not installed".
+/// We therefore merge, in order and without duplicates:
+///   1. the current machine then user PATH from the registry (what a newly
+///      opened terminal gets),
+///   2. standard per-user install folders of common CLI installers,
+///   3. this process's inherited PATH as a fallback for one-off launchers.
+///
+/// Putting the fresh sources first matters when an update or reinstall leaves
+/// an older executable in Explorer's login-time PATH.
+pub fn effective_path() -> OsString {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    #[cfg(windows)]
+    {
+        for p in registry_paths() {
+            dirs.extend(std::env::split_paths(&p));
+        }
+        dirs.extend(well_known_cli_dirs());
+    }
+    if let Some(p) = std::env::var_os("PATH") {
+        dirs.extend(std::env::split_paths(&p));
     }
 
-    let path_env = std::env::var_os("PATH")?;
+    merge_path_dirs(dirs)
+}
+
+/// Remove empty and duplicate directory entries, then return a Windows PATH.
+/// Kept separate from `effective_path` so tests can model a stale parent PATH
+/// without touching the process environment or the registry.
+pub(crate) fn merge_path_dirs(dirs: impl IntoIterator<Item = PathBuf>) -> OsString {
+    let mut seen = std::collections::HashSet::new();
+    let unique: Vec<PathBuf> = dirs
+        .into_iter()
+        .filter(|d| !d.as_os_str().is_empty())
+        .filter(|d| seen.insert(d.to_string_lossy().trim_end_matches(['\\', '/']).to_lowercase()))
+        .collect();
+    std::env::join_paths(unique).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
+}
+
+/// Machine then user `Path`, read fresh from the registry with %VARS% expanded.
+/// This matches the environment composition used by a newly launched Windows
+/// process, while allowing a new per-user entry to supplement the machine PATH.
+#[cfg(windows)]
+fn registry_paths() -> Vec<String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ};
+
+    const MAX_PATH_VALUE_BYTES: u32 = 64 * 1024;
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(Some(0)).collect()
+    }
+    fn read(root: HKEY, subkey: &str) -> Option<String> {
+        let key = wide(subkey);
+        let name = wide("Path");
+        let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ; // expands %VARS%
+        let mut bytes: u32 = 0;
+        // SAFETY: first call only reports the size; second writes into a
+        // buffer of exactly that many bytes.
+        unsafe {
+            RegGetValueW(root, PCWSTR(key.as_ptr()), PCWSTR(name.as_ptr()), flags, None, None, Some(&mut bytes))
+                .ok()
+                .ok()?;
+            if bytes == 0 || bytes > MAX_PATH_VALUE_BYTES {
+                return None;
+            }
+            let mut buf = vec![0u16; (bytes as usize).div_ceil(2) + 1];
+            let mut len = (buf.len() * 2) as u32;
+            RegGetValueW(
+                root,
+                PCWSTR(key.as_ptr()),
+                PCWSTR(name.as_ptr()),
+                flags,
+                None,
+                Some(buf.as_mut_ptr().cast()),
+                Some(&mut len),
+            )
+            .ok()
+            .ok()?;
+            let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            Some(String::from_utf16_lossy(&buf[..end]))
+        }
+    }
+    [
+        read(HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
+        read(HKEY_CURRENT_USER, "Environment"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// Per-user folders where popular CLI installers put their commands.
+#[cfg(windows)]
+fn well_known_cli_dirs() -> Vec<PathBuf> {
+    let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    let mut out = Vec::new();
+    if let Some(appdata) = env("APPDATA") {
+        out.push(appdata.join("npm")); // npm install -g
+    }
+    if let Some(home) = env("USERPROFILE") {
+        out.push(home.join(".local").join("bin")); // Claude Code native installer
+        out.push(home.join(".bun").join("bin"));
+        out.push(home.join("scoop").join("shims"));
+    }
+    if let Some(local) = env("LOCALAPPDATA") {
+        out.push(local.join("Microsoft").join("WinGet").join("Links"));
+        out.push(local.join("pnpm"));
+        out.push(local.join("Volta").join("bin"));
+        out.push(local.join("Programs").join("Ollama")); // Ollama default
+    }
+    out
+}
+
+pub(crate) fn resolve_command_on_path(cmd: &str, path_env: &OsStr) -> Option<String> {
     let exts: Vec<String> = if cfg!(windows) {
         std::env::var("PATHEXT")
             .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into())
@@ -449,6 +558,20 @@ pub fn resolve_command(cmd: &str) -> Option<String> {
         }
     }
     None
+}
+
+pub fn resolve_command(cmd: &str) -> Option<String> {
+    let as_path = Path::new(cmd);
+    if as_path.components().count() > 1 {
+        return if as_path.is_file() {
+            Some(cmd.to_string())
+        } else {
+            None
+        };
+    }
+
+    let path_env = effective_path();
+    resolve_command_on_path(cmd, &path_env)
 }
 
 pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
@@ -541,40 +664,51 @@ pub fn build_argv(
     out
 }
 
-/// portable-pty calls CreateProcessW directly on Windows, which cannot launch
-/// a `.cmd`/`.bat` shim as an executable. npm installs its global CLIs as those
-/// shims, so route them through cmd.exe while keeping the generated arguments
-/// separate. The arguments are still constrained to agents.json or a
-/// backend-validated model catalog.
-/// The 8.3 short form of an existing path (no spaces), or the path unchanged
-/// when it doesn't exist or the volume has short names disabled.
+/// A command ready for either a PTY session or a short-lived catalog process.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LaunchCommand {
+    pub program: String,
+    pub args: Vec<String>,
+}
+
 #[cfg(windows)]
-fn short_path(path: &str) -> String {
-    use windows::core::PCWSTR;
-    use windows::Win32::Storage::FileSystem::GetShortPathNameW;
-    let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
-    // SAFETY: `wide` is NUL-terminated and outlives both calls; the second
-    // call writes at most `buf.len()` UTF-16 units.
-    unsafe {
-        let needed = GetShortPathNameW(PCWSTR(wide.as_ptr()), None);
-        if needed == 0 {
-            return path.to_string();
-        }
-        let mut buf = vec![0u16; needed as usize];
-        let written = GetShortPathNameW(PCWSTR(wide.as_ptr()), Some(&mut buf));
-        if written == 0 || written as usize >= buf.len() {
-            return path.to_string();
-        }
-        String::from_utf16_lossy(&buf[..written as usize])
-    }
+fn system_executable(relative: &str, fallback: &str) -> String {
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from(r"C:\Windows"));
+    let candidate = PathBuf::from(root).join("System32").join(relative);
+    candidate
+        .is_file()
+        .then(|| candidate.to_string_lossy().into_owned())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 #[cfg(not(windows))]
-fn short_path(path: &str) -> String {
-    path.to_string()
+fn system_executable(_: &str, fallback: &str) -> String {
+    fallback.to_string()
 }
 
-pub fn launch_command(resolved: &str, args: &[String]) -> (String, Vec<String>) {
+/// A `.cmd` has to pass through cmd.exe's command parser. `call` accepts the
+/// shim and its arguments as separate argv tokens, even when the shim path has
+/// spaces, but CMD still treats its control characters specially. Reject those
+/// unusual paths/arguments instead of silently running a different command.
+#[cfg(windows)]
+fn cmd_safe_token(value: &str) -> bool {
+    !value
+        .chars()
+        .any(|c| matches!(c, '&' | '|' | '<' | '>' | '(' | ')' | '^' | '%' | '!' | '"' | '\r' | '\n' | '\0'))
+}
+
+#[cfg(not(windows))]
+fn cmd_safe_token(_: &str) -> bool {
+    true
+}
+
+/// portable-pty calls CreateProcessW directly on Windows, which cannot launch
+/// a `.cmd`/`.bat` shim as an executable. npm installs its global CLIs as those
+/// shims, so route them through the trusted system cmd.exe with `call`.
+/// `call` accepts the shim path and its argv as separate tokens, including
+/// paths with spaces on volumes where 8.3 aliases are disabled. The arguments
+/// are still constrained to agents.json or a backend-validated model catalog.
+pub fn launch_command(resolved: &str, args: &[String]) -> Result<LaunchCommand> {
     let lower = resolved.to_ascii_lowercase();
     if cfg!(windows) && lower.ends_with(".ps1") {
         let mut wrapped = vec![
@@ -586,20 +720,27 @@ pub fn launch_command(resolved: &str, args: &[String]) -> (String, Vec<String>) 
             resolved.to_string(),
         ];
         wrapped.extend(args.iter().cloned());
-        ("powershell.exe".to_string(), wrapped)
+        Ok(LaunchCommand {
+            program: system_executable(r"WindowsPowerShell\v1.0\powershell.exe", "powershell.exe"),
+            args: wrapped,
+        })
     } else if cfg!(windows) && (lower.ends_with(".cmd") || lower.ends_with(".bat")) {
-        // No `/s`, and the shim goes in as its 8.3 short path. cmd.exe only
-        // rewrites quotes when the text after /c *starts* with a quote (and
-        // `/s` always strips the first and last one). A long shim path with a
-        // space, e.g. C:\Users\John Smith\AppData\Roaming\npm\claude.cmd, gets
-        // quoted and then mangled, so the CLI never starts. A short path has no
-        // spaces, needs no quotes, and every later quoted argument passes
-        // through unchanged.
-        let mut wrapped = vec!["/d".to_string(), "/c".to_string(), short_path(resolved)];
+        if !cmd_safe_token(resolved) || args.iter().any(|arg| !cmd_safe_token(arg)) {
+            anyhow::bail!(
+                "This Windows .cmd launcher has a path or option that cmd.exe cannot safely run. Move the CLI to a path without &, |, <, >, (, ), ^, %, !, or quotes, then restart ezCLI."
+            );
+        }
+        let mut wrapped = vec!["/d".to_string(), "/v:off".to_string(), "/c".to_string(), "call".to_string(), resolved.to_string()];
         wrapped.extend(args.iter().cloned());
-        ("cmd.exe".to_string(), wrapped)
+        Ok(LaunchCommand {
+            program: system_executable("cmd.exe", "cmd.exe"),
+            args: wrapped,
+        })
     } else {
-        (resolved.to_string(), args.to_vec())
+        Ok(LaunchCommand {
+            program: resolved.to_string(),
+            args: args.to_vec(),
+        })
     }
 }
 
@@ -619,12 +760,12 @@ mod tests {
         std::fs::write(&shim, "@echo off\r\necho EZCLI_SHIM_RAN [%1] [%2]\r\n").unwrap();
 
         let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let (program, argv) = launch_command(&shim.to_string_lossy(), &args);
+        let launch = launch_command(&shim.to_string_lossy(), &args).unwrap();
         let pair = native_pty_system()
             .openpty(PtySize { rows: 24, cols: 120, pixel_width: 0, pixel_height: 0 })
             .unwrap();
-        let mut cmd = CommandBuilder::new(&program);
-        cmd.args(&argv);
+        let mut cmd = CommandBuilder::new(&launch.program);
+        cmd.args(&launch.args);
         let mut child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
@@ -660,6 +801,16 @@ mod tests {
     fn cmd_shim_launches_from_a_path_with_a_space() {
         let out = run_shim_through_pty("ezcli shim spaced", &["--model", "opus"]);
         assert!(out.contains("EZCLI_SHIM_RAN [--model] [opus]"), "{out}");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn merged_path_keeps_the_fresh_entry_and_deduplicates_case_insensitively() {
+        let fresh = PathBuf::from(r"C:\Users\Jane Doe\AppData\Roaming\npm");
+        let duplicate = PathBuf::from(r"c:\users\jane doe\appdata\roaming\npm\");
+        let fallback = PathBuf::from(r"C:\Windows\System32");
+        let merged = merge_path_dirs(vec![fresh.clone(), duplicate, fallback.clone()]);
+        assert_eq!(std::env::split_paths(&merged).collect::<Vec<_>>(), vec![fresh, fallback]);
     }
 
     /// The PC-control config file lives under %TEMP%, which also contains the
@@ -910,20 +1061,32 @@ mod tests {
     fn cmd_shims_are_wrapped_for_the_native_pty() {
         let args = vec!["-m".into(), "opencode/free-model".into()];
         assert_eq!(
-            launch_command(r"C:\\npm\\opencode.cmd", &args),
-            (
-                "cmd.exe".into(),
-                vec!["/d", "/c", r"C:\\npm\\opencode.cmd", "-m", "opencode/free-model"]
-                    .into_iter()
-                    .map(str::to_string)
-                    .collect()
-            )
+            launch_command(r"C:\npm\opencode.cmd", &args).unwrap(),
+            LaunchCommand {
+                program: system_executable("cmd.exe", "cmd.exe"),
+                args: vec![
+                    "/d".into(),
+                    "/v:off".into(),
+                    "/c".into(),
+                    "call".into(),
+                    r"C:\npm\opencode.cmd".into(),
+                    "-m".into(),
+                    "opencode/free-model".into(),
+                ],
+            }
         );
     }
 
     #[cfg(windows)]
-    fn run_in_native_pty(program: String, args: Vec<String>) -> (portable_pty::ExitStatus, String) {
-        use portable_pty::{native_pty_system, CommandBuilder, PtySize, PtySystem, SlavePty};
+    #[test]
+    fn cmd_shims_reject_cmd_control_characters() {
+        assert!(launch_command(r"C:\Users\Jane & Alex\AppData\Roaming\npm\agent.cmd", &[]).is_err());
+        assert!(launch_command(r"C:\tools\agent.cmd", &["--model".into(), "bad%PATH%".into()]).is_err());
+    }
+
+    #[cfg(windows)]
+    fn run_in_native_pty(launch: LaunchCommand) -> (portable_pty::ExitStatus, String) {
+        use portable_pty::{native_pty_system, CommandBuilder, PtySize};
         use std::io::Read;
 
         let pty = native_pty_system();
@@ -935,8 +1098,8 @@ mod tests {
                 pixel_height: 0,
             })
             .unwrap();
-        let mut command = CommandBuilder::new(program);
-        for arg in args {
+        let mut command = CommandBuilder::new(launch.program);
+        for arg in launch.args {
             command.arg(arg);
         }
         command.env("TERM", "xterm-256color");
@@ -965,8 +1128,8 @@ mod tests {
     fn batch_shim_runs_in_the_same_native_pty_as_an_agent() {
         let path = std::env::temp_dir().join(format!("ezcli-pty-shim-{}.cmd", std::process::id()));
         std::fs::write(&path, "@echo off\r\necho ezcli-pty-shim-ok\r\n").unwrap();
-        let (program, args) = launch_command(&path.to_string_lossy(), &[]);
-        let (status, output) = run_in_native_pty(program, args);
+        let launch = launch_command(&path.to_string_lossy(), &[]).unwrap();
+        let (status, output) = run_in_native_pty(launch);
         let _ = std::fs::remove_file(&path);
         assert!(status.success(), "batch shim exited with {}: {output}", status.exit_code());
         assert!(output.contains("ezcli-pty-shim-ok"), "unexpected output: {output}");
@@ -982,8 +1145,8 @@ mod tests {
     fn real_opencode_cmd_shim_starts_in_native_pty() {
         let resolved = resolve_command("opencode").expect("opencode on PATH");
         assert!(resolved.to_ascii_lowercase().ends_with(".cmd"));
-        let (program, args) = launch_command(&resolved, &["--version".into()]);
-        let (status, output) = run_in_native_pty(program, args);
+        let launch = launch_command(&resolved, &["--version".into()]).unwrap();
+        let (status, output) = run_in_native_pty(launch);
         assert!(status.success(), "opencode exited with {}: {output}", status.exit_code());
         assert!(output.chars().any(|c| c.is_ascii_digit()), "unexpected output: {output}");
     }
