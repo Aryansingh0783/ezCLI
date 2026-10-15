@@ -119,6 +119,7 @@
             <div class="session-head">
               <span class="agent-status" id="headStatus"></span>
               <span class="head-title" id="headTitle"></span>
+              <button class="head-chip head-agent" id="headAgent" title="Change backend (relaunches this session)" hidden></button>
               <button class="head-chip" id="headModel" title="Change model (restarts the session)" hidden></button>
               <span class="head-branch" id="headBranch" hidden></span>
               <span class="grow"></span>
@@ -214,6 +215,19 @@
         agent’s own slash commands work exactly as they do in a normal shell.
       </p>
       <form method="dialog"><button class="btn primary">Close</button></form>
+    </dialog>
+
+    <dialog class="sheet onboarding-sheet" id="onboardingSheet" aria-labelledby="onboardingTitle">
+      <h2 id="onboardingTitle">Start with a working CLI</h2>
+      <p class="note" id="onboardingSummary"></p>
+      <ul class="backend-facts" id="backendFacts" aria-label="Detected setup"></ul>
+      <div class="backend-choices" id="backendChoices" role="radiogroup" aria-label="Choose default backend"></div>
+      <p class="note onboarding-note">ezCLI only opens local CLIs. It does not send prompts to a model itself, and you can switch backends for any session.</p>
+      <div class="row-actions onboarding-actions">
+        <button class="btn quiet" type="button" id="onboardingSkip">I’ll explore on my own</button>
+        <span class="grow"></span>
+        <button class="btn primary" type="button" id="onboardingContinue">Use selected backend</button>
+      </div>
     </dialog>
 
     <dialog class="sheet" id="settingsSheet">

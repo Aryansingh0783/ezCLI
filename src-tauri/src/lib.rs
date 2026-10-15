@@ -4,6 +4,7 @@
 //! and listens to pty-data/pty-exit events. No HTTP server, no WebSocket.
 
 mod agents;
+mod backends;
 mod files_api;
 mod git_api;
 mod open_in;
@@ -182,6 +183,17 @@ fn git_diff(
 }
 
 #[tauri::command]
+fn detect_backends(state: State<AppState>) -> backends::BackendReport {
+    let agents_g = state.agents.lock().unwrap();
+    let ids: Vec<(String, String)> = agents_g
+        .iter()
+        .map(|a| (a.id.clone(), a.vendor.clone()))
+        .collect();
+    drop(agents_g);
+    backends::detect(&ids)
+}
+
+#[tauri::command]
 fn open_targets() -> Vec<open_in::OpenTarget> {
     open_in::detect()
 }
@@ -276,6 +288,7 @@ pub fn run() {
             read_file,
             git_status,
             git_diff,
+            detect_backends,
             open_targets,
             open_in,
             running_sessions

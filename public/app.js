@@ -25,6 +25,9 @@ const DEFAULT_PREFS = {
   explorerWidth: 440,
   explorerTab: 'files',
   agentId: null,
+  // First-run detection is informative, not a gate. We persist dismissal too
+  // so experienced users are never shown the wizard repeatedly.
+  onboarded: false,
   picks: {},
   openTarget: null,
   closed: [],
@@ -144,6 +147,7 @@ const ICONS = {
 
 const state = {
   agents: [],
+  backends: null,
   homeCwd: '',
   sep: '\\',
   configPath: '',
@@ -243,6 +247,18 @@ async function boot() {
     prefs.agentId = first ? first.id : null;
   }
 
+  // Detection only reports installation/auth presence. It never returns a
+  // credential value to the webview. A failure leaves the app fully usable.
+  try {
+    state.backends = await invoke('detect_backends');
+    const recommended = agent(state.backends.recommended);
+    if (!prefs.onboarded && recommended && recommended.available) {
+      prefs.agentId = recommended.id;
+    }
+  } catch {
+    state.backends = null;
+  }
+
   // Recreate every tab that was open at last shutdown as a parked session.
   // Nothing has launched yet; the user resumes with one click.
   for (const sn of prefs.parked || []) {
@@ -264,6 +280,7 @@ async function boot() {
   refreshGit();
   setInterval(tick, 1000);
   $('homeInput').focus();
+  showOnboarding();
 }
 
 function renderAll() {
@@ -909,6 +926,12 @@ function renderHead() {
   $('headStatus').innerHTML = `<span class="status-dot ${dot}"></span>`;
   $('headTitle').textContent = `${s.title}`;
 
+  const agentEl = $('headAgent');
+  if (agentEl) {
+    agentEl.hidden = !a;
+    agentEl.textContent = a ? a.label : '';
+  }
+
   // Visible model pill in the session head is the quickest way to see
   // which model is actually driving the running process.
   const modelEl = $('headModel');
@@ -1539,6 +1562,38 @@ function chooseAgent(id) {
   renderHome();
 }
 
+/** Switch a session to a different installed CLI. A running CLI must be
+ * relaunched because processes cannot change their executable in place. */
+async function switchSessionAgent(s, id) {
+  const next = agent(id);
+  if (!s || !next || !next.available || next.id === s.agentId) return;
+  const running = s.status === 'running' || s.status === 'starting';
+  if (running) {
+    const ok = await confirmDialog(
+      `Switch to ${next.label}?`,
+      'The current CLI process will stop and this session will relaunch with the selected backend.',
+      'Switch and relaunch'
+    );
+    if (!ok) return;
+  }
+
+  if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  const p = pick(next);
+  s.agentId = next.id;
+  s.modelId = p.model;
+  s.modeId = p.mode;
+  s.command = '';
+  s.working = false;
+  if (s.status === 'parked') {
+    renderAll();
+    snapshotParked();
+    return;
+  }
+
+  s.term.writeln(`\r\n\x1b[38;2;106;106;112m── switching to ${next.label} ──\x1b[0m\r\n`);
+  launch(s);
+}
+
 function projectMenu(anchor) {
   openMenu(anchor, {
     title: 'Space',
@@ -1593,6 +1648,52 @@ function renderUsage() {
         </div>`
       )
       .join('')}`;
+}
+
+function backendFacts(report) {
+  if (!report) return ['Could not check your installed backends. You can choose one from the home screen.'];
+  const facts = [];
+  if (report.claudeCli) facts.push('Claude Code found on PATH');
+  if (report.codexCli) facts.push('Codex found on PATH');
+  if (report.chatgptCli) facts.push('ChatGPT CLI found on PATH');
+  if (report.claudeSignin) facts.push('Claude sign-in detected');
+  if (report.anthropicKey) facts.push('Anthropic API key configured');
+  if (report.openaiKey) facts.push('OpenAI API key configured');
+  return facts.length ? facts : ['No supported CLI or configured sign-in was detected yet.'];
+}
+
+function renderOnboarding() {
+  const report = state.backends;
+  const recommended = report && agent(report.recommended);
+  $('onboardingSummary').textContent = recommended && recommended.available
+    ? `${recommended.label} is the recommended starting backend for this computer.`
+    : 'Choose a local CLI when you are ready. You can change it for each session.';
+  $('backendFacts').innerHTML = backendFacts(report).map((fact) => `<li>${esc(fact)}</li>`).join('');
+  $('backendChoices').innerHTML = state.agents
+    .map((a) => {
+      const selected = a.id === prefs.agentId;
+      const recommendedClass = recommended && a.id === recommended.id ? ' recommended' : '';
+      return `<button class="backend-choice${selected ? ' selected' : ''}${recommendedClass}" data-onboarding-agent="${esc(a.id)}"
+        role="radio" aria-checked="${selected}" ${a.available ? '' : 'disabled'}>
+        <span class="backend-choice-main">${ICONS[a.icon] || ICONS.term}<span>${esc(a.label)}</span></span>
+        <span class="backend-choice-status">${a.available ? (recommended && a.id === recommended.id ? 'Recommended' : 'Installed') : 'Not installed'}</span>
+      </button>`;
+    })
+    .join('');
+}
+
+function finishOnboarding() {
+  prefs.onboarded = true;
+  savePrefs();
+  if ($('onboardingSheet').open) $('onboardingSheet').close();
+}
+
+function showOnboarding() {
+  if (prefs.onboarded) return;
+  renderOnboarding();
+  // It is a modeless dialog by design: users can start working immediately
+  // instead of being forced through setup before they reach a real terminal.
+  $('onboardingSheet').show();
 }
 
 function confirmDialog(title, body, okLabel = 'Confirm') {
@@ -1875,6 +1976,34 @@ function wire() {
   });
   $('helpBtn').addEventListener('click', () => $('helpSheet').showModal());
 
+  // First-run setup is deliberately optional. Closing with Escape counts as
+  // a dismissal so we never interrupt a returning user with the same dialog.
+  $('onboardingSheet').addEventListener('close', () => {
+    if (!prefs.onboarded) {
+      prefs.onboarded = true;
+      savePrefs();
+    }
+  });
+  $('onboardingSkip').addEventListener('click', finishOnboarding);
+  $('onboardingContinue').addEventListener('click', finishOnboarding);
+  $('backendChoices').addEventListener('click', (e) => {
+    const choice = e.target.closest('[data-onboarding-agent]');
+    if (!choice || choice.disabled) return;
+    chooseAgent(choice.dataset.onboardingAgent);
+    renderOnboarding();
+  });
+  $('backendChoices').addEventListener('keydown', (e) => {
+    if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.key)) return;
+    const choices = [...$('backendChoices').querySelectorAll('[data-onboarding-agent]:not(:disabled)')];
+    const current = choices.indexOf(e.target.closest('[data-onboarding-agent]'));
+    if (current < 0 || !choices.length) return;
+    e.preventDefault();
+    const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1;
+    const next = choices[(current + step + choices.length) % choices.length];
+    next.focus();
+    next.click();
+  });
+
   // settings
   document.querySelectorAll('[data-theme-opt]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -1954,6 +2083,20 @@ function wire() {
             toast('Model changed. Restart the session to apply.', 'ok', () => restartSession(s));
           }
         }
+      }))
+    });
+  });
+  $('headAgent').addEventListener('click', (e) => {
+    const s = active();
+    if (!s) return;
+    openMenu(e.currentTarget, {
+      title: 'Backend',
+      items: state.agents.map((a) => ({
+        label: a.label,
+        hint: a.available ? (a.id === s.agentId ? 'Current' : 'Switch and relaunch') : 'not installed',
+        on: a.id === s.agentId,
+        disabled: !a.available,
+        run: () => switchSessionAgent(s, a.id)
       }))
     });
   });

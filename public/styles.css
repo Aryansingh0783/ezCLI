@@ -764,7 +764,7 @@ kbd {
   gap: 1px;
 }
 .pill-cap {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -948,10 +948,13 @@ kbd {
   margin-right: 6px;
   border-right: 1px solid var(--border);
   color: var(--faint);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+.head-agent::before {
+  content: 'Backend';
 }
 
 .open-in {
@@ -1487,6 +1490,77 @@ body.resizing-pane .xterm {
 }
 .sheet.wide {
   width: min(640px, calc(100vw - 32px));
+}
+.onboarding-sheet {
+  width: min(520px, calc(100vw - 32px));
+}
+.backend-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+}
+.backend-facts li {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.backend-choices {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0;
+}
+.backend-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+}
+.backend-choice:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--brand) 50%, var(--border));
+  background: color-mix(in srgb, var(--brand) 5%, var(--surface-2));
+}
+.backend-choice.selected {
+  border-color: color-mix(in srgb, var(--brand) 68%, var(--border));
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface-2));
+}
+.backend-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+.backend-choice-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.backend-choice-status {
+  color: var(--faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.backend-choice.recommended .backend-choice-status {
+  color: var(--brand);
+}
+.onboarding-note {
+  margin: 14px 0 0;
+  line-height: 1.45;
+}
+.onboarding-actions {
+  align-items: center;
+  margin-top: 18px;
 }
 .sheet::backdrop {
   background: rgb(0 0 0 / 45%);
