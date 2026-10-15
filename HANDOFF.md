@@ -4,7 +4,7 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-10-15 by Codex
+Last updated: 2026-10-15 by Codex (PR 4c validation and launcher repair)
 
 ---
 
@@ -88,7 +88,8 @@ cd src-tauri; cargo check
 
 **Rust unit tests:** run `powershell -File scripts\test-rust.ps1`. Plain
 `cargo test` builds but the test exe can't start here (needs a comctl32 v6
-manifest and `WebView2Loader.dll` beside it); the script handles both. 6 tests.
+manifest and `WebView2Loader.dll` beside it); the script handles both. Current
+suite: 24 passing tests, plus five deliberate opt-in real-environment checks.
 
 **CI is the build path.** Push a `v*` tag → `.github/workflows/release.yml`
 runs on `windows-latest` (real MSVC), builds `cargo tauri build --bundles msi`,
@@ -152,8 +153,8 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**IN PROGRESS — PR 4b: PC control over MCP, attached only while granted**
-(Claude, 2026-10-15). Aryan chose this over always-on tools so PC control costs
+**PR 4b — PC control over MCP, attached only while granted (COMPLETE; historical
+design record)** (Claude, 2026-10-15). Aryan chose this over always-on tools so PC control costs
 zero tokens unless switched on.
 
 Design (verified against the installed CLIs, see `claude --help`, `codex mcp add --help`):
@@ -198,8 +199,9 @@ run on the Claude Free plan (Anthropic server-side gate; pricing page lists it
   model list filtered to $0 pricing; `ollama list`) instead of a hardcoded list.
   A catalog fetch is not telemetry, but make it explicit (refresh button), never
   per-turn.
-- Machine state: gemini / freebuff / opencode / aider / ollama are NOT installed
-  here (only claude + codex). npm versions seen: freebuff 0.2.27,
+**Historical planning snapshot — superseded by the later approved global npm
+installs:** gemini / freebuff / opencode / aider / ollama were NOT installed
+here (only claude + codex). npm versions seen: freebuff 0.2.27,
   @google/gemini-cli 0.64.0, opencode-ai 1.19.0. Installing them to read real
   `--help` output needs Aryan's approval (downloads). Ollama is a large separate
   installer plus multi-GB models: detect it, don't install it.
@@ -208,8 +210,9 @@ run on the Claude Free plan (Anthropic server-side gate; pricing page lists it
 token spend): live Claude Code called `screenshot` through the server, 1 counted
 call, replied `1280x720`. Codex attach not yet run end to end.
 
-**IN PROGRESS — PR 4c: free agents + free-model catalogs** (Claude). Installed
-with Aryan's approval: opencode, gemini, freebuff (global npm).
+**PR 4c: COMPLETE — free agents + live-model catalogs** (Claude implementation;
+Codex validation and launcher repair, 2026-10-15). Installed with Aryan's
+approval: opencode, gemini, freebuff (global npm).
 - [x] Backend `8c7f92d`: agents.json entries (flags from real --help), built-in
   merge into existing configs, `modelsFrom` catalogs (`agent_models` command,
   validated provider/model lines, start_session only accepts fetched ids),
@@ -219,16 +222,32 @@ with Aryan's approval: opencode, gemini, freebuff (global npm).
   reason + copyable install commands. No new detector findings.
 - [x] Local app build fixed (`ab02532`): crate-type is now rlib only; the
   mobile cdylib hit the GNU 65,535-export limit. Build output:
-  `E:\rust\target\debug\ezcli.exe` (built; launches and opens the "ezCLI" window. UI not yet inspected).
-- [ ] Launch the real app locally. Build (mingw on PATH, see §2):
-  `cargo tauri build --debug --no-bundle` from the repo root, then copy
-  `E:\rust\target\debug\WebView2Loader.dll` next to the built exe if it won't
-  start (GNU target loads it dynamically). Check: home pills, onboarding sheet
-  (Free badges, install rows), Model menu on OpenCode lists the live catalog,
-  start one OpenCode session on a free model and send one short prompt.
-  To re-see onboarding, set `onboarded:false` in localStorage `ezcli.v2`.
-- [ ] README: free-user section + backend matrix.
-Gemini and Freebuff need a one-time sign-in in their own CLI on first run.
+  `E:\rust\target\debug\ezcli.exe` (built; launches and opens the "ezCLI" window;
+  later validation is recorded below).
+- [x] Real debug build and launch: `cargo tauri build --debug --no-bundle`
+  succeeded after `7fac9ef`; `E:\rust\target\debug\ezcli.exe` is responsive
+  with `WebView2Loader.dll` already beside it. The host's desktop automation
+  bridge cannot enumerate this Tauri window, so it could not perform a visual
+  click-through on this machine. The source now keeps the home hero and Agent /
+  Model / Mode pills, adds an Effort pill when a CLI supports it, frames the
+  first-run configuration, constrains long model labels, and keeps a live-model
+  menu inside the viewport.
+- [x] Live OpenCode checks: `opencode models` returned ten catalog entries;
+  npm's `.cmd` shim started successfully through the same native PTY path as
+  ezCLI; `opencode/deepseek-v4.1-flash-free` answered the short prompt with
+  `EZCLI-OK` at reported cost `$0`. The programmatic route validates the exact
+  agent command and PTY path, not a substituted model provider.
+- [x] README free-user section + backend matrix (`ecac5b8`): availability,
+  install commands, live-catalog behaviour, and the Claude Code/Codex-only PC
+  control boundary are documented.
+- [x] Launcher repair (`7fac9ef`): Windows `.cmd`/`.bat` npm shims are launched
+  through `cmd.exe`; inherited `NO_COLOR` is removed before forcing terminal
+  colour; old built-in configs receive safe effort options without replacing a
+  custom command; the Claude chat preset is always denied PC control.
+- [x] To re-see onboarding, set `onboarded:false` in localStorage `ezcli.v2`.
+  On this machine all three free CLIs are installed, so install rows are
+  intentionally absent; they appear only for a missing free CLI.
+Gemini requires a Google sign-in; Freebuff completes its own setup on first use.
 
 Steps:
 1. [x] capture.rs (`55ac632`). Real capture verified: 1920x1080 -> 1280x720,
@@ -237,9 +256,9 @@ Steps:
    over loopback HTTP with stub guard/capture. 13/13 Rust tests pass.
 3. [x] launch wiring (`e0a6333`) + frontend relaunch flow (`c627479`).
    15/15 Rust tests, node check + 7 parser tests pass.
-4. [ ] loopback protocol test with real HTTP; then ask Aryan before any
-   end-to-end run that spends model tokens
-5. [ ] README permissions model
+4. [x] loopback protocol test with real HTTP; live Claude Code screenshot run
+   completed in `dae31d6` with Aryan's approved model-token spend
+5. [x] README permissions model (`ffea610`)
 
 **Earlier this session — Claude picked up PR 4 (Opus 5.5).** Review of Codex PRs 1–4 done.
 Working now, in order:
@@ -351,6 +370,18 @@ when PR 1 started; latest tag `v1.1.0`.
   model catalogs, free-user routing). Handed off mid-4c: local debug app build
   was running (`cargo tauri build --debug --no-bundle`), app not yet launched.
   Local `main` is ahead of origin from `748237d` onward; NOT pushed.
+- 2026-10-15 — Codex: completed PR 4c implementation validation and repaired
+  the launcher configuration UX. `7fac9ef` adds supported Claude/Codex effort
+  levels, a framed first-run agent/model/effort chooser, viewport-safe model
+  menus, Windows npm-shim PTY launch support, and the Claude Code/Codex-only
+  PC-control boundary. The debug build at `E:\rust\target\debug\ezcli.exe`
+  builds and launches; 24 Rust tests pass (five real-environment checks are
+  intentionally ignored by default); `opencode models` returned 10 entries;
+  and a live free OpenCode prompt returned `EZCLI-OK` at reported `$0` cost.
+  `ecac5b8` documents free users and the backend matrix. The local desktop
+  automation bridge could not enumerate the Tauri window, so final visual
+  click-through remains a human sign-off. No push, tag, release, or publication
+  was performed.
 
 ---
 
