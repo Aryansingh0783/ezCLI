@@ -145,6 +145,45 @@ Claude Desktop, ChatGPT desktop, and Codex import are intentionally listed as
 unavailable for now. Their local store formats have not been verified in this
 project, so ezCLI does not probe guessed paths or claim compatibility.
 
+## PC control and its permission model
+
+PC control lets an agent see your screen through a tool that ezCLI provides. It
+is off for every session until you turn it on, and it costs no tokens while off.
+
+**What the agent can do today:** call one tool, `screenshot`, which returns your
+primary display as a PNG at most 1280 px wide. It cannot click, type, or run
+commands through ezCLI yet.
+
+**How you turn it on:** use the **PC control** chip in the session header. The
+agent only learns about tools when it starts, so turning PC control on restarts
+that session with ezCLI's tool server attached. A confirmation tells you the
+current conversation in that tab ends. Turning it off restarts it without the
+tool server.
+
+**How the permission is enforced:**
+
+- The tool server listens only on `127.0.0.1` and rejects requests whose Host
+  header is not loopback.
+- Each granted session gets its own random 128-bit address. One session cannot
+  reach another session's tools.
+- Every tool call re-checks two things in the Rust backend: that you granted
+  this session, and that its process is still running. The backend enforces
+  this itself, so a revoke holds even if the window reloads.
+- Permission covers one process. It ends when the process exits, when you close
+  the tab, when you press Restart, or when you turn it off. Relaunching asks
+  again.
+- Nothing an agent prints can grant permission. Only the chip can.
+
+**Supported agents:** Claude Code (attached with `--mcp-config`) and Codex
+(attached with `-c mcp_servers.ezcli.url=…`). Other agents show the chip
+disabled. Add `"mcp": "claude"`, `"codex"`, or `"none"` to an entry in
+`agents.json` to override the default, which is inferred from the command name.
+
+**Verified so far:** screen capture on Windows (1920x1080 to 1280x720 in about
+0.2 s), and the tool server's protocol, grant, and revoke behaviour over real
+loopback HTTP in unit tests. An end-to-end run with a live CLI calling the tool
+has not been done yet. Screen capture is Windows-only for now.
+
 ## How it works
 
 ```
