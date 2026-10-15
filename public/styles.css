@@ -794,6 +794,11 @@ kbd {
   text-transform: uppercase;
   color: var(--faint);
 }
+/* Block, not flex: text-overflow never applies to a flex container, which is
+   why long catalog model names were clipped mid-word with no ellipsis. */
+.pill-pick > .pill-val {
+  display: block;
+}
 .pill-val {
   min-width: 0;
   overflow: hidden;

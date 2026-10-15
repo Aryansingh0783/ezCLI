@@ -1110,6 +1110,8 @@ function renderHome() {
       const el = $(id);
       el.hidden = !show;
       el.innerHTML = `<span class="pill-cap">${cap}</span><span class="pill-val">${esc(val)}</span>${caret}`;
+      // The value can be clipped (long catalog model names); keep it readable.
+      el.title = `${cap}: ${val}`;
     };
     fill('homeAgent', 'Agent', a.label);
     fill('homeModel', 'Model', modelLabel(a, p.model), a.models.length > 0 || a.dynamic_models);
