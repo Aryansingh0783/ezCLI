@@ -142,9 +142,29 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-- v1.1.0 shipped and verified (MSI attached to the release).
-- Working tree clean, `main` @ `40e19a5`, latest tag `v1.1.0`.
-- **No PR from the Next-Iteration plan has been started yet.** PR 1 is next.
+**IN PROGRESS — PR 1: backend detection + first-run wizard** (Claude, 2026-10-15)
+
+Goal: detect what the user actually has (Claude Code CLI, Codex CLI, ChatGPT CLI,
+Claude sign-in, API keys) and surface it in a non-blocking first-run wizard that
+picks the best default and lets the user switch per session.
+
+Files being touched:
+- `src-tauri/src/backends.rs` (new) — `detect()` returns a BackendReport.
+- `src-tauri/src/lib.rs` — register `mod backends`, add `detect_backends` command.
+- `public/index.html` — add the first-run wizard `<dialog>`.
+- `public/app.js` — `prefs.onboarded` flag, wizard render + wiring, show on first run.
+- `public/styles.css` — wizard styles.
+
+Steps:
+1. [ ] backends.rs with detect() + BackendReport
+2. [ ] wire command into lib.rs
+3. [ ] wizard dialog markup
+4. [ ] wizard logic (show on first run, non-blocking, sets default agent)
+5. [ ] styles
+6. [ ] parse-check, commit, update §5/§6
+
+Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
+when PR 1 started; latest tag `v1.1.0`.
 
 ## 6. Session log (append one line per working session)
 
