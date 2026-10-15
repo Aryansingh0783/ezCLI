@@ -34,6 +34,39 @@ pub struct AgentDef {
     pub modes: Vec<Variant>,
     #[serde(default)]
     pub models: Vec<Variant>,
+    /// How this CLI attaches ezCLI's PC-control MCP server: "claude", "codex"
+    /// or "none". Omitted = inferred from the command name, so configs written
+    /// before this field existed keep working.
+    #[serde(default)]
+    pub mcp: Option<String>,
+}
+
+/// The two attach mechanisms verified against the installed CLIs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum McpStyle {
+    /// `claude --mcp-config <file.json>`
+    Claude,
+    /// `codex -c mcp_servers.<name>.url=<url>`
+    Codex,
+}
+
+impl AgentDef {
+    pub fn mcp_style(&self) -> Option<McpStyle> {
+        let named = match self.mcp.as_deref().map(str::to_ascii_lowercase).as_deref() {
+            Some("claude") => return Some(McpStyle::Claude),
+            Some("codex") => return Some(McpStyle::Codex),
+            Some(_) => return None, // "none" or anything unrecognised
+            None => Path::new(&self.command)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(str::to_ascii_lowercase),
+        };
+        match named.as_deref() {
+            Some("claude") => Some(McpStyle::Claude),
+            Some("codex") => Some(McpStyle::Codex),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -48,6 +81,8 @@ pub struct AgentOut {
     pub models: Vec<Variant>,
     pub available: bool,
     pub resolved: Option<String>,
+    /// Whether ezCLI knows how to attach PC control to this CLI.
+    pub pc_control: bool,
 }
 
 #[derive(Deserialize)]
@@ -147,6 +182,7 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                 models: a.models.clone(),
                 available: resolved.is_some(),
                 resolved,
+                pc_control: a.mcp_style().is_some(),
             }
         })
         .collect()
@@ -162,4 +198,37 @@ pub fn build_argv(a: &AgentDef, mode_id: &str, model_id: &str) -> Vec<String> {
         out.extend(m.args.clone());
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn def(command: &str, mcp: Option<&str>) -> AgentDef {
+        AgentDef {
+            id: "x".into(),
+            label: "X".into(),
+            vendor: String::new(),
+            icon: String::new(),
+            command: command.into(),
+            args: vec![],
+            modes: vec![],
+            models: vec![],
+            mcp: mcp.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn mcp_style_is_inferred_from_the_command_for_older_configs() {
+        assert_eq!(def("claude", None).mcp_style(), Some(McpStyle::Claude));
+        assert_eq!(def(r"C:\npm\claude.cmd", None).mcp_style(), Some(McpStyle::Claude));
+        assert_eq!(def("codex", None).mcp_style(), Some(McpStyle::Codex));
+        assert_eq!(def("chatgpt", None).mcp_style(), None);
+    }
+
+    #[test]
+    fn explicit_mcp_field_wins_including_opt_out() {
+        assert_eq!(def("claude", Some("none")).mcp_style(), None);
+        assert_eq!(def("my-wrapper", Some("codex")).mcp_style(), Some(McpStyle::Codex));
+    }
 }

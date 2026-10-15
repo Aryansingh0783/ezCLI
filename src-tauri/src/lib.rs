@@ -18,8 +18,8 @@ use agents::{AgentDef, AgentOut};
 use pty_mgr::{SessionStore, SpawnArgs};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Manager, State};
 
 pub struct AppState {
     agents: Mutex<Vec<AgentDef>>,
@@ -71,6 +71,50 @@ struct StartResult {
     pid: u32,
     cwd: String,
     command: String,
+    /// True only when the session was launched with PC control attached.
+    pc_control: bool,
+}
+
+/// Where per-session Claude Code MCP config files live. They contain the
+/// session's secret URL, so they are deleted on revoke/kill and the whole
+/// directory is cleared at startup in case a previous run crashed.
+fn mcp_config_dir() -> PathBuf {
+    std::env::temp_dir().join("ezcli-mcp")
+}
+
+fn mcp_config_file(pty_id: &str) -> PathBuf {
+    mcp_config_dir().join(format!("{pty_id}.json"))
+}
+
+/// Tear down everything that lets a PTY reach PC control.
+fn detach_pc_control(state: &AppState, mcp: &mcp_server::McpServer, pty_id: &str) {
+    state.pc_control.revoke(pty_id);
+    mcp.unregister(pty_id);
+    let _ = std::fs::remove_file(mcp_config_file(pty_id));
+}
+
+/// Build the CLI arguments that attach ezCLI's MCP server, plus a redacted
+/// form for display. Only the backend calls this, only with a URL it minted.
+fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, url: &str) -> Result<(Vec<String>, Vec<String>), String> {
+    match style {
+        agents::McpStyle::Claude => {
+            let dir = mcp_config_dir();
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let path = mcp_config_file(pty_id);
+            let config = serde_json::json!({
+                "mcpServers": { "ezcli": { "type": "http", "url": url } }
+            });
+            std::fs::write(&path, config.to_string()).map_err(|e| e.to_string())?;
+            Ok((
+                vec!["--mcp-config".into(), path.to_string_lossy().into_owned()],
+                vec!["--mcp-config".into(), "<ezcli PC control>".into()],
+            ))
+        }
+        agents::McpStyle::Codex => Ok((
+            vec!["-c".into(), format!("mcp_servers.ezcli.url={url}")],
+            vec!["-c".into(), "mcp_servers.ezcli.url=<ezcli PC control>".into()],
+        )),
+    }
 }
 
 #[tauri::command]
@@ -83,9 +127,12 @@ fn start_session(
     cwd: Option<String>,
     cols: u16,
     rows: u16,
+    pc_control: Option<bool>,
     state: State<AppState>,
+    mcp: State<Arc<mcp_server::McpServer>>,
     app: AppHandle,
 ) -> Result<StartResult, String> {
+    let want_pc = pc_control.unwrap_or(false);
     let (cmd, argv_for_log, final_args, resolved_cwd) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
@@ -95,7 +142,27 @@ fn start_session(
 
         let resolved = agents::resolve_command(&a.command)
             .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
-        let argv = agents::build_argv(a, &mode_id, &model_id);
+        let mut argv = agents::build_argv(a, &mode_id, &model_id);
+        let mut shown = argv.clone();
+
+        if want_pc {
+            let style = a
+                .mcp_style()
+                .ok_or_else(|| format!("PC control isn't supported for {} yet.", a.label))?;
+            let url = mcp.register(&id).map_err(|e| e.to_string())?;
+            let (attach, attach_shown) = match mcp_attach_args(style, &id, &url) {
+                Ok(v) => v,
+                Err(e) => {
+                    detach_pc_control(&state, &mcp, &id);
+                    return Err(e);
+                }
+            };
+            // Global options go right after the agent's base args, before any
+            // mode subcommand (e.g. `codex --no-daemon -c … resume --last`).
+            let at = a.args.len().min(argv.len());
+            argv.splice(at..at, attach);
+            shown.splice(at..at, attach_shown);
+        }
 
         // A .ps1 shim can't be exec'd directly; hand it to PowerShell.
         let (cmd, final_args) = if cfg!(windows) && resolved.to_lowercase().ends_with(".ps1") {
@@ -117,29 +184,40 @@ fn start_session(
             .filter(|c| std::path::Path::new(c).is_dir())
             .unwrap_or_else(default_start_dir);
 
-        let argv_for_log = format!("{} {}", a.command, argv.join(" "));
+        let argv_for_log = format!("{} {}", a.command, shown.join(" "));
         (cmd, argv_for_log, final_args, resolved_cwd)
     };
 
-    let pid = state
-        .sessions
-        .spawn(
-            app,
-            SpawnArgs {
-                id,
-                cmd,
-                args: final_args,
-                cwd: Some(resolved_cwd.clone()),
-                cols,
-                rows,
-            },
-        )
-        .map_err(|e| e.to_string())?;
+    let spawned = state.sessions.spawn(
+        app,
+        SpawnArgs {
+            id: id.clone(),
+            cmd,
+            args: final_args,
+            cwd: Some(resolved_cwd.clone()),
+            cols,
+            rows,
+        },
+    );
+    let pid = match spawned {
+        Ok(pid) => pid,
+        Err(e) => {
+            if want_pc {
+                detach_pc_control(&state, &mcp, &id);
+            }
+            return Err(e.to_string());
+        }
+    };
+    // Grant only once the process exists, so the grant is tied to a live PTY.
+    if want_pc {
+        state.pc_control.set(&id, true);
+    }
 
     Ok(StartResult {
         pid,
         cwd: resolved_cwd,
         command: argv_for_log.trim().to_string(),
+        pc_control: want_pc,
     })
 }
 
@@ -160,9 +238,13 @@ fn resize_session(id: String, cols: u16, rows: u16, state: State<AppState>) -> R
 }
 
 #[tauri::command]
-fn kill_session(id: String, state: State<AppState>) -> Result<(), String> {
-    // Revoke first so there is no window where a dying session still holds a grant.
-    state.pc_control.revoke(&id);
+fn kill_session(
+    id: String,
+    state: State<AppState>,
+    mcp: State<Arc<mcp_server::McpServer>>,
+) -> Result<(), String> {
+    // Detach first so there is no window where a dying session still holds a grant.
+    detach_pc_control(&state, &mcp, &id);
     state.sessions.kill(&id).map_err(|e| e.to_string())
 }
 
@@ -223,22 +305,27 @@ fn read_imported_chat(id: String, state: State<AppState>) -> Result<import::Impo
         .ok_or_else(|| "Import is no longer available. Refresh local chats and try again.".into())
 }
 
-/// Grant or revoke PC control for one live PTY. A grant is refused unless the
-/// PTY's process is running, so permission can only attach to a real session.
+/// Revoke PC control for a PTY. Granting happens only through
+/// `start_session(pc_control: true)`, because the CLI must be launched with
+/// the MCP server attached for the grant to mean anything.
 #[tauri::command]
-fn set_pc_control(session_id: String, enabled: bool, state: State<AppState>) -> Result<bool, String> {
-    if enabled && !state.sessions.is_live(&session_id) {
-        state.pc_control.revoke(&session_id);
-        return Err("PC control can only be granted to a running session.".into());
+fn set_pc_control(
+    session_id: String,
+    enabled: bool,
+    state: State<AppState>,
+    mcp: State<Arc<mcp_server::McpServer>>,
+) -> Result<bool, String> {
+    if enabled {
+        return Err("Turn PC control on by relaunching the session with it.".into());
     }
-    Ok(state.pc_control.set(&session_id, enabled))
+    detach_pc_control(&state, &mcp, &session_id);
+    Ok(false)
 }
 
 /// The one guard every native PC-control action must call. Both conditions are
 /// required: an explicit user grant AND a still-running process. The second
 /// check is what makes revocation hold when the frontend can't revoke (webview
 /// reload or crash), because a dead or killed PTY is never "live".
-#[allow(dead_code)]
 fn pc_control_allowed(state: &AppState, session_id: &str) -> bool {
     state.pc_control.allowed(session_id) && state.sessions.is_live(session_id)
 }
@@ -328,6 +415,17 @@ pub fn run() {
             sessions: SessionStore::new(),
             imports: import::ImportStore::default(),
             pc_control: pc_control::PcControlStore::default(),
+        })
+        .setup(|app| {
+            // Stale per-session config files from a crashed run hold dead tokens.
+            let _ = std::fs::remove_dir_all(mcp_config_dir());
+            let handle = app.handle().clone();
+            let server = mcp_server::McpServer::start(mcp_server::Hooks {
+                allowed: Box::new(move |pty_id| pc_control_allowed(&handle.state::<AppState>(), pty_id)),
+                screenshot: Box::new(capture::primary_screen),
+            })?;
+            app.manage(server);
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             list_agents,
