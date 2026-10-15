@@ -8,6 +8,7 @@ How to install ezCLI, launch sessions, and use every part of the window.
 - [The window](#the-window)
 - [Start a session](#start-a-session)
 - [Work in a session](#work-in-a-session)
+- [Images and videos](#images-and-videos)
 - [Files pane](#files-pane)
 - [Changes pane](#changes-pane)
 - [Switch the working folder](#switch-the-working-folder)
@@ -91,6 +92,36 @@ The actions at the top right act on the current session:
 - **Stop** ends the process but keeps the tab, so you can read the final output.
 - **Restart** ends it and launches the same agent again with the same model and mode.
 - **Clear** wipes the terminal scrollback. It does not touch the process.
+
+## Images and videos
+
+Three ways to give the AI a picture or a clip:
+
+- Click **Attach** in the composer and pick images or videos.
+- Take a screenshot (`Win+Shift+S`) or copy an image, then press `Ctrl+V` in the composer.
+- Drag files from Explorer onto the window. Images and videos are attached;
+  other files are added as `@file` mentions.
+
+Attachments show as pills above the message box. Remove one with its ×. Press
+`Enter` to send them with your message. ezCLI never uploads anything: the files
+stay on your PC and the CLI reads them, so what the model can see depends on the
+agent you picked.
+
+| Agent | Images | Videos |
+| --- | --- | --- |
+| Claude Code, Claude, Codex | Attached in the CLI's own composer as `[Image #n]` | Six still frames |
+| Gemini CLI | `@path` mention | The video file itself |
+| OpenCode | `@path` mention | Six still frames |
+| Ollama | Image path in the prompt; needs a vision model such as `llava` or `gemma3` | Six still frames |
+| ChatGPT, Freebuff | Not available | Not available |
+
+Frames are sampled evenly across the clip with your installed `ffmpeg`. If it is
+missing, ezCLI tells you to run `winget install Gyan.FFmpeg`. Gemini and
+OpenCode only read files inside the session folder, so for them ezCLI copies
+attachments into a `.ezcli-attachments` folder there. That folder contains its
+own `.gitignore`, so git never picks it up, and you can delete it at any time.
+Pasted images and frames for the other agents live in `~/.ezcli/attachments`
+and are cleared after a week.
 
 ## Files pane
 

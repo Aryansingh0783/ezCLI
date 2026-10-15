@@ -76,12 +76,14 @@ catalog entry.
   the launcher make the configuration explicit before a CLI starts. Claude and
   Codex expose their supported effort levels; agents that do not expose one
   retain their own default. The live session head gets its own Model chip too.
-- **Truthful image references.** The composer currently exposes a local
-  `@path` image-reference picker only for OpenCode and Gemini. It does not
-  upload image bytes, simulate clipboard pastes, or pretend every model has
-  vision. Claude/Antigravity clipboard flows and Codex/Ollama launch-time
-  image syntax are deliberately hidden until ezCLI implements and verifies
-  those routes end to end.
+- **Images and videos in chat.** Click **Attach**, paste a screenshot
+  (`Win+Shift+S`, then `Ctrl+V` in the composer), or drop files on the window.
+  Each CLI gets the file the way it actually reads pictures: Claude Code and
+  Codex attach the image in their own composer (`[Image #1]`), OpenCode and
+  Gemini get an `@path` mention, Ollama gets the path in the prompt
+  (multimodal models only). Gemini reads video directly; for the other agents
+  ezCLI samples six still frames with your own `ffmpeg`. Nothing is uploaded
+  by ezCLI; the files stay on your PC and the CLI reads them locally.
 - **Usage view.** Honest local counters, plus one-click shortcuts to the Anthropic Console
   and OpenAI Dashboard where the real billing lives.
 - **Local chat import.** A read-only picker for recognized Claude Code transcripts. It never
