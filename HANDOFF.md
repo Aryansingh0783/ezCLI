@@ -172,7 +172,8 @@ Steps:
    document exact OS/dependency limitations without faking a control run.
 5. [ ] Validate, commit code, and refresh this handoff checkpoint.
 
-Checkpoint on disk (not yet committed): `src-tauri/src/pc_control.rs` defines a
+Checkpoint committed in `c47486e` (with handoff commits `1e033a9` and
+`9f6b034`): `src-tauri/src/pc_control.rs` defines a
 deny-by-default `DashSet` grant store plus a unit test; `lib.rs` exposes only
 `set_pc_control`; and the session header now has a visible grant/revoke chip.
 The frontend keys consent to the current live PTY id and revokes it on process
@@ -217,6 +218,10 @@ when PR 1 started; latest tag `v1.1.0`.
   preview picker. Other stores remain unavailable pending real-format evidence;
   Rust compilation could not start because of the pre-existing lock/toolchain
   issue, so no build or release was attempted.
+- 2026-10-15 — Codex: checkpointed PR 4 in `c47486e`; added explicit,
+  per-live-PTY PC-control consent with confirmation and automatic revocation.
+  No host-control action or dependency was added. Tree is clean and work is
+  now handed back to Claude for the next validated native-action decision.
 
 ---
 
