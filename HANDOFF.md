@@ -152,7 +152,42 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**Claude picked up PR 4 (2026-10-15, Opus 5.5).** Review of Codex PRs 1–4 done.
+**IN PROGRESS — PR 4b: PC control over MCP, attached only while granted**
+(Claude, 2026-10-15). Aryan chose this over always-on tools so PC control costs
+zero tokens unless switched on.
+
+Design (verified against the installed CLIs, see `claude --help`, `codex mcp add --help`):
+- `src-tauri/src/capture.rs` (new, cfg(windows)): GDI BitBlt of the primary
+  monitor -> BGRA -> RGB, downscaled to max 1280 px wide (image tokens are the
+  cost), PNG via the `png` 0.17 crate already in Cargo.lock. `windows` 0.62 with
+  Gdi features as a direct dep (also already in the lock). Non-Windows: error.
+- `src-tauri/src/mcp_server.rs` (new): one loopback HTTP listener on
+  `127.0.0.1:0`, started at app launch. Streamable-HTTP MCP, JSON responses only
+  (no SSE; GET/DELETE -> 405). Endpoint `POST /mcp/<token>`; token = 128-bit
+  random hex per granted PTY, mapped to the PTY id. Host header must be loopback.
+  Methods: initialize, notifications/initialized (202), ping, tools/list,
+  tools/call. First and only tool: `screenshot` (read-only). Every call goes
+  through `lib.rs::pc_control_allowed` (grant AND live PTY).
+- Launch wiring: `start_session` gets `pc_control: bool`. When true, the backend
+  (never the frontend) generates the token, grants the new PTY id, and appends:
+  - Claude Code: `--mcp-config <%TEMP%\ezcli-mcp\<pty>.json>` (file holds the
+    URL incl. token; deleted on revoke/exit).
+  - Codex: `-c mcp_servers.ezcli.url=http://127.0.0.1:<port>/mcp/<token>`.
+  Per-agent style from an optional agents.json field `mcp` ("claude" | "codex" |
+  "none"); default inferred from the command name so existing user configs work.
+- Frontend: the PC-control chip now RELAUNCHES the session with/without PC
+  control (confirm dialog says it restarts the CLI). Revoke = relaunch without.
+- Input injection (click/type) comes after screenshot is validated end to end.
+
+Steps:
+1. [ ] capture.rs + unit test (decodes a real capture, checks dimensions)
+2. [ ] mcp_server.rs + JSON-RPC unit tests (no model needed)
+3. [ ] launch wiring + frontend relaunch flow
+4. [ ] loopback protocol test with real HTTP; then ask Aryan before any
+   end-to-end run that spends model tokens
+5. [ ] README permissions model
+
+**Earlier this session — Claude picked up PR 4 (Opus 5.5).** Review of Codex PRs 1–4 done.
 Working now, in order:
 1. [x] Fix PR 3 import truncation (`7bf51d0`): collect path+mtime for every
    transcript, sort newest-first, then cap at 600.
