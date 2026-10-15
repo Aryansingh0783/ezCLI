@@ -167,6 +167,20 @@ careful, with one real bug, now fixed.**
 - Reviewed safe: catalog fetch (System32 curl, fixed URL, `--disable`, caps),
   remote-name allowlisting before argv, DXGI probe release order, innerHTML sites.
 - Cosmetic `b188b64`: Ollama notice rendered literal backticks.
+- First look at the REAL fresh build (`E:\rust\target-ezcli-ollama-cloud\debug\ezcli.exe`,
+  built with f67b41b+b188b64), via screenshots:
+  - OK: all 10 agents listed; Free badges on OpenCode / Antigravity / Ollama
+    Local / Freebuff, none on Gemini CLI; uninstalled agents greyed "not
+    installed"; parked tabs from a previous run restored; home hero + pills intact.
+  - POLISH TODO: Model pill value is clipped mid-word (`nemotron-3-ultra-`) with
+    no ellipsis; needs `text-overflow: ellipsis` + a title tooltip.
+  - UNCONFIRMED: clicking the Model pill showed no menu within ~3 s. The check
+    was interrupted (Aryan began using the PC), so re-test before calling it a
+    bug: it awaits `opencode models` (~1.5 s) before opening.
+  - Note: `open_application "Ezcli"` launches the INSTALLED v1.1.0 MSI, not the
+    debug build. Focus the debug window by PID instead.
+  - Aryan's older debug window (pid 21880) still runs; its title shows the npm
+    cmd title-pollution bug that b949304 fixed. Left untouched.
 
 **Post-PR 4c — Cloud-first Ollama, PC guidance, and truthful agent capability
 UX (CODE COMPLETE in `b949304`; human desktop click-through still needed).**
