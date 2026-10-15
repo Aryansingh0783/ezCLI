@@ -1048,6 +1048,7 @@ kbd {
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   background: var(--term-bg);
 }
 .term-hosts {
@@ -1376,6 +1377,7 @@ body.resizing-pane .xterm {
 /* ---------------------------------------------------------------- status bar */
 .statusbar {
   display: flex;
+  user-select: none;
   align-items: center;
   gap: 12px;
   height: 26px;

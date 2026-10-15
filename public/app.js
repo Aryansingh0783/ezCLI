@@ -1307,7 +1307,7 @@ function renderStatus() {
   if (!s) {
     st.textContent = 'idle';
     st.className = 'st-state';
-    $('stCmd').textContent = space() ? `${spaceSessions().length} tab(s) in ${space().name}` : 'no session';
+    $('stCmd').textContent = space() ? `${tabCount(spaceSessions().length)} in ${space().name}` : 'no session';
     $('stCwd').textContent = space() ? space().path : '';
     $('stSize').textContent = '';
     renderLiveUsage(null);
@@ -2435,6 +2435,8 @@ function notInstalledToast(a) {
   }
 }
 
+const tabCount = (n) => (n === 0 ? 'No tabs' : n === 1 ? '1 tab' : `${n} tabs`);
+
 function renderUsage() {
   const rows = state.agents.map((a) => {
     const live = state.sessions.filter((s) => s.agentId === a.id && s.status === 'running').length;
@@ -3231,6 +3233,13 @@ function wire() {
   });
 
   window.addEventListener('resize', fitActive);
+  // The composer grows with attachment pills and multi-line drafts, which
+  // shrinks the terminal without any window resize. Refit when that happens.
+  let termRaf = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(termRaf);
+    termRaf = requestAnimationFrame(fitActive);
+  }).observe($('termHosts'));
   window.addEventListener('focus', () => {
     const s = active();
     if (s && s.unseen) {
