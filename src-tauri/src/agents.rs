@@ -546,6 +546,34 @@ pub fn build_argv(
 /// shims, so route them through cmd.exe while keeping the generated arguments
 /// separate. The arguments are still constrained to agents.json or a
 /// backend-validated model catalog.
+/// The 8.3 short form of an existing path (no spaces), or the path unchanged
+/// when it doesn't exist or the volume has short names disabled.
+#[cfg(windows)]
+fn short_path(path: &str) -> String {
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::GetShortPathNameW;
+    let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: `wide` is NUL-terminated and outlives both calls; the second
+    // call writes at most `buf.len()` UTF-16 units.
+    unsafe {
+        let needed = GetShortPathNameW(PCWSTR(wide.as_ptr()), None);
+        if needed == 0 {
+            return path.to_string();
+        }
+        let mut buf = vec![0u16; needed as usize];
+        let written = GetShortPathNameW(PCWSTR(wide.as_ptr()), Some(&mut buf));
+        if written == 0 || written as usize >= buf.len() {
+            return path.to_string();
+        }
+        String::from_utf16_lossy(&buf[..written as usize])
+    }
+}
+
+#[cfg(not(windows))]
+fn short_path(path: &str) -> String {
+    path.to_string()
+}
+
 pub fn launch_command(resolved: &str, args: &[String]) -> (String, Vec<String>) {
     let lower = resolved.to_ascii_lowercase();
     if cfg!(windows) && lower.ends_with(".ps1") {
@@ -560,12 +588,14 @@ pub fn launch_command(resolved: &str, args: &[String]) -> (String, Vec<String>) 
         wrapped.extend(args.iter().cloned());
         ("powershell.exe".to_string(), wrapped)
     } else if cfg!(windows) && (lower.ends_with(".cmd") || lower.ends_with(".bat")) {
-        let mut wrapped = vec![
-            "/d".to_string(),
-            "/s".to_string(),
-            "/c".to_string(),
-            resolved.to_string(),
-        ];
+        // No `/s`, and the shim goes in as its 8.3 short path. cmd.exe only
+        // rewrites quotes when the text after /c *starts* with a quote (and
+        // `/s` always strips the first and last one). A long shim path with a
+        // space, e.g. C:\Users\John Smith\AppData\Roaming\npm\claude.cmd, gets
+        // quoted and then mangled, so the CLI never starts. A short path has no
+        // spaces, needs no quotes, and every later quoted argument passes
+        // through unchanged.
+        let mut wrapped = vec!["/d".to_string(), "/c".to_string(), short_path(resolved)];
         wrapped.extend(args.iter().cloned());
         ("cmd.exe".to_string(), wrapped)
     } else {
@@ -576,6 +606,70 @@ pub fn launch_command(resolved: &str, args: &[String]) -> (String, Vec<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Launch a `.cmd` shim through the exact production path (launch_command
+    /// + portable-pty) and return everything it printed.
+    #[cfg(windows)]
+    fn run_shim_through_pty(dir_name: &str, args: &[&str]) -> String {
+        use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+        use std::io::Read;
+        let dir = std::env::temp_dir().join(dir_name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let shim = dir.join("echo-shim.cmd");
+        std::fs::write(&shim, "@echo off\r\necho EZCLI_SHIM_RAN [%1] [%2]\r\n").unwrap();
+
+        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let (program, argv) = launch_command(&shim.to_string_lossy(), &args);
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 120, pixel_width: 0, pixel_height: 0 })
+            .unwrap();
+        let mut cmd = CommandBuilder::new(&program);
+        cmd.args(&argv);
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let out = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            String::from_utf8_lossy(&buf).into_owned()
+        });
+        let _ = child.wait();
+        drop(pair.master);
+        let text = out.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        text
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn cmd_shim_launches_from_a_plain_path() {
+        let out = run_shim_through_pty("ezcli-shim-plain", &["--model", "opus"]);
+        assert!(out.contains("EZCLI_SHIM_RAN [--model] [opus]"), "{out}");
+    }
+
+    /// npm installs global CLIs under %APPDATA%\npm, so a Windows username
+    /// with a space puts a space in every shim path.
+    #[test]
+    #[cfg(windows)]
+    fn cmd_shim_launches_from_a_path_with_a_space() {
+        let out = run_shim_through_pty("ezcli shim spaced", &["--model", "opus"]);
+        assert!(out.contains("EZCLI_SHIM_RAN [--model] [opus]"), "{out}");
+    }
+
+    /// The PC-control config file lives under %TEMP%, which also contains the
+    /// username, so a later argument with a space must survive intact too.
+    #[test]
+    #[cfg(windows)]
+    fn quoted_argument_with_a_space_reaches_the_shim_intact() {
+        let out = run_shim_through_pty("ezcli shim spaced arg", &["--mcp-config", r"C:\Users\John Smith\p1.json"]);
+        assert!(out.contains(r#"EZCLI_SHIM_RAN [--mcp-config] ["C:\Users\John Smith\p1.json"]"#), "{out}");
+    }
 
     fn def(command: &str, mcp: Option<&str>) -> AgentDef {
         AgentDef {
@@ -819,7 +913,7 @@ mod tests {
             launch_command(r"C:\\npm\\opencode.cmd", &args),
             (
                 "cmd.exe".into(),
-                vec!["/d", "/s", "/c", r"C:\\npm\\opencode.cmd", "-m", "opencode/free-model"]
+                vec!["/d", "/c", r"C:\\npm\\opencode.cmd", "-m", "opencode/free-model"]
                     .into_iter()
                     .map(str::to_string)
                     .collect()
