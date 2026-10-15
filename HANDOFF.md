@@ -142,7 +142,19 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**IN PROGRESS — PR 4: local PC-control permission foundation** (Codex, 2026-10-15)
+**Claude picked up PR 4 (2026-10-15, Opus 5.5).** Review of Codex PRs 1–4 done.
+Working now, in order:
+1. [ ] Fix PR 3 import truncation: with 2,695 local transcripts the scan stops at
+   600 files in walk order *before* sorting by mtime, so recent chats can be
+   missed. Collect path+mtime for all, sort newest-first, then cap.
+2. [ ] Harden PR 4 on the Rust side: `allowed()` must also require the PTY to be
+   live; refuse grants for non-live ids; `kill_session` revokes. Frontend-only
+   revocation does not survive a webview reload.
+3. [ ] Then ask Aryan how to get Rust compiling (none of PRs 1–4 Rust has ever
+   built): local mingw-w64 toolchain download vs. a non-release CI build.
+No native PC-control action until Rust can be built and validated.
+
+**Previous state — PR 4: local PC-control permission foundation** (Codex, 2026-10-15)
 
 Prerequisites complete: PR 1 (`c951ecb`), PR 2 (`58ce7b9`), and PR 3
 (`fa212ab feat: add read-only Claude Code chat import`).
