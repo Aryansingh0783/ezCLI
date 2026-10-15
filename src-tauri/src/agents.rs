@@ -264,6 +264,14 @@ fn merge_builtin(user: &mut Vec<AgentDef>) {
             if existing.id == "claude-chat" {
                 existing.mcp = Some("none".into());
             }
+            // Install hints are display-only text, added to older stock
+            // configs so the "not installed" state can say what to run.
+            if existing.install.is_none()
+                && builtin_agent.install.is_some()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.install = builtin_agent.install.clone();
+            }
         } else {
             user.push(builtin_agent);
         }
@@ -1085,6 +1093,15 @@ mod tests {
         merge_builtin(&mut user);
         assert!(user[0].efforts.iter().any(|e| e.id == "high"));
         assert_eq!(user[0].command, "claude");
+        assert_eq!(user[0].install.as_deref(), Some("npm install -g @anthropic-ai/claude-code"));
+    }
+
+    #[test]
+    fn custom_commands_do_not_receive_a_builtin_install_hint() {
+        let mut user = vec![def("my-codex", None)];
+        user[0].id = "codex".into();
+        merge_builtin(&mut user);
+        assert_eq!(user[0].install, None);
     }
 
     #[test]

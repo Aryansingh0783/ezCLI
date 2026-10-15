@@ -748,7 +748,7 @@ async function createSession(agentId, opts = {}) {
   const a = agent(agentId);
   if (!a) return null;
   if (!a.available) {
-    toast(`${a.label} is not installed. Point agents.json at its executable, then reload agents.`, 'error');
+    notInstalledToast(a);
     return null;
   }
   const p = pick(a);
@@ -2223,6 +2223,17 @@ function toast(msg, kind = '', onClick) {
   });
   $('toasts').appendChild(el);
   setTimeout(() => el.remove(), kind === 'error' ? 7000 : 3500);
+}
+
+/** ezCLI drives command line tools. A provider's desktop app does not put
+ * that command on PATH, which is the usual reason an agent shows as missing. */
+function notInstalledToast(a) {
+  const cmd = a.command ? `"${a.command}"` : 'its command';
+  if (a.install) {
+    toast(`${a.label} CLI not found (${cmd}). A desktop app is not the CLI. Install it with: ${a.install} — then Reload agents in Settings. Click to copy.`, 'error', () => copy(a.install));
+  } else {
+    toast(`${a.label} CLI not found (${cmd}). Install the CLI so ${cmd} runs in a terminal, then Reload agents in Settings.`, 'error');
+  }
 }
 
 function renderUsage() {
