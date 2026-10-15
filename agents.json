@@ -14,7 +14,7 @@
         { "id": "default", "label": "Default", "args": [] },
         { "id": "plan", "label": "Plan", "args": ["--permission-mode", "plan"] },
         { "id": "accept-edits", "label": "Accept edits", "args": ["--permission-mode", "acceptEdits"] },
-        { "id": "continue", "label": "Continue", "args": ["--continue"] }
+        { "id": "continue", "label": "Continue", "args": ["--continue"], "resumesSession": true }
       ],
       "models": [
         { "id": "default", "label": "Default", "args": [] },
@@ -71,7 +71,7 @@
       "modes": [
         { "id": "default", "label": "Default", "args": [] },
         { "id": "auto", "label": "Full auto", "args": ["--full-auto"] },
-        { "id": "resume", "label": "Resume", "args": ["resume", "--last"] }
+        { "id": "resume", "label": "Resume", "args": ["resume", "--last"], "resumesSession": true }
       ],
       "models": [
         { "id": "default", "label": "Default", "args": [] },
@@ -111,7 +111,7 @@
       "modes": [
         { "id": "default", "label": "Build", "args": [] },
         { "id": "plan", "label": "Plan", "args": ["--agent", "plan"] },
-        { "id": "continue", "label": "Continue", "args": ["--continue"] }
+        { "id": "continue", "label": "Continue", "args": ["--continue"], "resumesSession": true }
       ],
       "models": [{ "id": "default", "label": "Default", "args": [] }],
       "_modelsFrom_note": "The Model pill is filled from `opencode models`, which lists every model usable right now, including all key-free ones.",
@@ -147,7 +147,7 @@
         { "id": "default", "label": "Default", "args": [] },
         { "id": "plan", "label": "Plan", "args": ["--approval-mode", "plan"] },
         { "id": "auto-edit", "label": "Auto edit", "args": ["--approval-mode", "auto_edit"] },
-        { "id": "continue", "label": "Continue", "args": ["--resume", "latest"] }
+        { "id": "continue", "label": "Continue", "args": ["--resume", "latest"], "resumesSession": true }
       ],
       "models": [{ "id": "default", "label": "Default", "args": [] }],
       "imageTransport": "interactive_at_reference",
@@ -199,7 +199,7 @@
       "args": [],
       "modes": [
         { "id": "default", "label": "Default", "args": [] },
-        { "id": "continue", "label": "Continue", "args": ["--continue"] }
+        { "id": "continue", "label": "Continue", "args": ["--continue"], "resumesSession": true }
       ],
       "models": [{ "id": "default", "label": "Default", "args": [] }],
       "imageTransport": "none",

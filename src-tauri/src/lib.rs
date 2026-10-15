@@ -151,7 +151,7 @@ fn start_session(
         let catalog = catalogs.get(&a.id).map(Vec::as_slice);
         if !agents::model_selection_is_valid(a, &model_id, catalog) {
             return Err(format!(
-                "Choose a live model from {}'s Model menu before starting this session.",
+                "Choose a valid model from {}'s Model menu before starting this session.",
                 a.label
             ));
         }

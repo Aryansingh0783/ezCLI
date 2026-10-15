@@ -17,6 +17,8 @@ pub struct Variant {
     pub label: String,
     #[serde(default)]
     pub args: Vec<String>,
+    #[serde(default, rename = "resumesSession")]
+    pub resumes_session: bool,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -414,6 +416,7 @@ fn default_variant() -> Variant {
         id: "default".into(),
         label: "Default".into(),
         args: vec![],
+        resumes_session: false,
     }
 }
 
@@ -622,13 +625,18 @@ fn image_transport(a: &AgentDef) -> &'static str {
     }
 }
 
-/// Whether a model satisfies an agent's catalog-selection requirement. This
-/// is enforced by the Rust launch path as well as the frontend, so a stale
-/// saved preference cannot accidentally run a bare `ollama` process.
+/// Whether a model is a declared static option or a model that the backend
+/// itself fetched from a catalog. Dynamic agents that require a selection must
+/// use their catalog; their injected static `default` placeholder is not a
+/// runnable model.
 pub fn model_selection_is_valid(a: &AgentDef, model_id: &str, catalog: Option<&[String]>) -> bool {
-    !a.models_from
+    if a.models_from
         .as_ref()
         .is_some_and(|from| from.require_selection)
+    {
+        return catalog.is_some_and(|models| models.iter().any(|model| model == model_id));
+    }
+    a.models.iter().any(|model| model.id == model_id)
         || catalog.is_some_and(|models| models.iter().any(|model| model == model_id))
 }
 
@@ -869,6 +877,38 @@ mod tests {
         // Not in the fetched catalog: ignored rather than passed through.
         assert!(build_argv(&a, "x", "--dangerous", "default", Some(&cat)).is_empty());
         assert!(build_argv(&a, "x", "opencode/free-model", "default", None).is_empty());
+        assert!(model_selection_is_valid(
+            &a,
+            "opencode/free-model",
+            Some(&cat)
+        ));
+        assert!(!model_selection_is_valid(&a, "--dangerous", Some(&cat)));
+    }
+
+    #[test]
+    fn continuation_flag_uses_the_frontend_property_name() {
+        let value = serde_json::to_value(Variant {
+            id: "continue".into(),
+            label: "Continue".into(),
+            args: vec!["--continue".into()],
+            resumes_session: true,
+        })
+        .unwrap();
+        assert_eq!(value["resumesSession"], true);
+        assert!(value.get("resumes_session").is_none());
+    }
+
+    #[test]
+    fn static_model_selection_rejects_an_unknown_saved_id() {
+        let mut a = def("codex", Some("codex"));
+        a.models = vec![Variant {
+            id: "gpt-5".into(),
+            label: "gpt-5".into(),
+            args: vec!["-m".into(), "gpt-5".into()],
+            resumes_session: false,
+        }];
+        assert!(model_selection_is_valid(&a, "gpt-5", None));
+        assert!(!model_selection_is_valid(&a, "stale-model", None));
     }
 
     #[test]
@@ -943,12 +983,35 @@ mod tests {
     fn global_effort_and_model_flags_precede_a_mode_subcommand() {
         let mut a = def("codex", Some("codex"));
         a.args = vec!["--no-daemon".into()];
-        a.efforts = vec![Variant { id: "high".into(), label: "High".into(), args: vec!["-c".into(), "model_reasoning_effort=\"high\"".into()] }];
-        a.models = vec![Variant { id: "gpt".into(), label: "GPT".into(), args: vec!["-m".into(), "gpt-5".into()] }];
-        a.modes = vec![Variant { id: "resume".into(), label: "Resume".into(), args: vec!["resume".into(), "--last".into()] }];
+        a.efforts = vec![Variant {
+            id: "high".into(),
+            label: "High".into(),
+            args: vec!["-c".into(), "model_reasoning_effort=\"high\"".into()],
+            resumes_session: false,
+        }];
+        a.models = vec![Variant {
+            id: "gpt".into(),
+            label: "GPT".into(),
+            args: vec!["-m".into(), "gpt-5".into()],
+            resumes_session: false,
+        }];
+        a.modes = vec![Variant {
+            id: "resume".into(),
+            label: "Resume".into(),
+            args: vec!["resume".into(), "--last".into()],
+            resumes_session: true,
+        }];
         assert_eq!(
             build_argv(&a, "resume", "gpt", "high", None),
-            vec!["--no-daemon", "-c", "model_reasoning_effort=\"high\"", "-m", "gpt-5", "resume", "--last"]
+            vec![
+                "--no-daemon",
+                "-c",
+                "model_reasoning_effort=\"high\"",
+                "-m",
+                "gpt-5",
+                "resume",
+                "--last"
+            ]
         );
     }
 

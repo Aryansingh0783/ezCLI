@@ -12,6 +12,8 @@ const invoke = (name, args) => T.core.invoke(name, args);
 const listen = (event, handler) => T.event.listen(event, handler);
 const $ = (id) => document.getElementById(id);
 const Usage = window.ezCliUsage;
+const SessionRouting = window.ezCliSessionRouting;
+const { isContinuationMode, freshModeId, modelSwitchPlan } = SessionRouting;
 
 /* ------------------------------------------------------------ preferences */
 
@@ -296,6 +298,38 @@ function pick(a) {
   if (!efforts.some((e) => e.id === p.effort)) p.effort = efforts[0] ? efforts[0].id : 'default';
   return p;
 }
+
+/** Fresh tabs may use a saved Plan/Auto choice, but a saved Continue/Resume
+ * choice must never silently reconnect every tab to one provider conversation. */
+function normalizeSavedContinuationModes() {
+  let changed = false;
+  for (const a of state.agents) {
+    const p = prefs.picks[a.id];
+    if (!p || !isContinuationMode(a, p.mode)) continue;
+    p.mode = freshModeId(a, p.mode);
+    changed = true;
+  }
+  // A parked tab has no provider-side conversation identifier—only a generic
+  // `resume latest` argument. Reusing it after an app restart would therefore
+  // attach it to whatever unrelated conversation the CLI considers latest.
+  for (const sn of prefs.parked || []) {
+    const a = agent(sn.agentId);
+    if (!a || !isContinuationMode(a, sn.modeId)) continue;
+    sn.modeId = freshModeId(a, sn.modeId);
+    changed = true;
+  }
+  if (changed) savePrefs();
+  return changed;
+}
+
+function resetContinuationPick(a) {
+  const p = pick(a);
+  if (!isContinuationMode(a, p.mode)) return false;
+  p.mode = freshModeId(a, p.mode);
+  savePrefs();
+  return true;
+}
+
 const label = (list, id) => (list.find((x) => x.id === id) || list[0] || { label: 'Default' }).label;
 
 /** Ask an agent for its live model list (e.g. OpenCode's key-free models).
@@ -355,6 +389,10 @@ async function boot() {
   state.homeCwd = info.cwd;
   state.sep = info.sep || '\\';
   state.configPath = info.config_path || '';
+  // Older builds persisted Continue/Resume as the default for every future
+  // tab. Those variants reopen a provider's globally latest conversation, so
+  // reset the saved carry-over once rather than recreating one chat everywhere.
+  const resetSavedResumeModes = normalizeSavedContinuationModes();
   invoke('open_targets')
     .then((t) => {
       state.openTargets = t;
@@ -411,6 +449,9 @@ async function boot() {
   refreshGit();
   setInterval(tick, 1000);
   $('homeInput').focus();
+  if (resetSavedResumeModes) {
+    toast('Saved Continue/Resume modes were reset to Default. Pick one again only when you want to reopen the latest CLI conversation.');
+  }
   showOnboarding();
 }
 
@@ -665,6 +706,7 @@ function buildParked(sn) {
   const s = {
     id: sn.id || `t${++state.seq}`,
     ptyId: null,
+    launchEpoch: 0,
     spaceId: sn.spaceId,
     agentId: sn.agentId,
     modelId: sn.modelId,
@@ -712,6 +754,12 @@ async function createSession(agentId, opts = {}) {
   const p = pick(a);
   const selectedModel = await resolveRequiredModel(a, opts.modelId || p.model);
   if (a.requiresModelSelection && !selectedModel) return null;
+  const requestedModeId = opts.modeId ?? p.mode;
+  // Only the home picker can deliberately ask to reopen a provider-side
+  // conversation. Every other source of a new tab is a fresh CLI session.
+  const modeId = opts.allowContinuation && isContinuationMode(a, requestedModeId)
+    ? requestedModeId
+    : freshModeId(a, requestedModeId);
   const sp = space(opts.spaceId) || space();
   const host = document.createElement('div');
   host.className = 'term-host';
@@ -742,10 +790,11 @@ async function createSession(agentId, opts = {}) {
   const s = {
     id: `t${++state.seq}`,
     ptyId: null,
+    launchEpoch: 0,
     spaceId: sp.id,
     agentId,
     modelId: selectedModel,
-    modeId: opts.modeId || p.mode,
+    modeId,
     effortId: opts.effortId ?? p.effort,
     cwd: opts.cwd || sp.path,
     title: opts.title || `${a.label} ${count}`,
@@ -787,15 +836,24 @@ async function createSession(agentId, opts = {}) {
   return s;
 }
 
+/** Invalidate an in-flight launch before replacing or closing its session. */
+function invalidateLaunch(s) {
+  s.launchEpoch = Number.isSafeInteger(s.launchEpoch) ? s.launchEpoch + 1 : 1;
+  return s.launchEpoch;
+}
+
 /** Spawn (or respawn) the CLI behind a session. Each launch gets a fresh
- *  pty id so a late exit event from a previous process can't touch it. */
+ *  pty id and epoch so a late async result cannot touch a newer process. */
 async function launch(s) {
+  const launchEpoch = invalidateLaunch(s);
+  const isCurrentLaunch = () => s.launchEpoch === launchEpoch;
   if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
   // The backend only passes a catalog model if it fetched that catalog itself;
   // make sure it has, or the session would quietly start on the default model.
   const la = agent(s.agentId);
   if (la && la.requiresModelSelection) {
     const selectedModel = await resolveRequiredModel(la, s.modelId, { quiet: true });
+    if (!isCurrentLaunch()) return false;
     if (!selectedModel) {
       s.status = 'error';
       s.term.write(`\r\n\x1b[38;2;231;163;163mChoose a live ${la.label} model from the Model menu before launching this session.\x1b[0m\r\n`);
@@ -805,11 +863,12 @@ async function launch(s) {
         renderHead();
         renderStatus();
       }
-      return;
+      return false;
     }
     s.modelId = selectedModel;
   } else if (la && isCatalogModelId(la, s.modelId) && !state.catalogs[la.id]) {
     await fetchCatalog(la, { quiet: true });
+    if (!isCurrentLaunch()) return false;
   }
   for (const un of s.unlisten.splice(0)) safe(un);
   // A relaunch creates a fresh underlying CLI session, so observed metrics
@@ -822,55 +881,62 @@ async function launch(s) {
   s.startedAt = Date.now();
   s.exitCode = null;
 
-  s.unlisten.push(
-    await listen(`pty-data:${ptyId}`, (e) => {
-      s.term.write(e.payload);
-      const usageChanged = Usage.ingest(s.usage, e.payload);
-      s.lastOutputAt = Date.now();
-      if (!s.working) {
-        s.working = true;
-        updateTabMeta(s);
-        renderSpaces();
-        if (s.id === state.activeId) renderStatus();
-      }
-      if (s.id !== state.activeId || !document.hasFocus()) {
-        if (!s.unseen && s.id !== state.activeId) {
-          s.unseen = true;
-          updateTabMeta(s);
-        }
-      }
-      if (s.id === state.activeId) {
-        updateScrollButton(s);
-        if (usageChanged) renderStatus();
-      }
-    })
-  );
-  s.unlisten.push(
-    await listen(`pty-exit:${ptyId}`, (e) => {
-      if (s.ptyId !== ptyId) return;
-      invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
-      s.pcControl = false;
-      // Consent covers one process. Relaunching after an exit asks again.
-      s.wantPcControl = false;
-      Usage.ingest(s.usage, '', true);
-      s.status = 'exited';
-      s.exitCode = e.payload;
-      s.working = false;
-      s.term.write(`\r\n\x1b[38;2;106;106;112m── process exited (code ${e.payload}) ──\x1b[0m\r\n`);
-      recordUsage(s);
+  const unlistenData = await listen(`pty-data:${ptyId}`, (e) => {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
+    s.term.write(e.payload);
+    const usageChanged = Usage.ingest(s.usage, e.payload);
+    s.lastOutputAt = Date.now();
+    if (!s.working) {
+      s.working = true;
       updateTabMeta(s);
       renderSpaces();
-      if (s.id === state.activeId) {
-        renderHead();
-        renderStatus();
-      } else {
-        toast(`${s.title} exited (code ${e.payload})`, e.payload === 0 ? '' : 'error', () => {
-          selectSpace(s.spaceId);
-          selectSession(s.id);
-        });
+      if (s.id === state.activeId) renderStatus();
+    }
+    if (s.id !== state.activeId || !document.hasFocus()) {
+      if (!s.unseen && s.id !== state.activeId) {
+        s.unseen = true;
+        updateTabMeta(s);
       }
-    })
-  );
+    }
+    if (s.id === state.activeId) {
+      updateScrollButton(s);
+      if (usageChanged) renderStatus();
+    }
+  });
+  if (!isCurrentLaunch()) {
+    safe(unlistenData);
+    return false;
+  }
+  s.unlisten.push(unlistenData);
+  const unlistenExit = await listen(`pty-exit:${ptyId}`, (e) => {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
+    invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
+    s.pcControl = false;
+    // Consent covers one process. Relaunching after an exit asks again.
+    s.wantPcControl = false;
+    Usage.ingest(s.usage, '', true);
+    s.status = 'exited';
+    s.exitCode = e.payload;
+    s.working = false;
+    s.term.write(`\r\n\x1b[38;2;106;106;112m── process exited (code ${e.payload}) ──\x1b[0m\r\n`);
+    recordUsage(s);
+    updateTabMeta(s);
+    renderSpaces();
+    if (s.id === state.activeId) {
+      renderHead();
+      renderStatus();
+    } else {
+      toast(`${s.title} exited (code ${e.payload})`, e.payload === 0 ? '' : 'error', () => {
+        selectSpace(s.spaceId);
+        selectSession(s.id);
+      });
+    }
+  });
+  if (!isCurrentLaunch()) {
+    safe(unlistenExit);
+    return false;
+  }
+  s.unlisten.push(unlistenExit);
 
   try {
     s.fit.fit();
@@ -889,6 +955,10 @@ async function launch(s) {
       rows: s.term.rows,
       pcControl: Boolean(s.wantPcControl)
     });
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) {
+      invoke('kill_session', { id: ptyId }).catch(() => {});
+      return false;
+    }
     s.status = 'running';
     s.command = r.command;
     s.cwd = r.cwd;
@@ -898,6 +968,10 @@ async function launch(s) {
       setTimeout(() => deliverPending(s), 10000);
     }
   } catch (err) {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) {
+      invoke('kill_session', { id: ptyId }).catch(() => {});
+      return false;
+    }
     s.status = 'error';
     // A failed launch must not leave a pending PC-control request behind.
     s.wantPcControl = false;
@@ -909,6 +983,7 @@ async function launch(s) {
     renderHead();
     renderStatus();
   }
+  return s.status === 'running';
 }
 
 function deliverPending(s) {
@@ -916,6 +991,30 @@ function deliverPending(s) {
   const text = s.pendingPrompt;
   s.pendingPrompt = '';
   sendText(s, text);
+}
+
+/** Stop a process immediately and invalidate any launch that has not finished. */
+function stopSession(s) {
+  if (!s || !s.ptyId) return false;
+  const ptyId = s.ptyId;
+  invalidateLaunch(s);
+  if (s.status === 'running') recordUsage(s);
+  s.ptyId = null;
+  s.status = 'exited';
+  s.exitCode = null;
+  s.working = false;
+  s.wantPcControl = false;
+  s.pcControl = false;
+  for (const un of s.unlisten.splice(0)) safe(un);
+  s.term.write('\r\n\x1b[38;2;106;106;112m── stopped by user ──\x1b[0m\r\n');
+  updateTabMeta(s);
+  renderSpaces();
+  if (s.id === state.activeId) {
+    renderHead();
+    renderStatus();
+  }
+  invoke('kill_session', { id: ptyId }).catch(() => {});
+  return true;
 }
 
 async function restartSession(s, { keepPcControl = false } = {}) {
@@ -926,10 +1025,10 @@ async function restartSession(s, { keepPcControl = false } = {}) {
   // PC-control consent covers one process; only the PC-control chip itself
   // may carry a fresh grant into the next launch.
   if (!keepPcControl) s.wantPcControl = false;
+  invalidateLaunch(s);
   if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
   s.term.write('\r\n\x1b[38;2;106;106;112m── restarting ──\x1b[0m\r\n');
-  await launch(s);
-  return true;
+  return launch(s);
 }
 
 function selectSession(id) {
@@ -961,6 +1060,7 @@ async function closeSession(id) {
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i === -1) return;
   const s = state.sessions[i];
+  invalidateLaunch(s);
   if (s.status === 'running') recordUsage(s);
   if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
   if (s.ptyId) invoke('kill_session', { id: s.ptyId }).catch(() => {});
@@ -1171,6 +1271,7 @@ function renderHead() {
     const name = modelLabel(a, s.modelId);
     modelEl.hidden = !name;
     modelEl.textContent = name;
+    modelEl.title = `Model: ${name}. Select another model to start a fresh session.`;
   }
 
   const g = state.git[space(s.spaceId) ? space(s.spaceId).path : ''];
@@ -1895,6 +1996,7 @@ function modeMenu(anchor) {
     title: 'Mode',
     items: a.modes.map((m) => ({
       label: m.label,
+      hint: isContinuationMode(a, m.id) ? 'Reopens the latest CLI conversation once' : '',
       on: m.id === p.mode,
       run: () => {
         p.mode = m.id;
@@ -2019,12 +2121,18 @@ async function switchSessionAgent(s, id) {
     if (!ok) return;
   }
 
+  invalidateLaunch(s);
   if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
   const droppedImageRefs = Array.isArray(s.imageRefs) ? s.imageRefs.length : 0;
+  const nextMode = freshModeId(next, nextPick.mode);
   s.agentId = next.id;
   s.modelId = nextModel || nextPick.model;
-  s.modeId = nextPick.mode;
+  s.modeId = nextMode;
   s.effortId = nextPick.effort;
+  if (nextPick.mode !== nextMode) {
+    nextPick.mode = nextMode;
+    savePrefs();
+  }
   // A path reference was selected for the previous agent's declared route.
   // Never carry it into a different backend by accident.
   s.imageRefs = [];
@@ -2043,6 +2151,53 @@ async function switchSessionAgent(s, id) {
 
   s.term.writeln(`\r\n\x1b[38;2;106;106;112m── switching to ${next.label} ──\x1b[0m\r\n`);
   await launch(s);
+}
+
+/**
+ * A CLI model is a launch-time option. Changing it must create a new process,
+ * and a resume/continue mode must not pull the old provider conversation into
+ * that fresh-model launch. Keep terminal scrollback as a local record, but
+ * insert an unmistakable boundary before the new process starts.
+ */
+async function switchSessionModel(s, modelId) {
+  const a = s && agent(s.agentId);
+  if (!s || !a || !modelId || modelId === s.modelId) return false;
+  const plan = modelSwitchPlan(a, s.modeId, modelId);
+  const nextMode = plan.modeId;
+  const running = s.status === 'running' || s.status === 'starting';
+  const name = modelLabel(a, modelId);
+
+  if (running) {
+    const ok = await confirmDialog(
+      `Switch to ${name}?`,
+      `This ends the current ${a.label} conversation and starts a fresh ${name} session. Existing terminal history remains visible above the new-session marker.`,
+      'Switch and start fresh'
+    );
+    if (!ok) return false;
+  }
+
+  invalidateLaunch(s);
+  s.modelId = plan.modelId;
+  s.modeId = nextMode;
+  const p = pick(a);
+  p.model = plan.modelId;
+  if (isContinuationMode(a, p.mode)) p.mode = freshModeId(a, p.mode);
+  savePrefs();
+
+  if (s.status === 'parked') {
+    renderAll();
+    snapshotParked();
+    return true;
+  }
+
+  if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  s.command = '';
+  s.working = false;
+  s.wantPcControl = false;
+  s.term.writeln(`\r\n\x1b[38;2;124;255;63m── new ${name} session (previous CLI conversation ended) ──\x1b[0m\r\n`);
+  const started = await launch(s);
+  if (started) toast(`Started a fresh ${name} session.`);
+  return started;
 }
 
 function projectMenu(anchor) {
@@ -2390,7 +2545,10 @@ async function guardClose(event) {
     }
   }
   closing = true;
-  for (const s of state.sessions) if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  for (const s of state.sessions) {
+    invalidateLaunch(s);
+    if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  }
 }
 
 async function syncMaxIcon() {
@@ -2452,10 +2610,25 @@ function newSession() {
 
 async function startFromHome() {
   const prompt = $('homeInput').value.trim();
-  const created = await createSession(prefs.agentId, { prompt });
+  const a = agent(prefs.agentId);
+  const p = a && pick(a);
+  const chosenMode = p ? p.mode : undefined;
+  const resumesLatest = Boolean(a && isContinuationMode(a, chosenMode));
+  const created = await createSession(prefs.agentId, {
+    prompt,
+    modeId: chosenMode,
+    allowContinuation: resumesLatest
+  });
   // A required-model chooser can decline a launch. Keep the draft intact so
   // the user can select a model without having to rewrite their request.
   if (!created) return;
+  // Resume/Continue is deliberately a one-tab action. The next New Chat will
+  // start fresh unless the person explicitly selects it again.
+  if (resumesLatest && a && resetContinuationPick(a)) {
+    renderHome();
+    renderOnboardingConfig();
+    toast('This tab resumed the latest CLI conversation. New chats will start fresh.');
+  }
   if (prompt) pushHistory(prompt);
   $('homeInput').value = '';
   autoGrow($('homeInput'));
@@ -2689,8 +2862,7 @@ function wire() {
 
   // session head
   $('actStop').addEventListener('click', () => {
-    const s = active();
-    if (s && s.ptyId) invoke('kill_session', { id: s.ptyId }).catch(() => {});
+    stopSession(active());
   });
   $('actRestart').addEventListener('click', () => active() && restartSession(active()));
   $('actResume').addEventListener('click', () => {
@@ -2712,16 +2884,7 @@ function wire() {
         label: m.label,
         hint: m.provider || '',
         on: m.id === s.modelId,
-        run: () => {
-          if (m.id === s.modelId) return;
-          s.modelId = m.id;
-          pick(a).model = m.id;
-          savePrefs();
-          renderHead();
-          if (s.status === 'running') {
-            toast('Model changed. Restart the session to apply.', 'ok', () => restartSession(s));
-          }
-        }
+        run: () => switchSessionModel(s, m.id)
       }))
     });
   });
