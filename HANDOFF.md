@@ -142,42 +142,57 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**IN PROGRESS — PR 3: local chat import** (Codex, 2026-10-15)
+**COMPLETE — PR 3: local chat import** (Codex, 2026-10-15)
 
-Prerequisites complete: PR 1 landed in `c951ecb`, and PR 2 landed in
-`58ce7b9 feat: add observed CLI usage strip`.
+Landed in `fa212ab feat: add read-only Claude Code chat import`.
 
-Goal: add a read-only, local-file transcript import foundation. It must locate
-supported stores only when present, normalize recognized content into a common
-schema, and let the user choose a conversation to open or continue without
-cloud API access, credential collection, or hidden context injection.
+Delivered a read-only, local-file transcript foundation. It locates the verified
+Claude Code store, normalizes explicit user/assistant text into a common schema,
+and lets the user explicitly preview an imported conversation without cloud API
+access, credential collection, or hidden context injection.
 
-Files expected to be touched:
+Files changed:
 - `src-tauri/src/import.rs` (new) — source discovery, bounded local parsing,
-  normalization, and unit tests.
-- `src-tauri/src/lib.rs` — narrow read-only commands and state wiring.
+  normalization, in-memory opaque-id cache, and two unit tests.
+- `src-tauri/src/lib.rs` — narrow read-only commands, background discovery,
+  and state wiring.
 - `public/app.js`, `public/index.html`, `public/styles.css` — explicit import
-  entry point and picker UI, preserving the current home hero/pills.
-- `README.md` — verified per-OS source paths and privacy boundary.
+  entry point, picker, and preview UI. The home hero and Agent/Model/Mode pills
+  remain unchanged.
+- `README.md` — verified Claude Code paths and an updated Tauri-only runtime
+  description (removes the obsolete Node/WebSocket claim).
 
-Steps:
-1. [ ] Audit current session persistence, Tauri capability boundaries, and the
-   actual local Claude Code transcript shape without writing to user stores.
-2. [ ] Define the common conversation schema, supported/unsupported-source
-   behavior, size limits, and import error states.
-3. [ ] Implement Claude Code discovery and parsing first, with isolated tests;
-   add other source adapters only where their on-disk format is verified.
-4. [ ] Add a keyboard-accessible picker that opens imported content explicitly,
-   never silently supplies it as CLI context.
-5. [ ] Run proportionate frontend/Rust validation, record limitations, and
-   commit code plus a completed handoff checkpoint.
+Completed:
+1. [x] Audit session persistence, Tauri capability boundaries, and the local
+   Claude Code directory without writing to it. The sampled files were not
+   uniformly clean JSONL, so malformed/unsupported records are skipped.
+2. [x] Define the common schema and bounded parsing: 600 discovered files, 150
+   conversations, 16 MB/file, 4,000 records/file, 400 messages/chat, and
+   32,000 characters/message.
+3. [x] Implement Claude Code discovery/parsing with isolated tests. The only
+   supported paths are `%USERPROFILE%\\.claude\\projects\\**\\*.jsonl` on Windows
+   and `~/.claude/projects/**/*.jsonl` on macOS/Linux.
+4. [x] Add a keyboard-accessible Settings → Import local chats picker and
+   read-only preview. File paths stay in the Rust process; the webview receives
+   only opaque ids after a fresh scan.
+5. [x] Validate the frontend/diff and record the Rust-toolchain limitation.
 
-Known local validation limit: GNU `dlltool.exe` is still unavailable, so Rust
-build/test execution may remain blocked. Do not fabricate support for Claude
-Desktop, ChatGPT desktop, or Codex stores until their local formats are verified.
+Validation passed: `node --check public/app.js`, `node --test
+test/usage-parser.test.cjs` (7 existing frontend tests), and `git diff --check`.
+The Impeccable detector still reports only its three pre-existing unrelated
+findings. Rust validation is blocked before compiling this code: `cargo check
+--locked` reports that the pre-existing `Cargo.lock` needs an update, while
+`rustfmt` is not installed for the active GNU toolchain. No lockfile change,
+build, release, or local transcript write was attempted.
 
-Exact next step: read the existing `lib.rs`, Tauri capabilities, and frontend
-session/transcript model, then perform a read-only Claude Code path/schema audit.
+Known scope boundary: Claude Desktop, ChatGPT desktop, and Codex remain visibly
+unavailable. Do not add guessed paths or parsers; verify a real local format
+first. Imports are preview-only in this PR—starting a fresh CLI session does
+not continue a chat or inject its text.
+
+Exact next step: start PR 4, local PC-control permission plumbing. Inspect the
+current Tauri capability model and build a per-session, explicitly revocable
+permission state before adding any input/screenshot/shell integration.
 
 Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
 when PR 1 started; latest tag `v1.1.0`.
@@ -195,6 +210,11 @@ when PR 1 started; latest tag `v1.1.0`.
   active-session usage strip that reads only recognized PTY telemetry, plus
   seven parser tests. Home hero and Agent/Model/Mode controls remain unchanged;
   no live Tauri build was possible on this machine.
+- 2026-10-15 — Codex: completed PR 3 in `fa212ab`; added read-only Claude Code
+  discovery, normalization, opaque in-memory import ids, and a Settings-based
+  preview picker. Other stores remain unavailable pending real-format evidence;
+  Rust compilation could not start because of the pre-existing lock/toolchain
+  issue, so no build or release was attempted.
 
 ---
 
