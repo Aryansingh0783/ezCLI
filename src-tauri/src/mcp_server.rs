@@ -397,6 +397,51 @@ mod tests {
         assert_eq!(post(&url, ping, None).0, 404, "token dies with the session");
     }
 
+    /// End to end with the real Claude Code CLI, the real loopback server and a
+    /// real screen capture. Spends a little Claude usage, so it is opt-in:
+    /// `scripts\test-rust.ps1 --ignored --nocapture live_claude_code`
+    /// The capture hook counts invocations, so a model merely *saying* it took
+    /// a screenshot cannot pass.
+    #[test]
+    #[ignore = "spends Claude usage: a live Claude Code session calls the tool"]
+    fn live_claude_code_calls_screenshot_through_the_server() {
+        use std::sync::atomic::AtomicUsize;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&calls);
+        let srv = McpServer::start(Hooks {
+            allowed: Box::new(|pty| pty == "e2e"),
+            screenshot: Box::new(move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                crate::capture::primary_screen()
+            }),
+        })
+        .unwrap();
+        let url = srv.register("e2e").unwrap();
+        let dir = std::env::temp_dir().join("ezcli-mcp-e2e");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("e2e.json");
+        std::fs::write(&cfg, json!({ "mcpServers": { "ezcli": { "type": "http", "url": url } } }).to_string()).unwrap();
+
+        let out = std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "claude",
+                "-p",
+                "Call the ezcli screenshot tool exactly once. Then reply with only the WIDTHxHEIGHT text it returned.",
+                "--mcp-config",
+            ])
+            .arg(&cfg)
+            .args(["--strict-mcp-config", "--allowedTools", "mcp__ezcli__screenshot"])
+            .output()
+            .expect("claude on PATH");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        eprintln!("claude exit={:?}\nstdout: {}\nstderr: {}", out.status.code(), stdout.trim(), String::from_utf8_lossy(&out.stderr).trim());
+        eprintln!("screenshot hook calls: {}", calls.load(Ordering::SeqCst));
+        assert!(calls.load(Ordering::SeqCst) >= 1, "Claude Code never reached the screenshot tool");
+    }
+
     #[test]
     fn tokens_are_unique_per_registration() {
         let srv = server(Arc::new(AtomicBool::new(false)));

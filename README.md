@@ -180,9 +180,12 @@ disabled. Add `"mcp": "claude"`, `"codex"`, or `"none"` to an entry in
 `agents.json` to override the default, which is inferred from the command name.
 
 **Verified so far:** screen capture on Windows (1920x1080 to 1280x720 in about
-0.2 s), and the tool server's protocol, grant, and revoke behaviour over real
-loopback HTTP in unit tests. An end-to-end run with a live CLI calling the tool
-has not been done yet. Screen capture is Windows-only for now.
+0.2 s); the tool server's protocol, grant, and revoke behaviour over real
+loopback HTTP in unit tests; and an end-to-end run where a live Claude Code
+session called `screenshot` through the server and reported `1280x720`. The
+test counts real tool invocations, so a model claiming a screenshot cannot
+pass it. Codex attaches the same way but has not been run end to end yet.
+Screen capture is Windows-only for now.
 
 ## How it works
 
