@@ -4,7 +4,7 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-10-15 by Claude (Opus 4.8)
+Last updated: 2026-10-15 by Codex
 
 ---
 
@@ -142,26 +142,36 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**IN PROGRESS — PR 1: backend detection + first-run wizard** (Claude, 2026-10-15)
+**COMPLETE — PR 1: backend detection + first-run wizard** (Codex, 2026-10-15)
 
-Goal: detect what the user actually has (Claude Code CLI, Codex CLI, ChatGPT CLI,
-Claude sign-in, API keys) and surface it in a non-blocking first-run wizard that
-picks the best default and lets the user switch per session.
+Commit: `c951ecb feat: detect local AI backends` on `main`.
 
-Files being touched:
-- `src-tauri/src/backends.rs` (new) — `detect()` returns a BackendReport.
-- `src-tauri/src/lib.rs` — register `mod backends`, add `detect_backends` command.
-- `public/index.html` — add the first-run wizard `<dialog>`.
-- `public/app.js` — `prefs.onboarded` flag, wizard render + wiring, show on first run.
-- `public/styles.css` — wizard styles.
+Delivered:
+- `src-tauri/src/backends.rs` probes PATH for Claude Code, Codex, and ChatGPT;
+  checks only the *presence* of Claude auth metadata and Anthropic/OpenAI env
+  keys; it never reads or returns credential values. It recommends a configured
+  Claude or OpenAI agent and has focused recommendation tests.
+- `detect_backends` is registered in `lib.rs` and returns its camel-cased report
+  to the frontend.
+- First run opens a **modeless** (non-blocking) dialog after the app is usable.
+  It shows detection facts, recommends an installed local CLI, persists either
+  selection or skip in `prefs.onboarded`, and supports keyboard radio selection.
+- A session-header Backend chip now switches an individual session. Switching a
+  live session asks for confirmation, then stops and relaunches it with that
+  agent's saved model/mode defaults.
 
-Steps:
-1. [ ] backends.rs with detect() + BackendReport
-2. [ ] wire command into lib.rs
-3. [ ] wizard dialog markup
-4. [ ] wizard logic (show on first run, non-blocking, sets default agent)
-5. [ ] styles
-6. [ ] parse-check, commit, update §5/§6
+Validation:
+- `node --check public/app.js` and `git diff --check` passed before commit.
+- Impeccable detector no longer reports onboarding issues. Its remaining three
+  findings are existing, untouched explorer/settings/sidebar rules.
+- Rust local verification remains unavailable on this PC: `cargo fmt` has no
+  installed `rustfmt`; `cargo check` is blocked by missing GNU `dlltool.exe`
+  after dependency compilation. `Cargo.lock` churn from that check was removed.
+  CI on `windows-latest` remains the build authority.
+
+**Exact next step:** begin PR 2 (live CLI usage strip) by updating this section
+to `IN PROGRESS`, listing its touched files, and committing HANDOFF.md before
+editing code.
 
 Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
 when PR 1 started; latest tag `v1.1.0`.
@@ -171,6 +181,10 @@ when PR 1 started; latest tag `v1.1.0`.
 - 2026-10-15 — Claude (Opus 4.8): shipped v1.1.0 (session persistence, promoted
   model picker, usage view, home-folder fix, polish). Captured the approved
   Next-Iteration plan above. PRs 1–6 not yet started.
+- 2026-10-15 — Codex: completed PR 1 in `c951ecb`; added privacy-preserving
+  backend detection, an optional modeless first-run picker, and per-session
+  backend switching. Local frontend checks passed; Rust build is blocked by the
+  known GNU toolchain gap, so no release/CI run was started.
 
 ---
 
