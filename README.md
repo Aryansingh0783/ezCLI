@@ -110,7 +110,7 @@ Then:
 git clone https://github.com/Aryansingh0783/ezCLI.git
 cd ezCLI
 cargo tauri dev        # live window, Rust hot-reload on save
-cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_1.0.0_x64_en-US.msi
+cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_<version>_x64_en-US.msi
 ```
 
 ## What it does

@@ -206,8 +206,12 @@ The MSI lands in `src-tauri/target/release/bundle/msi/`.
 
 ## Troubleshooting
 
-**An agent card is disabled.** The `command` is not on PATH. Install the CLI, or
-set `command` to its full path, then reload agents.
+**An agent card is disabled.** The `command` is not on PATH. ezCLI runs command line
+tools, so a provider's desktop app (Claude Desktop, the ChatGPT app) does not count.
+Install the CLI (for example `npm install -g @anthropic-ai/claude-code` or
+`npm install -g @openai/codex`), then click **Reload agents** in Settings. ezCLI reads
+the current PATH from the registry, so a fresh install is found without signing out.
+You can also set `command` to the CLI's full path.
 
 **Codex exits immediately with a daemon error.** Codex tried to detach a background
 server and the host blocked it. Keep `--no-daemon` in the Codex entry's `args`, which
