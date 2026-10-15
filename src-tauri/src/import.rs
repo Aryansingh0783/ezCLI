@@ -203,10 +203,13 @@ fn claude_projects_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".claude").join("projects"))
 }
 
+/// Walk the whole store collecting (mtime, path) for every eligible transcript,
+/// then keep the newest `MAX_DISCOVERED_FILES`. Capping during the walk would
+/// keep an arbitrary subset in directory order and could drop the user's most
+/// recent chats once the store grows past the cap (real stores reach thousands).
 fn collect_jsonl_files(root: &Path) -> Result<(Vec<PathBuf>, bool)> {
     let mut stack = vec![root.to_path_buf()];
-    let mut files = Vec::new();
-    let mut truncated = false;
+    let mut found: Vec<(u64, PathBuf)> = Vec::new();
 
     while let Some(dir) = stack.pop() {
         let entries = match fs::read_dir(&dir) {
@@ -225,28 +228,24 @@ fn collect_jsonl_files(root: &Path) -> Result<(Vec<PathBuf>, bool)> {
             if !kind.is_file() || entry.path().extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
                 continue;
             }
-            if entry.metadata().map(|meta| meta.len() <= MAX_FILE_BYTES).unwrap_or(false) {
-                files.push(entry.path());
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.len() > MAX_FILE_BYTES {
+                continue;
             }
-            if files.len() >= MAX_DISCOVERED_FILES {
-                truncated = true;
-                break;
-            }
-        }
-        if truncated {
-            break;
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis() as u64)
+                .unwrap_or(0);
+            found.push((mtime, entry.path()));
         }
     }
 
-    files.sort_by_key(|path| {
-        fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .ok()
-            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| std::cmp::Reverse(duration.as_millis() as u64))
-            .unwrap_or(std::cmp::Reverse(0))
-    });
-    Ok((files, truncated))
+    found.sort_by(|a, b| b.0.cmp(&a.0));
+    let truncated = found.len() > MAX_DISCOVERED_FILES;
+    found.truncate(MAX_DISCOVERED_FILES);
+    Ok((found.into_iter().map(|(_, path)| path).collect(), truncated))
 }
 
 fn parse_claude_file(path: &Path) -> Result<Option<ImportConversation>> {

@@ -1,7 +1,9 @@
 //! Explicit, per-live-session PC-control consent.
 //!
 //! This module does not perform input injection, capture, or shell execution.
-//! It is the deny-by-default guard those future actions must use.
+//! It is the deny-by-default grant store. Actions must not call `allowed`
+//! directly: they go through `lib.rs::pc_control_allowed`, which additionally
+//! requires the PTY to still be running.
 
 use dashmap::DashSet;
 

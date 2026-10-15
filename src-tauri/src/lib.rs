@@ -159,6 +159,8 @@ fn resize_session(id: String, cols: u16, rows: u16, state: State<AppState>) -> R
 
 #[tauri::command]
 fn kill_session(id: String, state: State<AppState>) -> Result<(), String> {
+    // Revoke first so there is no window where a dying session still holds a grant.
+    state.pc_control.revoke(&id);
     state.sessions.kill(&id).map_err(|e| e.to_string())
 }
 
@@ -219,9 +221,24 @@ fn read_imported_chat(id: String, state: State<AppState>) -> Result<import::Impo
         .ok_or_else(|| "Import is no longer available. Refresh local chats and try again.".into())
 }
 
+/// Grant or revoke PC control for one live PTY. A grant is refused unless the
+/// PTY's process is running, so permission can only attach to a real session.
 #[tauri::command]
-fn set_pc_control(session_id: String, enabled: bool, state: State<AppState>) -> bool {
-    state.pc_control.set(&session_id, enabled)
+fn set_pc_control(session_id: String, enabled: bool, state: State<AppState>) -> Result<bool, String> {
+    if enabled && !state.sessions.is_live(&session_id) {
+        state.pc_control.revoke(&session_id);
+        return Err("PC control can only be granted to a running session.".into());
+    }
+    Ok(state.pc_control.set(&session_id, enabled))
+}
+
+/// The one guard every native PC-control action must call. Both conditions are
+/// required: an explicit user grant AND a still-running process. The second
+/// check is what makes revocation hold when the frontend can't revoke (webview
+/// reload or crash), because a dead or killed PTY is never "live".
+#[allow(dead_code)]
+fn pc_control_allowed(state: &AppState, session_id: &str) -> bool {
+    state.pc_control.allowed(session_id) && state.sessions.is_live(session_id)
 }
 
 #[tauri::command]

@@ -129,6 +129,16 @@ impl SessionStore {
         Ok(pid)
     }
 
+    /// Whether `id` names a session whose process is still running. The
+    /// PC-control guard uses this so a grant can never outlive its process,
+    /// even if the frontend never gets to revoke it (webview reload, crash).
+    pub fn is_live(&self, id: &str) -> bool {
+        self.sessions
+            .get(id)
+            .map(|e| e.value().lock().map(|s| s.alive.load(Ordering::SeqCst)).unwrap_or(false))
+            .unwrap_or(false)
+    }
+
     /// Sessions whose process is still running.
     pub fn live_count(&self) -> usize {
         self.sessions
