@@ -11,9 +11,12 @@
 ezCLI is not a harness. Each session spawns the real CLI in a real pseudo-terminal, so
 the agent's own text UI renders unchanged. Nothing is proxied, re-prompted, or rewritten.
 The window adds the parts a bare terminal lacks: tabs, an agent switcher, a file and diff
-browser, and model, effort and mode flags you pick before launch.
+browser, model, effort and mode flags you pick before launch, and images and videos
+you can paste or drop into the chat.
 
-![ezCLI running](docs/screenshot-launcher.jpg)
+![The ezCLI launcher: pick an agent, model, effort and mode, then describe the task](docs/screenshot-launcher.png)
+
+![An OpenCode session with an image and a video attached in the composer](docs/screenshot-session.png)
 
 ## Install
 
@@ -125,7 +128,7 @@ cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_<ver
 | Terminal | xterm.js with the Freebuff dark palette and JetBrains Mono. Full color, cursor, and live resize. |
 | Files pane | Browse the session folder and preview any text file, up to 256 KB. |
 | Changes pane | Branch, working-tree status, and a colored diff for each changed file, straight from `git`. |
-| Composer | A text box that writes to the process, with `Ctrl+C` and `Esc` buttons for the agent's own prompts. |
+| Composer | A text box that writes to the process, with `Ctrl+C` and `Esc` buttons for the agent's own prompts, and an **Attach** button for images and videos. Paste screenshots with `Ctrl+V` or drop files on the window. |
 | Status bar | State, the resolved command line, the working directory, and the terminal size. |
 | Local chats | Read-only import picker for recognized Claude Code JSONL conversations. Unsupported stores stay unavailable rather than being guessed. |
 
@@ -145,12 +148,13 @@ The window claims only `Ctrl+Alt` combinations, so the agent's own terminal shor
 | `Ctrl+Alt+1` … `9` | Jump to a session |
 | `Enter` | Send the composer |
 | `Shift+Enter` | New line in the composer |
+| `Ctrl+V` (in the composer) | Attach a copied image or screenshot |
 
 ## Configuring agents
 
 `agents.json` lists every launchable CLI. Each entry gives a `command` resolved on PATH,
 plus `modes`, `models` and optional `efforts` whose `args` are appended to the launch line. Edit the file,
-then choose "Reload agents.json" from the gear menu. No restart needed.
+then click **Reload agents** in Settings. No restart needed.
 
 ```json
 {
@@ -263,6 +267,10 @@ src-tauri/
     pty_mgr.rs          portable-pty session store, reader + wait threads, resize + kill
     files_api.rs        directory listing, 256KB text preview, binary heuristic
     git_api.rs          git status / diff via std::process
+    media.rs            pasted images, workspace staging, ffmpeg video frames
+    backends.rs         installed-CLI and sign-in detection for onboarding
+    capture.rs          primary-screen capture for PC control
+    mcp_server.rs       loopback MCP tool server for PC control
   icons/                generated from docs/icon.png
 
 public/                 the frontend, served from inside the Tauri window
@@ -280,8 +288,8 @@ PTY master, and runs two threads: one pumps every byte the child writes to the f
 as a `pty-data:<id>` event, one waits for the child and emits a single `pty-exit:<id>`.
 Launch arguments only ever come from `agents.json`, never from JavaScript.
 
-ezCLI makes zero model calls of its own. The agent CLIs do all the talking to Anthropic
-or OpenAI, exactly as they would in your shell, so running the window costs nothing
+ezCLI makes zero model calls of its own. The agent CLIs do all the talking to their
+providers, exactly as they would in your shell, so running the window costs nothing
 beyond what the CLIs already use. The Tauri frontend talks to the Rust core over IPC;
 there is no Node server or WebSocket relay.
 
@@ -289,6 +297,7 @@ there is no Node server or WebSocket relay.
 
 - `git` on PATH, for the Changes pane
 - At least one of the agent CLIs installed
+- `ffmpeg` on PATH, only to send videos to agents other than Gemini (`winget install Gyan.FFmpeg`)
 
 ## Design source
 
