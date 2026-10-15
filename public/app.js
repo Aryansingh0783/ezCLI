@@ -157,6 +157,7 @@ const state = {
   activeId: null,
   activeBySpace: {},
   seq: 0,
+  imports: { catalog: null, selected: null },
   git: {}, // space path -> last git_status result
   explorer: { view: 'list', root: null, expanded: new Set(), cache: new Map(), filter: '', file: null, diff: null }
 };
@@ -1713,6 +1714,92 @@ function renderUsage() {
       .join('')}`;
 }
 
+/* ---------------------------------------------------------- local imports */
+
+function showImportSheet() {
+  const sheet = $('importSheet');
+  if (!sheet.open) sheet.showModal();
+  refreshImports();
+}
+
+async function refreshImports() {
+  const refresh = $('refreshImports');
+  refresh.disabled = true;
+  refresh.textContent = 'Scanning local chats…';
+  try {
+    state.imports.catalog = await invoke('list_imports');
+    state.imports.selected = null;
+    renderImportCatalog();
+    renderImportPreview();
+  } catch (err) {
+    $('importList').innerHTML = `<p class="note import-empty">${esc(String(err))}</p>`;
+    $('importSources').textContent = '';
+  } finally {
+    refresh.disabled = false;
+    refresh.textContent = 'Refresh local chats';
+  }
+}
+
+function renderImportCatalog() {
+  const catalog = state.imports.catalog;
+  if (!catalog) return;
+  $('importSources').innerHTML = catalog.sources
+    .map(
+      (source) => `<div class="import-source ${source.available ? 'available' : ''}">
+        <b>${esc(source.label)}</b><span>${esc(source.detail)}</span>
+      </div>`
+    )
+    .join('');
+  if (!catalog.conversations.length) {
+    $('importList').innerHTML = '<p class="note import-empty">No recognized local conversations were found. Unsupported or malformed files are left untouched.</p>';
+    return;
+  }
+  $('importList').innerHTML = catalog.conversations
+    .map(
+      (chat) => `<button type="button" class="import-row" role="option" aria-selected="false" data-import-chat="${esc(chat.id)}">
+        <b>${esc(chat.title)}</b>
+        <span>${esc(chat.source)} · ${esc(chat.project)} · ${chat.messageCount} message${chat.messageCount === 1 ? '' : 's'}${chat.truncated ? ' · partial' : ''}</span>
+      </button>`
+    )
+    .join('');
+}
+
+async function openImportedChat(id) {
+  try {
+    state.imports.selected = await invoke('read_imported_chat', { id });
+    $('importList').querySelectorAll('[data-import-chat]').forEach((row) => {
+      row.classList.toggle('selected', row.dataset.importChat === id);
+      row.setAttribute('aria-selected', String(row.dataset.importChat === id));
+    });
+    renderImportPreview();
+  } catch (err) {
+    toast(String(err), 'error');
+  }
+}
+
+function renderImportPreview() {
+  const chat = state.imports.selected;
+  const preview = $('importPreview');
+  if (!chat) {
+    preview.innerHTML = '<p class="note">Choose a conversation to preview it here.</p>';
+    return;
+  }
+  const visible = chat.messages.slice(0, 120);
+  preview.innerHTML = `
+    <header class="import-preview-head">
+      <h3>${esc(chat.title)}</h3>
+      <p>${esc(chat.source)} · ${esc(chat.project)} · ${chat.messages.length} message${chat.messages.length === 1 ? '' : 's'}${chat.truncated ? ' · partial import' : ''}</p>
+    </header>
+    <p class="note import-readonly">Read-only preview. Starting a fresh session does not attach this transcript as context.</p>
+    <div class="import-messages">${visible
+      .map(
+        (message) => `<article class="import-message ${message.role === 'user' ? 'user' : 'assistant'}">
+          <h4>${message.role === 'user' ? 'You' : 'Assistant'}</h4><pre>${esc(message.content)}</pre>
+        </article>`
+      )
+      .join('')}${chat.messages.length > visible.length ? '<p class="note import-more">Preview limited to the first 120 imported messages.</p>' : ''}</div>`;
+}
+
 function backendFacts(report) {
   if (!report) return ['Could not check your installed backends. You can choose one from the home screen.'];
   const facts = [];
@@ -2096,6 +2183,16 @@ function wire() {
     prefs.usage = {};
     savePrefs();
     renderUsage();
+  });
+  $('openImports').addEventListener('click', showImportSheet);
+  $('refreshImports').addEventListener('click', refreshImports);
+  $('importList').addEventListener('click', (e) => {
+    const row = e.target.closest('[data-import-chat]');
+    if (row) openImportedChat(row.dataset.importChat);
+  });
+  $('importNewSession').addEventListener('click', () => {
+    if ($('importSheet').open) $('importSheet').close();
+    newSession();
   });
 
   // home

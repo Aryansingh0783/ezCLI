@@ -7,6 +7,7 @@ mod agents;
 mod backends;
 mod files_api;
 mod git_api;
+mod import;
 mod open_in;
 mod pty_mgr;
 
@@ -21,6 +22,7 @@ pub struct AppState {
     agents: Mutex<Vec<AgentDef>>,
     agents_path: PathBuf,
     sessions: SessionStore,
+    imports: import::ImportStore,
 }
 
 #[derive(Serialize)]
@@ -193,6 +195,28 @@ fn detect_backends(state: State<AppState>) -> backends::BackendReport {
     backends::detect(&ids)
 }
 
+/// Scan local transcript stores off the command thread, then hold recognized
+/// conversations in memory under opaque ids for the picker.
+#[tauri::command]
+async fn list_imports(state: State<'_, AppState>) -> Result<import::ImportCatalog, String> {
+    let discovery = tauri::async_runtime::spawn_blocking(import::discover)
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+    state.imports.replace(discovery.conversations);
+    Ok(discovery.catalog)
+}
+
+/// Return only a conversation discovered by the immediately preceding scan;
+/// callers cannot use this command as an arbitrary local-file reader.
+#[tauri::command]
+fn read_imported_chat(id: String, state: State<AppState>) -> Result<import::ImportConversation, String> {
+    state
+        .imports
+        .get(&id)
+        .ok_or_else(|| "Import is no longer available. Refresh local chats and try again.".into())
+}
+
 #[tauri::command]
 fn open_targets() -> Vec<open_in::OpenTarget> {
     open_in::detect()
@@ -276,6 +300,7 @@ pub fn run() {
             agents: Mutex::new(loaded),
             agents_path,
             sessions: SessionStore::new(),
+            imports: import::ImportStore::default(),
         })
         .invoke_handler(tauri::generate_handler![
             list_agents,
@@ -289,6 +314,8 @@ pub fn run() {
             git_status,
             git_diff,
             detect_backends,
+            list_imports,
+            read_imported_chat,
             open_targets,
             open_in,
             running_sessions

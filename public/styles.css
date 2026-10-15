@@ -1766,11 +1766,175 @@ body.resizing-pane .xterm {
   white-space: nowrap;
 }
 
+/* Local chat import: a contained read-only picker, kept out of the launcher
+ * hierarchy so starting a terminal remains the home screen's main action. */
+.import-sheet {
+  width: min(880px, calc(100vw - 32px));
+}
+.import-sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 14px 0;
+}
+.import-source {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.import-source b {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.import-source.available b {
+  color: var(--brand);
+}
+.import-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.4fr);
+  min-height: 360px;
+  max-height: min(58vh, 620px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.import-list,
+.import-preview {
+  min-width: 0;
+  overflow: auto;
+}
+.import-list {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.import-row {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+}
+.import-row:hover,
+.import-row.selected {
+  background: var(--raised);
+  color: var(--text);
+}
+.import-row:focus-visible {
+  position: relative;
+  outline-offset: -2px;
+}
+.import-row b,
+.import-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-row b {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.import-row span,
+.import-preview-head p {
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.import-preview {
+  padding: 14px;
+  background: var(--bg);
+}
+.import-preview-head {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.import-preview-head h3 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+.import-preview-head p {
+  margin: 0;
+}
+.import-readonly {
+  margin: 10px 0;
+}
+.import-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.import-message {
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.import-message.user {
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+}
+.import-message h4 {
+  margin: 0 0 5px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.import-message pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  color: var(--text);
+  font: 12px/1.45 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.import-empty,
+.import-more {
+  margin: 12px;
+}
+.import-actions {
+  margin-top: 14px;
+}
+
 @media (max-width: 900px) {
   .suggested-prompts {
     grid-template-columns: 1fr;
   }
   .send-key {
     display: none;
+  }
+  .import-layout {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+  .import-list {
+    max-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+@media (max-width: 620px) {
+  .import-sources {
+    grid-template-columns: 1fr;
   }
 }

@@ -268,6 +268,13 @@
           <button class="btn" id="openUsage">Open usage view</button>
         </div>
       </div>
+      <div class="settings-section">
+        <h3>Local chats</h3>
+        <p class="note">Read recognized local transcripts without uploading them or sending them to a CLI.</p>
+        <div class="row-actions">
+          <button class="btn" id="openImports">Import local chats</button>
+        </div>
+      </div>
       <form method="dialog"><button class="btn primary">Done</button></form>
     </dialog>
 
@@ -283,6 +290,24 @@
         <button class="btn" id="openOpenai">OpenAI Dashboard →</button>
         <span class="grow"></span>
         <button class="btn quiet" id="resetUsage">Reset local counters</button>
+      </div>
+      <form method="dialog" class="row-actions end"><button class="btn primary">Done</button></form>
+    </dialog>
+
+    <dialog class="sheet wide import-sheet" id="importSheet" aria-labelledby="importTitle">
+      <h2 id="importTitle">Import local chats</h2>
+      <p class="note">ezCLI reads only recognized local transcript records. Opening one is read-only: nothing is uploaded or fed into a CLI session.</p>
+      <div class="import-sources" id="importSources" aria-label="Import sources"></div>
+      <div class="import-layout">
+        <div class="import-list" id="importList" role="listbox" aria-label="Local conversations"></div>
+        <section class="import-preview" id="importPreview" aria-live="polite">
+          <p class="note">Choose a conversation to preview it here.</p>
+        </section>
+      </div>
+      <div class="row-actions wrap import-actions">
+        <button class="btn" type="button" id="refreshImports">Refresh local chats</button>
+        <span class="grow"></span>
+        <button class="btn quiet" type="button" id="importNewSession">Start a fresh session</button>
       </div>
       <form method="dialog" class="row-actions end"><button class="btn primary">Done</button></form>
     </dialog>

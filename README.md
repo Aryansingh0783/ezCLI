@@ -32,6 +32,8 @@ The app writes its editable config to `~/.ezcli/agents.json` on first run.
   its own Model chip too.
 - **Usage view.** Honest local counters, plus one-click shortcuts to the Anthropic Console
   and OpenAI Dashboard where the real billing lives.
+- **Local chat import.** A read-only picker for recognized Claude Code transcripts. It never
+  uploads a chat or silently turns one into prompt context.
 - **Home opens in your home folder** instead of `C:\Program Files\ezCLI` when you launch
   from the Start Menu.
 - Polish: tab enter animation, status-bar glow when a session is working, primary-button
@@ -71,6 +73,7 @@ cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_1.0.
 | Changes pane | Branch, working-tree status, and a colored diff for each changed file, straight from `git`. |
 | Composer | A text box that writes to the process, with `Ctrl+C` and `Esc` buttons for the agent's own prompts. |
 | Status bar | State, the resolved command line, the working directory, and the terminal size. |
+| Local chats | Read-only import picker for recognized Claude Code JSONL conversations. Unsupported stores stay unavailable rather than being guessed. |
 
 Full operating instructions are in [GUIDE.md](GUIDE.md).
 
@@ -122,6 +125,26 @@ Codex normally detaches a background server. When ezCLI runs inside a Windows jo
 that forbids breakaway, that detach fails and Codex exits at once. The flag keeps Codex in
 the foreground. Remove it from `agents.json` if your setup does not need it.
 
+## Local chat import
+
+Open **Settings → Import local chats** to scan supported transcript stores. The
+current importer supports only Claude Code, and only recognizes explicit `user`
+and `assistant` text records. Malformed JSONL, tool payloads, oversized files,
+and unverified sources are ignored. The app keeps an opened transcript in memory
+for a read-only preview; it does not upload it, modify it, or attach it to a
+new CLI session as hidden context.
+
+Claude Code's supported local locations are:
+
+| Platform | Location |
+| --- | --- |
+| Windows | `%USERPROFILE%\.claude\projects\**\*.jsonl` |
+| macOS / Linux | `~/.claude/projects/**/*.jsonl` |
+
+Claude Desktop, ChatGPT desktop, and Codex import are intentionally listed as
+unavailable for now. Their local store formats have not been verified in this
+project, so ezCLI does not probe guessed paths or claim compatibility.
+
 ## How it works
 
 ```
@@ -133,6 +156,7 @@ src-tauri/
     main.rs             tiny entry point
     lib.rs              Tauri command handlers wiring the modules below
     agents.rs           agents.json parsing, PATH + PATHEXT resolution
+    import.rs           read-only local transcript discovery and normalization
     pty_mgr.rs          portable-pty session store, reader + wait threads, resize + kill
     files_api.rs        directory listing, 256KB text preview, binary heuristic
     git_api.rs          git status / diff via std::process
@@ -155,17 +179,11 @@ Launch arguments only ever come from `agents.json`, never from JavaScript.
 
 ezCLI makes zero model calls of its own. The agent CLIs do all the talking to Anthropic
 or OpenAI, exactly as they would in your shell, so running the window costs nothing
-beyond what the CLIs already use.
-
-The browser opens one WebSocket per session to `/pty`. The server resolves the command on
-PATH (walking `PATHEXT` on Windows, where an npm CLI is usually a `.cmd` shim), spawns it
-with `@lydell/node-pty`, and streams bytes both ways. Launch arguments come only from
-`agents.json`, never from the page, and the WebSocket upgrade is refused unless the request
-originates from loopback on the server's own port.
+beyond what the CLIs already use. The Tauri frontend talks to the Rust core over IPC;
+there is no Node server or WebSocket relay.
 
 ## Requirements
 
-- Node.js 18 or newer
 - `git` on PATH, for the Changes pane
 - At least one of the agent CLIs installed
 
