@@ -142,49 +142,42 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**COMPLETE — PR 2: live CLI usage strip** (Codex, 2026-10-15)
+**IN PROGRESS — PR 3: local chat import** (Codex, 2026-10-15)
 
-Landed in `58ce7b9 feat: add observed CLI usage strip`.
+Prerequisites complete: PR 1 landed in `c951ecb`, and PR 2 landed in
+`58ce7b9 feat: add observed CLI usage strip`.
 
-Goal: parse usage/cost summaries that the active CLI already writes to its PTY
-stream and surface only observed values in a persistent status strip. This adds
-**zero model tokens**, never invents a cost, and must remain useful when a CLI
-does not expose usage telemetry.
+Goal: add a read-only, local-file transcript import foundation. It must locate
+supported stores only when present, normalize recognized content into a common
+schema, and let the user choose a conversation to open or continue without
+cloud API access, credential collection, or hidden context injection.
 
-Files being touched:
-- `public/usage-parser.js` — dependency-free, PTY-safe parser for typed Claude
-  and Codex usage records plus conservative labelled text summaries.
-- `public/app.js` — per-session usage state, stream ingestion, idle/exit flushes,
-  and status-strip rendering.
-- `public/index.html` — compact persistent usage markup in the existing footer.
-- `public/styles.css` — responsive Freebuff-aligned strip styles and accessible
-  visual states.
-- `test/usage-parser.test.cjs` — Node-only parser regression coverage.
+Files expected to be touched:
+- `src-tauri/src/import.rs` (new) — source discovery, bounded local parsing,
+  normalization, and unit tests.
+- `src-tauri/src/lib.rs` — narrow read-only commands and state wiring.
+- `public/app.js`, `public/index.html`, `public/styles.css` — explicit import
+  entry point and picker UI, preserving the current home hero/pills.
+- `README.md` — verified per-OS source paths and privacy boundary.
 
-Completed:
-1. [x] Reconcile the refreshed user brief and screenshot with the approved
-   Tauri roadmap; preserve the home hero and Agent/Model/Mode pills.
-2. [x] Define conservative parsers and test vectors for CLI-emitted summaries.
-3. [x] Add per-session observed-usage state and connect it to `pty-data`.
-4. [x] Render input/output/cached, per-turn delta, session total, and observed
-   cost in the persistent footer without crowding command/cwd data.
-5. [x] Parse-check, inspect the static UI, commit code, and refresh §5/§6.
+Steps:
+1. [ ] Audit current session persistence, Tauri capability boundaries, and the
+   actual local Claude Code transcript shape without writing to user stores.
+2. [ ] Define the common conversation schema, supported/unsupported-source
+   behavior, size limits, and import error states.
+3. [ ] Implement Claude Code discovery and parsing first, with isolated tests;
+   add other source adapters only where their on-disk format is verified.
+4. [ ] Add a keyboard-accessible picker that opens imported content explicitly,
+   never silently supplies it as CLI context.
+5. [ ] Run proportionate frontend/Rust validation, record limitations, and
+   commit code plus a completed handoff checkpoint.
 
-Validation passed: `node --test test/usage-parser.test.cjs` (7 tests),
-`node --check public/usage-parser.js`, `node --check public/app.js`, and
-`git diff --check`. The Impeccable detector still reports only its three
-pre-existing unrelated findings. A live Tauri build remains unavailable because
-the local GNU toolchain lacks `dlltool.exe`; no build/release was attempted.
+Known local validation limit: GNU `dlltool.exe` is still unavailable, so Rust
+build/test execution may remain blocked. Do not fabricate support for Claude
+Desktop, ChatGPT desktop, or Codex stores until their local formats are verified.
 
-Parser boundary: default Claude/Codex launches are interactive, not telemetry
-protocols. The strip therefore reports only typed `result` / `turn.completed`
-records or a strict multi-metric labelled summary that is actually observed in
-the PTY. It otherwise says `Not reported by CLI`; it never adds JSON flags,
-guesses usage, or prices a model.
-
-Exact next step: start PR 3, chat import. First inspect the existing transcript
-and session persistence model, then design a local-file import route without
-changing the home hero or assuming credentials/connectors.
+Exact next step: read the existing `lib.rs`, Tauri capabilities, and frontend
+session/transcript model, then perform a read-only Claude Code path/schema audit.
 
 Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
 when PR 1 started; latest tag `v1.1.0`.
