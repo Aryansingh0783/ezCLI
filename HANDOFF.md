@@ -142,9 +142,9 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
-**IN PROGRESS — PR 2: live CLI usage strip** (Codex, 2026-10-15)
+**COMPLETE — PR 2: live CLI usage strip** (Codex, 2026-10-15)
 
-Prerequisite complete: PR 1 landed in `c951ecb feat: detect local AI backends`.
+Landed in `58ce7b9 feat: add observed CLI usage strip`.
 
 Goal: parse usage/cost summaries that the active CLI already writes to its PTY
 stream and surface only observed values in a persistent status strip. This adds
@@ -152,24 +152,39 @@ stream and surface only observed values in a persistent status strip. This adds
 does not expose usage telemetry.
 
 Files being touched:
-- `public/app.js` — per-session usage state, stream parser, turn/session deltas,
+- `public/usage-parser.js` — dependency-free, PTY-safe parser for typed Claude
+  and Codex usage records plus conservative labelled text summaries.
+- `public/app.js` — per-session usage state, stream ingestion, idle/exit flushes,
   and status-strip rendering.
 - `public/index.html` — compact persistent usage markup in the existing footer.
 - `public/styles.css` — responsive Freebuff-aligned strip styles and accessible
   visual states.
+- `test/usage-parser.test.cjs` — Node-only parser regression coverage.
 
-Steps:
+Completed:
 1. [x] Reconcile the refreshed user brief and screenshot with the approved
    Tauri roadmap; preserve the home hero and Agent/Model/Mode pills.
-2. [ ] Define conservative parsers and test vectors for CLI-emitted summaries.
-3. [ ] Add per-session observed-usage state and connect it to `pty-data`.
-4. [ ] Render input/output/cached, per-turn delta, session total, and observed
+2. [x] Define conservative parsers and test vectors for CLI-emitted summaries.
+3. [x] Add per-session observed-usage state and connect it to `pty-data`.
+4. [x] Render input/output/cached, per-turn delta, session total, and observed
    cost in the persistent footer without crowding command/cwd data.
-5. [ ] Parse-check, inspect the UI, commit code, and refresh §5/§6.
+5. [x] Parse-check, inspect the static UI, commit code, and refresh §5/§6.
 
-Known local validation limit: Rust builds remain blocked by the missing GNU
-`dlltool.exe`; this PR only changes the static frontend, so `node --check`,
-diff hygiene, and a bounded visual/static pass are the local checks.
+Validation passed: `node --test test/usage-parser.test.cjs` (7 tests),
+`node --check public/usage-parser.js`, `node --check public/app.js`, and
+`git diff --check`. The Impeccable detector still reports only its three
+pre-existing unrelated findings. A live Tauri build remains unavailable because
+the local GNU toolchain lacks `dlltool.exe`; no build/release was attempted.
+
+Parser boundary: default Claude/Codex launches are interactive, not telemetry
+protocols. The strip therefore reports only typed `result` / `turn.completed`
+records or a strict multi-metric labelled summary that is actually observed in
+the PTY. It otherwise says `Not reported by CLI`; it never adds JSON flags,
+guesses usage, or prices a model.
+
+Exact next step: start PR 3, chat import. First inspect the existing transcript
+and session persistence model, then design a local-file import route without
+changing the home hero or assuming credentials/connectors.
 
 Shipped before this PR: v1.1.0 (MSI on the release). `main` was @ `fd455be`
 when PR 1 started; latest tag `v1.1.0`.
@@ -183,6 +198,10 @@ when PR 1 started; latest tag `v1.1.0`.
   backend detection, an optional modeless first-run picker, and per-session
   backend switching. Local frontend checks passed; Rust build is blocked by the
   known GNU toolchain gap, so no release/CI run was started.
+- 2026-10-15 — Codex: completed PR 2 in `58ce7b9`; added a responsive
+  active-session usage strip that reads only recognized PTY telemetry, plus
+  seven parser tests. Home hero and Agent/Model/Mode controls remain unchanged;
+  no live Tauri build was possible on this machine.
 
 ---
 
