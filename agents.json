@@ -66,6 +66,63 @@
       "args": [],
       "modes": [{ "id": "default", "label": "Default", "args": [] }],
       "models": [{ "id": "default", "label": "Default", "args": [] }]
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "vendor": "opencode",
+      "icon": "code",
+      "command": "opencode",
+      "install": "npm install -g opencode-ai",
+      "tier": "free",
+      "_tier_note": "Ships free models that need no account or key. Connect more providers (OpenRouter free models, local Ollama) with `opencode providers`.",
+      "args": [],
+      "modes": [
+        { "id": "default", "label": "Build", "args": [] },
+        { "id": "plan", "label": "Plan", "args": ["--agent", "plan"] },
+        { "id": "continue", "label": "Continue", "args": ["--continue"] }
+      ],
+      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "_modelsFrom_note": "The Model pill is filled from `opencode models`, which lists every model usable right now, including all key-free ones.",
+      "modelsFrom": { "args": ["models"], "flag": "-m" },
+      "mcp": "none"
+    },
+    {
+      "id": "gemini",
+      "label": "Gemini CLI",
+      "vendor": "google",
+      "icon": "code",
+      "command": "gemini",
+      "install": "npm install -g @google/gemini-cli",
+      "tier": "free",
+      "_tier_note": "Free with a personal Google account sign-in.",
+      "args": [],
+      "modes": [
+        { "id": "default", "label": "Default", "args": [] },
+        { "id": "plan", "label": "Plan", "args": ["--approval-mode", "plan"] },
+        { "id": "auto-edit", "label": "Auto edit", "args": ["--approval-mode", "auto_edit"] },
+        { "id": "continue", "label": "Continue", "args": ["--resume", "latest"] }
+      ],
+      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "_mcp_note": "Gemini CLI has no per-launch MCP flag; attaching would mean editing the user's settings files, so PC control is off.",
+      "mcp": "none"
+    },
+    {
+      "id": "freebuff",
+      "label": "Freebuff",
+      "vendor": "freebuff",
+      "icon": "code",
+      "command": "freebuff",
+      "install": "npm install -g freebuff",
+      "tier": "free",
+      "_tier_note": "Free and ad-supported; picks its models server-side. The first run downloads a ~46 MB binary.",
+      "args": [],
+      "modes": [
+        { "id": "default", "label": "Default", "args": [] },
+        { "id": "continue", "label": "Continue", "args": ["--continue"] }
+      ],
+      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "mcp": "none"
     }
   ]
 }

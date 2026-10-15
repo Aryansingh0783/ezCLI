@@ -39,7 +39,31 @@ pub struct AgentDef {
     /// before this field existed keep working.
     #[serde(default)]
     pub mcp: Option<String>,
+    /// "free" marks agents usable without any paid plan; the wizard routes
+    /// users without a paid backend to these.
+    #[serde(default)]
+    pub tier: Option<String>,
+    /// Ask the agent itself which models are usable instead of hardcoding a
+    /// list that goes stale. See `parse_catalog`.
+    #[serde(default, rename = "modelsFrom")]
+    pub models_from: Option<ModelsFrom>,
+    /// Shell command shown to users who don't have this agent yet. Display
+    /// only; ezCLI never runs it.
+    #[serde(default)]
+    pub install: Option<String>,
 }
+
+/// Run `<command> <args>` to list models (one `provider/model` per line), then
+/// launch a chosen one with `<flag> <model>`.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ModelsFrom {
+    pub args: Vec<String>,
+    pub flag: String,
+}
+
+/// The agents.json shipped with the app. New built-in agents are merged into a
+/// user's existing config so people who installed earlier still get them.
+pub const BUILTIN: &str = include_str!("../../agents.json");
 
 /// The two attach mechanisms verified against the installed CLIs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +107,11 @@ pub struct AgentOut {
     pub resolved: Option<String>,
     /// Whether ezCLI knows how to attach PC control to this CLI.
     pub pc_control: bool,
+    /// Usable without any paid plan.
+    pub free: bool,
+    /// The Model pill can be filled from the agent's own catalog.
+    pub dynamic_models: bool,
+    pub install: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -92,7 +121,8 @@ struct AgentsFile {
 
 pub fn load_agents(path: &Path) -> Result<Vec<AgentDef>> {
     let txt = std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    let file: AgentsFile = serde_json::from_str(&txt).context("parse agents.json")?;
+    let mut file: AgentsFile = serde_json::from_str(&txt).context("parse agents.json")?;
+    merge_builtin(&mut file.agents);
 
     let mut seen = std::collections::HashSet::new();
     let mut agents = Vec::with_capacity(file.agents.len());
@@ -121,6 +151,46 @@ pub fn load_agents(path: &Path) -> Result<Vec<AgentDef>> {
         agents.push(a);
     }
     Ok(agents)
+}
+
+/// Append built-in agents whose id the user's file doesn't have. The user's
+/// own entries always win, including deliberately edited built-ins; removing a
+/// built-in is done with an entry whose command is set to something absent.
+fn merge_builtin(user: &mut Vec<AgentDef>) {
+    let Ok(builtin) = serde_json::from_str::<AgentsFile>(BUILTIN) else {
+        return;
+    };
+    for a in builtin.agents {
+        if !user.iter().any(|u| u.id == a.id) {
+            user.push(a);
+        }
+    }
+}
+
+/// Parse a model catalog printed one `provider/model` per line. Anything else
+/// (banners, blank lines, log noise) is ignored, so a catalog command can never
+/// smuggle arbitrary text into a launch argument.
+pub fn parse_catalog(stdout: &str) -> Vec<String> {
+    let mut out: Vec<String> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|l| {
+            let mut parts = l.splitn(2, '/');
+            let (Some(p), Some(m)) = (parts.next(), parts.next()) else { return false };
+            let ok = |s: &str, extra: &str| {
+                !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c) || extra.contains(c))
+            };
+            // Must start alphanumeric: an id like `--x/y` would be read as an
+            // option by the agent's own argument parser.
+            let starts_ok = l.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+            l.len() <= 200 && starts_ok && ok(p, "") && ok(m, ":/@")
+        })
+        .map(str::to_string)
+        .collect();
+    out.sort();
+    out.dedup();
+    out.truncate(1000);
+    out
 }
 
 fn default_variant() -> Variant {
@@ -183,19 +253,30 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                 available: resolved.is_some(),
                 resolved,
                 pc_control: a.mcp_style().is_some(),
+                free: a.tier.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("free")),
+                dynamic_models: a.models_from.is_some(),
+                install: a.install.clone(),
             }
         })
         .collect()
 }
 
-/// Build the launch argument list for a given mode/model selection.
-pub fn build_argv(a: &AgentDef, mode_id: &str, model_id: &str) -> Vec<String> {
+/// Build the launch argument list for a given mode/model selection. A model
+/// id that isn't one of the static variants is accepted only if it appears in
+/// the catalog the backend itself fetched from the agent, so the frontend still
+/// cannot inject an arbitrary argument.
+pub fn build_argv(a: &AgentDef, mode_id: &str, model_id: &str, catalog: Option<&[String]>) -> Vec<String> {
     let mut out = a.args.clone();
     if let Some(m) = a.modes.iter().find(|v| v.id == mode_id) {
         out.extend(m.args.clone());
     }
     if let Some(m) = a.models.iter().find(|v| v.id == model_id) {
         out.extend(m.args.clone());
+    } else if let (Some(from), Some(cat)) = (&a.models_from, catalog) {
+        if cat.iter().any(|c| c == model_id) {
+            out.push(from.flag.clone());
+            out.push(model_id.to_string());
+        }
     }
     out
 }
@@ -215,6 +296,45 @@ mod tests {
             modes: vec![],
             models: vec![],
             mcp: mcp.map(Into::into),
+            tier: None,
+            models_from: None,
+            install: None,
+        }
+    }
+
+    #[test]
+    fn catalog_parsing_keeps_only_provider_model_lines() {
+        let out = "banner text\n\nopencode/deepseek-v4.1-flash-free\nopenrouter/meta-llama/llama-4:free\n  ollama/qwen3:8b  \nrm -rf /\n--flag/x\nhttp://evil/x\nopencode/deepseek-v4.1-flash-free\n";
+        assert_eq!(
+            parse_catalog(out),
+            vec![
+                "ollama/qwen3:8b".to_string(),
+                "opencode/deepseek-v4.1-flash-free".to_string(),
+                "openrouter/meta-llama/llama-4:free".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn catalog_models_are_only_used_when_the_backend_fetched_them() {
+        let mut a = def("opencode", Some("none"));
+        a.models_from = Some(ModelsFrom { args: vec!["models".into()], flag: "-m".into() });
+        let cat = vec!["opencode/free-model".to_string()];
+        assert_eq!(build_argv(&a, "x", "opencode/free-model", Some(&cat)), vec!["-m", "opencode/free-model"]);
+        // Not in the fetched catalog: ignored rather than passed through.
+        assert!(build_argv(&a, "x", "--dangerous", Some(&cat)).is_empty());
+        assert!(build_argv(&a, "x", "opencode/free-model", None).is_empty());
+    }
+
+    #[test]
+    fn builtin_agents_are_merged_without_overriding_user_entries() {
+        let mut user = vec![def("my-claude", None)];
+        user[0].id = "claude-code".into();
+        merge_builtin(&mut user);
+        assert_eq!(user.iter().filter(|a| a.id == "claude-code").count(), 1);
+        assert_eq!(user[0].command, "my-claude", "user's edit wins");
+        for id in ["opencode", "gemini", "freebuff"] {
+            assert!(user.iter().any(|a| a.id == id), "missing built-in {id}");
         }
     }
 

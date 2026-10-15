@@ -27,6 +27,9 @@ pub struct AppState {
     sessions: SessionStore,
     imports: import::ImportStore,
     pc_control: pc_control::PcControlStore,
+    /// Model catalogs fetched from agents that declare `modelsFrom`, keyed by
+    /// agent id. `start_session` only accepts catalog models found here.
+    catalogs: Mutex<std::collections::HashMap<String, Vec<String>>>,
 }
 
 #[derive(Serialize)]
@@ -142,7 +145,9 @@ fn start_session(
 
         let resolved = agents::resolve_command(&a.command)
             .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
-        let mut argv = agents::build_argv(a, &mode_id, &model_id);
+        let catalogs = state.catalogs.lock().unwrap();
+        let mut argv = agents::build_argv(a, &mode_id, &model_id, catalogs.get(&a.id).map(Vec::as_slice));
+        drop(catalogs);
         let mut shown = argv.clone();
 
         if want_pc {
@@ -272,15 +277,85 @@ fn git_diff(
     git_api::git_diff(&path, &file, untracked.unwrap_or(false)).map_err(|e| e.to_string())
 }
 
+/// Run an agent's own model-listing command with a hidden console and a hard
+/// timeout. Used only for agents that declare `modelsFrom` in agents.json.
+fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    let mut cmd = if cfg!(windows) && resolved.to_lowercase().ends_with(".ps1") {
+        let mut c = Command::new("powershell.exe");
+        c.args(["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", resolved]);
+        c
+    } else {
+        Command::new(resolved)
+    };
+    cmd.args(args)
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| format!("could not run the model list: {e}"))?;
+    let mut stdout = child.stdout.take().ok_or("no output pipe")?;
+    // Read on a thread so a chatty child can't block on a full pipe while we wait.
+    let reader = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = std::io::Read::read_to_string(&mut stdout, &mut s);
+        s
+    });
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() > Duration::from_secs(30) => {
+                let _ = child.kill();
+                return Err("listing models took longer than 30 s".into());
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    reader.join().map_err(|_| "model list reader failed".to_string())
+}
+
+/// Fetch the models an agent can use right now (for OpenCode: every key-free
+/// model plus any provider the user connected). Triggered by the user opening
+/// the Model menu or pressing refresh, never per turn.
+#[tauri::command]
+async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let (resolved, args) = {
+        let agents_g = state.agents.lock().unwrap();
+        let a = agents_g
+            .iter()
+            .find(|x| x.id == agent_id)
+            .ok_or_else(|| "unknown agent".to_string())?;
+        let from = a
+            .models_from
+            .as_ref()
+            .ok_or_else(|| format!("{} doesn't publish a model list.", a.label))?;
+        let resolved = agents::resolve_command(&a.command)
+            .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
+        (resolved, from.args.clone())
+    };
+    let stdout = tauri::async_runtime::spawn_blocking(move || run_catalog(&resolved, &args))
+        .await
+        .map_err(|e| e.to_string())??;
+    let list = agents::parse_catalog(&stdout);
+    state.catalogs.lock().unwrap().insert(agent_id, list.clone());
+    Ok(list)
+}
+
 #[tauri::command]
 fn detect_backends(state: State<AppState>) -> backends::BackendReport {
-    let agents_g = state.agents.lock().unwrap();
-    let ids: Vec<(String, String)> = agents_g
-        .iter()
-        .map(|a| (a.id.clone(), a.vendor.clone()))
-        .collect();
-    drop(agents_g);
-    backends::detect(&ids)
+    let defs = state.agents.lock().unwrap().clone();
+    backends::detect(&defs)
 }
 
 /// Scan local transcript stores off the command thread, then hold recognized
@@ -392,7 +467,7 @@ fn resolve_agents_path() -> PathBuf {
     let config_file = config_dir.join("agents.json");
     if !config_file.exists() {
         let _ = std::fs::create_dir_all(&config_dir);
-        let default = include_str!("../../agents.json");
+        let default = agents::BUILTIN;
         let _ = std::fs::write(&config_file, default);
     }
     config_file
@@ -415,6 +490,7 @@ pub fn run() {
             sessions: SessionStore::new(),
             imports: import::ImportStore::default(),
             pc_control: pc_control::PcControlStore::default(),
+            catalogs: Mutex::new(Default::default()),
         })
         .setup(|app| {
             // Stale per-session config files from a crashed run hold dead tokens.
@@ -439,6 +515,7 @@ pub fn run() {
             git_status,
             git_diff,
             detect_backends,
+            agent_models,
             list_imports,
             read_imported_chat,
             set_pc_control,
@@ -448,4 +525,22 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("ezCLI failed to launch");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Opt-in: asks the installed OpenCode for its live model list. Free (no
+    /// model is called), but needs opencode on PATH and network access.
+    /// `scripts\test-rust.ps1 --ignored --nocapture real_opencode`
+    #[test]
+    #[ignore = "runs the installed opencode CLI"]
+    fn real_opencode_catalog_lists_free_models() {
+        let resolved = agents::resolve_command("opencode").expect("opencode on PATH");
+        let out = run_catalog(&resolved, &["models".to_string()]).unwrap();
+        let list = agents::parse_catalog(&out);
+        eprintln!("{} models via {resolved}: {:?}", list.len(), list);
+        assert!(!list.is_empty());
+    }
 }
