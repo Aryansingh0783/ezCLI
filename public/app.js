@@ -545,6 +545,7 @@ function buildParked(sn) {
     draft: '',
     context: [],
     usage: Usage.createUsageState(),
+    pcControl: false,
     term,
     fit,
     host,
@@ -615,6 +616,7 @@ async function createSession(agentId, opts = {}) {
     draft: '',
     context: [],
     usage: Usage.createUsageState(),
+    pcControl: false,
     term,
     fit,
     host,
@@ -641,10 +643,12 @@ async function createSession(agentId, opts = {}) {
 /** Spawn (or respawn) the CLI behind a session. Each launch gets a fresh
  *  pty id so a late exit event from a previous process can't touch it. */
 async function launch(s) {
+  if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
   for (const un of s.unlisten.splice(0)) safe(un);
   // A relaunch creates a fresh underlying CLI session, so observed metrics
   // must not leak from the prior process into this one.
   s.usage = Usage.createUsageState();
+  s.pcControl = false;
   const ptyId = `p${++state.seq}`;
   s.ptyId = ptyId;
   s.status = 'starting';
@@ -677,6 +681,8 @@ async function launch(s) {
   s.unlisten.push(
     await listen(`pty-exit:${ptyId}`, (e) => {
       if (s.ptyId !== ptyId) return;
+      invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
+      s.pcControl = false;
       Usage.ingest(s.usage, '', true);
       s.status = 'exited';
       s.exitCode = e.payload;
@@ -774,6 +780,7 @@ async function closeSession(id) {
   if (i === -1) return;
   const s = state.sessions[i];
   if (s.status === 'running') recordUsage(s);
+  if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
   if (s.ptyId) invoke('kill_session', { id: s.ptyId }).catch(() => {});
   for (const un of s.unlisten) safe(un);
   s.term.dispose();
@@ -960,6 +967,11 @@ function renderHead() {
   $('headBranch').hidden = !(g && g.repo);
   if (g && g.repo) $('headBranch').innerHTML = `${ICONS.branch}${esc(g.branch)}`;
   $('actStop').disabled = s.status !== 'running';
+  const control = $('headControl');
+  control.disabled = s.status !== 'running' || !s.ptyId;
+  control.classList.toggle('granted', Boolean(s.pcControl));
+  control.textContent = s.pcControl ? 'PC control on' : 'PC control off';
+  control.title = s.pcControl ? 'Revoke local PC control for this live session' : 'Grant local PC control for this live session';
   $('actRestart').hidden = s.status === 'parked';
   $('actRestart').textContent = s.status === 'running' ? 'Restart' : 'Relaunch';
 
@@ -2245,6 +2257,19 @@ function wire() {
         }
       }))
     });
+  });
+  $('headControl').addEventListener('click', async () => {
+    const s = active();
+    if (!s || !s.ptyId || s.status !== 'running') return;
+    const enabling = !s.pcControl;
+    if (enabling && !(await confirmDialog('Grant PC control?', 'This grants local PC-control permission only to the current live session. It is revoked when the process exits or you turn it off.', 'Grant for this session'))) return;
+    try {
+      s.pcControl = await invoke('set_pc_control', { sessionId: s.ptyId, enabled: enabling });
+      renderHead();
+      toast(s.pcControl ? 'PC control granted for this live session.' : 'PC control revoked.');
+    } catch (err) {
+      toast(String(err), 'error');
+    }
   });
   $('headAgent').addEventListener('click', (e) => {
     const s = active();

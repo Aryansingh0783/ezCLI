@@ -9,6 +9,7 @@ mod files_api;
 mod git_api;
 mod import;
 mod open_in;
+mod pc_control;
 mod pty_mgr;
 
 use agents::{AgentDef, AgentOut};
@@ -23,6 +24,7 @@ pub struct AppState {
     agents_path: PathBuf,
     sessions: SessionStore,
     imports: import::ImportStore,
+    pc_control: pc_control::PcControlStore,
 }
 
 #[derive(Serialize)]
@@ -218,6 +220,11 @@ fn read_imported_chat(id: String, state: State<AppState>) -> Result<import::Impo
 }
 
 #[tauri::command]
+fn set_pc_control(session_id: String, enabled: bool, state: State<AppState>) -> bool {
+    state.pc_control.set(&session_id, enabled)
+}
+
+#[tauri::command]
 fn open_targets() -> Vec<open_in::OpenTarget> {
     open_in::detect()
 }
@@ -301,6 +308,7 @@ pub fn run() {
             agents_path,
             sessions: SessionStore::new(),
             imports: import::ImportStore::default(),
+            pc_control: pc_control::PcControlStore::default(),
         })
         .invoke_handler(tauri::generate_handler![
             list_agents,
@@ -316,6 +324,7 @@ pub fn run() {
             detect_backends,
             list_imports,
             read_imported_chat,
+            set_pc_control,
             open_targets,
             open_in,
             running_sessions

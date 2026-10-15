@@ -953,6 +953,13 @@ kbd {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.head-control::before {
+  content: 'PC';
+}
+.head-control.granted {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
+  color: var(--text);
+}
 .head-agent::before {
   content: 'Backend';
 }
