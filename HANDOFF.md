@@ -4,7 +4,7 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-10-15 by Codex (cloud Ollama routing and hardware guidance)
+Last updated: 2026-10-15 by Codex (Windows CLI discovery and launch repair)
 
 ---
 
@@ -89,7 +89,14 @@ cd src-tauri; cargo check
 **Rust unit tests:** run `powershell -File scripts\test-rust.ps1`. Plain
 `cargo test` builds but the test exe can't start here (needs a comctl32 v6
 manifest and `WebView2Loader.dll` beside it); the script handles both. Current
-suite: 24 passing tests, plus five deliberate opt-in real-environment checks.
+suite: 42 passing tests, plus seven deliberate opt-in real-environment checks.
+
+If a running debug app locks the shared `E:\rust\target` directory, use a
+per-task target for validation instead of stopping the user's app:
+
+```powershell
+$env:CARGO_TARGET_DIR = 'E:\rust\target-ezcli-<ticket>'
+```
 
 **CI is the build path.** Push a `v*` tag → `.github/workflows/release.yml`
 runs on `windows-latest` (real MSVC), builds `cargo tauri build --bundles msi`,
@@ -152,6 +159,45 @@ UI polish rides along in every PR; don't batch it.
 - `BENCHMARKS.md`: tokens-per-task vs raw, for API + web-session backends (note CLI ≈ 0 %).
 
 ## 5. Current status
+
+**Windows CLI discovery and launch repair — COMPLETE (`3b82671`, 2026-10-15).**
+
+This fixes the exact report where a CLI is installed but ezCLI shows it as
+missing. A desktop app launched through Explorer inherits the PATH that existed
+at sign-in; after npm, WinGet, a native CLI installer, or a custom Ollama
+install, that inherited PATH can be stale until the user signs out and in.
+On this machine, `E:\Programs\Ollama\ollama.exe` existed and the fresh HKCU
+registry PATH contained `E:\Programs\Ollama`, while the running process PATH
+did not.
+
+- `agents::effective_path()` now reads the expanded machine and user registry
+  PATH values afresh, adds conventional per-user CLI-install directories, then
+  retains the inherited PATH as a fallback. It removes duplicate directories
+  case-insensitively and always prioritizes the fresh sources.
+- ezCLI uses that same computed PATH both to discover a CLI and to launch its
+  interactive PTY/catalog process. Therefore an npm shim such as `claude.cmd`
+  or `opencode.cmd` can find `node` even if the desktop process started before
+  npm changed PATH.
+- `.cmd`/`.bat` shims now run through the trusted system `cmd.exe` with
+  `/d /v:off /c call`, which works with a CLI path containing spaces even when
+  Windows 8.3 aliases are disabled. Since `cmd.exe` reparses these tokens, the
+  launcher explicitly rejects paths/options with CMD control characters rather
+  than executing an unintended command.
+- Validation: `scripts\test-rust.ps1` passed **42 passed / 0 failed / 7
+  ignored**. The new normal (offline) PTY test models a stale PATH, discovers a
+  fake `.cmd` CLI from fresh sources, and proves its dependency is found through
+  the child PATH. `git diff --check` and `node --check public/app.js` passed.
+  A fresh debug build completed at
+  `E:\rust\target-ezcli-path-build\debug\ezcli.exe`.
+- No sign-in, model prompt, download, Ollama Cloud usage, push, tag, release,
+  or publication occurred. The live Cloud-answer test is deliberately ignored
+  and requires both `EZCLI_LIVE_OLLAMA_TEST=1` and an explicit
+  `EZCLI_OLLAMA_TEST_MODEL` alias.
+
+**Distribution note:** v1.1.0 remains the only shipped MSI. A person running
+that installed build will not receive `3b82671` until a new v1.2.0 build is
+made available. Do not push, tag, create a release, or publish an installer
+without Aryan's explicit approval.
 
 **Claude review of Codex's 7fac9ef..b949304 (2026-10-15, Opus 5.5): correct and
 careful, with one real bug, now fixed.**
@@ -492,6 +538,18 @@ when PR 1 started; latest tag `v1.1.0`.
   and kept image references truthful. Standard Rust tests: 36 pass, 6 ignored;
   live catalog test returned 18 aliases; a separate debug build succeeded.
   No Ollama install/sign-in/model call, push, tag, release, or publication.
+- 2026-10-15 — Claude (Opus 5.5): reviewed Codex's PR 4c follow-ups and Cloud
+  Ollama work (sound). Fixed npm shim launch for user paths with spaces
+  (`f67b41b`), Ollama notice markup (`b188b64`). 39/39 Rust tests.
+- 2026-10-15 — Codex: completed interrupted Windows CLI-discovery work in
+  `3b82671`. ezCLI now refreshes the registry PATH and standard CLI directories
+  before detection, gives that exact PATH to spawned PTYs/catalogs, and safely
+  launches spaced npm `.cmd` shims without relying on 8.3 names. Hermetic
+  stale-PATH/child-dependency coverage plus the full suite passed (42 pass,
+  7 deliberate opt-in skips); a separate v1.2.0 debug build succeeded at
+  `E:\rust\target-ezcli-path-build\debug\ezcli.exe`. No cloud prompt, sign-in,
+  release, push, tag, or publication occurred. The unrelated untracked
+  `threejs-animation-multiple-preview/` directory was preserved.
 
 ---
 
@@ -529,4 +587,3 @@ mid-PR, no chance to write a goodbye). Three safety nets make that recoverable:
    real tree against §5. If §5 says "IN PROGRESS PR n" and `git diff` shows
    half-written files, resume those; the diff IS the state.
 3. If a WIP commit is the last thing, continue from there. Keep PRs small.
-- 2026-10-15 — Claude (Opus 5.5): reviewed Codex's PR 4c follow-ups and Cloud Ollama work (sound). Fixed npm shim launch for user paths with spaces (`f67b41b`), Ollama notice markup (`b188b64`). 39/39 Rust tests.
