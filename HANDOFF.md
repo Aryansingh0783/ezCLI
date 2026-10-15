@@ -219,7 +219,7 @@ with Aryan's approval: opencode, gemini, freebuff (global npm).
   reason + copyable install commands. No new detector findings.
 - [x] Local app build fixed (`ab02532`): crate-type is now rlib only; the
   mobile cdylib hit the GNU 65,535-export limit. Build output:
-  `E:\rust\target\debug\ezcli.exe` (built, NOT yet launched/inspected).
+  `E:\rust\target\debug\ezcli.exe` (built; launches and opens the "ezCLI" window. UI not yet inspected).
 - [ ] Launch the real app locally. Build (mingw on PATH, see §2):
   `cargo tauri build --debug --no-bundle` from the repo root, then copy
   `E:\rust\target\debug\WebView2Loader.dll` next to the built exe if it won't
