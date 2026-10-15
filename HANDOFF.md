@@ -4,7 +4,7 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-10-15 by Codex (fresh model/session routing repair)
+Last updated: 2026-10-15 by Codex (v1.2.1 GitHub release)
 
 ---
 
@@ -18,9 +18,10 @@ brand accent).
 
 - **Repo:** https://github.com/Aryansingh0783/ezCLI  (owner: Aryansingh0783)
 - **Local path:** `F:\WORK\cli-gui`
-- **Shipped:** v1.1.0 — MSI on the Releases page (~1.9 MB)
+- **Shipped:** [v1.2.1](https://github.com/Aryansingh0783/ezCLI/releases/tag/v1.2.1)
+  — `ezCLI_1.2.1_x64_en-US.msi` (2,076,672 bytes)
 
-## 1. Architecture (as of v1.1.0)
+## 1. Architecture (as of v1.2.1)
 
 **Rust + Tauri 2** backend, vanilla HTML/CSS/JS frontend over Tauri IPC.
 There is **no Node runtime, no Electron, no bundler.** Electron was deliberately
@@ -29,7 +30,7 @@ mess"). Do not reintroduce Electron.
 
 ```
 src-tauri/
-  Cargo.toml            v1.1.0; deps: tauri, portable-pty, dashmap, dirs,
+  Cargo.toml            v1.2.1; deps: tauri, portable-pty, dashmap, dirs,
                         tauri-plugin-dialog, tauri-plugin-opener
   tauri.conf.json       frameless window, decorations:false, bundle target = msi
   capabilities/default.json   Tauri 2 ACL (core + dialog + opener perms)
@@ -245,10 +246,18 @@ did not.
   and requires both `EZCLI_LIVE_OLLAMA_TEST=1` and an explicit
   `EZCLI_OLLAMA_TEST_MODEL` alias.
 
-**Distribution note:** v1.1.0 remains the only shipped MSI. A person running
-that installed build will not receive `3b82671` until a new v1.2.0 build is
-made available. Do not push, tag, create a release, or publish an installer
-without Aryan's explicit approval.
+**Distribution note — v1.2.1 is live (2026-10-15).** GitHub Actions run
+[`38779517478`](https://github.com/Aryansingh0783/ezCLI/actions/runs/38779517478)
+completed successfully for annotated tag `v1.2.1` at `715efa8`; it built,
+uploaded, and attached exactly `ezCLI_1.2.1_x64_en-US.msi` (2,076,672 bytes,
+SHA-256 `e31997ce1b4ff4ef4d1bdca679330952b1d31073ad0c289fb563b47d73f65839`).
+
+The briefly published `v1.2.0` GitHub release was **retracted** before this
+replacement was cut. Its application build was correctly v1.2.0, but the old
+workflow restored a cached target directory then chose the first `*.msi`, which
+was a stale v1.1.0 installer. `715efa8` now clears only cached MSI output,
+requires a tag/configured-version match, and selects the exact versioned MSI;
+the source tag remains immutable but has no published release. Do not retag it.
 
 **Claude review of Codex's 7fac9ef..b949304 (2026-10-15, Opus 5.5): correct and
 careful, with one real bug, now fixed.**
@@ -609,6 +618,14 @@ when PR 1 started; latest tag `v1.1.0`.
   plus a successful debug Tauri build at
   `E:\rust\target-ezcli-path-build\debug\ezcli.exe`. No provider use or
   publication; the unrelated Three.js preview remains untracked.
+- 2026-10-15 — Codex: published the corrected v1.2.1 GitHub release after
+  retracting an immediately detected faulty v1.2.0 release asset. The first
+  tag workflow built ezCLI 1.2.0 correctly but attached a stale cached 1.1.0
+  MSI due to an ambiguous collector. `715efa8` makes the cache safe and the
+  selection/tag-version checks exact; `v1.2.1` then completed in GitHub Actions
+  run `38779517478` with `ezCLI_1.2.1_x64_en-US.msi` attached. Release
+  validation: 12 Node tests, 44 Rust tests (7 deliberate opt-in skips), local
+  debug Tauri build, and the production Windows/MSVC MSI build passed.
 
 ---
 
