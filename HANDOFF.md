@@ -209,9 +209,18 @@ token spend): live Claude Code called `screenshot` through the server, 1 counted
 call, replied `1280x720`. Codex attach not yet run end to end.
 
 **IN PROGRESS — PR 4c: free agents + free-model catalogs** (Claude). Installed
-with Aryan's approval: opencode, gemini, freebuff (global npm). Next: read each
-`--help` (and MCP options), then write agents.json entries, detection, and
-wizard routing.
+with Aryan's approval: opencode, gemini, freebuff (global npm).
+- [x] Backend `8c7f92d`: agents.json entries (flags from real --help), built-in
+  merge into existing configs, `modelsFrom` catalogs (`agent_models` command,
+  validated provider/model lines, start_session only accepts fetched ids),
+  detection routes no-paid-plan users to a free agent. 19/19 Rust tests; live
+  OpenCode catalog returned 10 key-free models.
+- [x] Frontend `56773cd`: catalog-backed Model menu, Free badges, onboarding
+  reason + copyable install commands. No new detector findings.
+- [ ] Launch the real app locally (`cargo tauri build --debug --no-bundle`),
+  look at home/onboarding/model menu, start one OpenCode session on a free model.
+- [ ] README: free-user section + backend matrix.
+Gemini and Freebuff need a one-time sign-in in their own CLI on first run.
 
 Steps:
 1. [x] capture.rs (`55ac632`). Real capture verified: 1920x1080 -> 1280x720,
