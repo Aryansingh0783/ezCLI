@@ -1089,7 +1089,7 @@ function renderSessionAgentNotice(s = active()) {
   notice.innerHTML = isGemini
     ? '<strong>Gemini CLI setup:</strong> Personal Google sign-in is no longer supported here. Use Antigravity CLI for a personal account; Gemini CLI needs a Gemini API key, Vertex AI, or an enterprise setup.'
     : isOllamaCloud
-      ? '<strong>Ollama Cloud:</strong> This tab launches a remote model. It requires an Ollama sign-in from your own terminal (`ollama signin`); ezCLI never handles your account or API key.'
+      ? '<strong>Ollama Cloud:</strong> This tab launches a remote model. It requires an Ollama sign-in from your own terminal (<code>ollama signin</code>); ezCLI never handles your account or API key.'
       : '';
 }
 
