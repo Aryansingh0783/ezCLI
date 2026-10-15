@@ -161,6 +161,24 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v1.2.2 — clearer "not installed" state (`e71ac23`, 2026-10-16, Claude).**
+
+Acceptance pass of Codex's v1.2.1 work: 12 Node + 44 Rust tests green,
+design detector clean, debug build launches, live CDP check shows every
+installed CLI detected (incl. Ollama at `E:\Programs\Ollama`). Remaining gap
+from Aryan's friend's report ("all agents not installed" while the desktop
+apps were installed): Claude Code/Claude/Codex had no `install` hint and the
+toast said "point agents.json at its executable". Now `agents.json` carries
+`npm install -g @anthropic-ai/claude-code` / `npm install -g @openai/codex`,
+`merge_builtin` adds a missing hint to unchanged stock entries, and the
+toast names the missing command, says a desktop app is not the CLI, and
+copies the install command on click. GUIDE troubleshooting updated; README's
+stale `ezCLI_1.0.0` MSI name fixed. 45 Rust tests pass.
+
+Still open: live Ollama Cloud prompt test needs Aryan to run `ollama signin`
+himself first (ignored test
+`live_ollama_cloud_answers_through_the_ezcli_launch_path` spends cloud quota).
+
 **Fresh model/session routing — COMPLETE (`5946989`, 2026-10-15).**
 
 Aryan reported that changing a Model pill appeared to do nothing and every
@@ -626,6 +644,9 @@ when PR 1 started; latest tag `v1.1.0`.
   run `38779517478` with `ezCLI_1.2.1_x64_en-US.msi` attached. Release
   validation: 12 Node tests, 44 Rust tests (7 deliberate opt-in skips), local
   debug Tauri build, and the production Windows/MSVC MSI build passed.
+- 2026-10-16 — Claude: reviewed Codex's v1.2.1 work (tests/build/live CDP all
+  good), fixed the missing-CLI message and install hints, docs debt, released
+  v1.2.2 (run `38800667079`).
 
 ---
 
