@@ -5,6 +5,7 @@
 
 mod agents;
 mod backends;
+mod capture;
 mod files_api;
 mod git_api;
 mod import;

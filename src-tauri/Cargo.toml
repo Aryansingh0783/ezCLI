@@ -24,6 +24,18 @@ anyhow = "1"
 portable-pty = "0.8"
 dashmap = "6"
 dirs = "5"
+# PC control (PR 4b). All three are already resolved in Cargo.lock through
+# tauri, so declaring them adds no new crate downloads.
+png = "0.17"
+base64 = "0.22"
+getrandom = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [profile.release]
 panic = "abort"
