@@ -9,6 +9,7 @@ mod capture;
 mod files_api;
 mod git_api;
 mod import;
+mod mcp_server;
 mod open_in;
 mod pc_control;
 mod pty_mgr;
