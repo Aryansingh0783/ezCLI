@@ -217,8 +217,13 @@ with Aryan's approval: opencode, gemini, freebuff (global npm).
   OpenCode catalog returned 10 key-free models.
 - [x] Frontend `56773cd`: catalog-backed Model menu, Free badges, onboarding
   reason + copyable install commands. No new detector findings.
-- [ ] Launch the real app locally (`cargo tauri build --debug --no-bundle`),
-  look at home/onboarding/model menu, start one OpenCode session on a free model.
+- [ ] Launch the real app locally. Build (mingw on PATH, see §2):
+  `cargo tauri build --debug --no-bundle` from the repo root, then copy
+  `E:\rust\target\debug\WebView2Loader.dll` next to the built exe if it won't
+  start (GNU target loads it dynamically). Check: home pills, onboarding sheet
+  (Free badges, install rows), Model menu on OpenCode lists the live catalog,
+  start one OpenCode session on a free model and send one short prompt.
+  To re-see onboarding, set `onboarded:false` in localStorage `ezcli.v2`.
 - [ ] README: free-user section + backend matrix.
 Gemini and Freebuff need a one-time sign-in in their own CLI on first run.
 
@@ -334,6 +339,15 @@ when PR 1 started; latest tag `v1.1.0`.
   per-live-PTY PC-control consent with confirmation and automatic revocation.
   No host-control action or dependency was added. Tree is clean and work is
   now handed back to Claude for the next validated native-action decision.
+- 2026-10-15 — Claude (Opus 5.5): reviewed Codex PRs 1–4 (sound); fixed import
+  truncation (newest-first) and made PC-control revocation backend-enforced.
+  Got local Rust builds working (mingw-w64 outside repo + `scripts\test-rust.ps1`)
+  and a non-release CI build (green). Shipped PR 4b: loopback MCP server + real
+  screen capture, attached only while granted; verified end to end with live
+  Claude Code (`dae31d6`). Built PR 4c backend + frontend (free agents, live
+  model catalogs, free-user routing). Handed off mid-4c: local debug app build
+  was running (`cargo tauri build --debug --no-bundle`), app not yet launched.
+  Local `main` is ahead of origin from `748237d` onward; NOT pushed.
 
 ---
 
