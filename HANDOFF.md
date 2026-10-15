@@ -156,14 +156,35 @@ UI polish rides along in every PR; don't batch it.
 
 ## Handoff protocol (READ THIS)
 
-**When you (Codex or Claude) stop work, before handing back:**
-1. Update **§5 Current status** (branch, what's done, what's half-done, next step).
-2. Append a line to **§6 Session log** (date, who, what changed, what's next).
-3. If you left uncommitted work, say exactly where it is and why.
-4. Commit this file with your other changes (or on its own) so the other agent
-   sees it. Do NOT add co-author/attribution lines.
+The point of this protocol is to survive an **abrupt cutoff** (usage runs out
+mid-PR, no chance to write a goodbye). Three safety nets make that recoverable:
 
-**When you pick up work:**
+1. **The working tree on disk is the ground truth.** A cutoff ends the
+   assistant's session, not the files in `F:\WORK\cli-gui`. Half-written code is
+   still there — `git status` + `git diff` show every uncommitted line.
+2. **§5 is updated BEFORE and DURING work, committed, not just at the end.**
+3. **Commit small and often**, so `git log` narrates what already landed.
+
+**Before you START a PR (or a meaningful chunk):**
+1. Set **§5** to `IN PROGRESS — PR n`, list the files you're about to touch and
+   the first concrete step. Commit just this file:
+   `git commit -m "handoff: start PR n"`.
+
+**At each checkpoint while working (every ~30–60 min or per sub-step):**
+1. Commit code progress with a clear message (WIP commits are fine:
+   `WIP PR n: <what works, what's stubbed>`).
+2. Refresh **§5** with done / half-done / next, and commit it.
+
+**When you stop gracefully:**
+1. Finalize **§5** (branch, what's done, what's half-done, exact next step).
+2. Append a line to **§6 Session log**.
+3. If uncommitted work remains, either commit it as `WIP` or say in §5 exactly
+   what's on disk and why it isn't committed.
+4. Commit this file. Do NOT add co-author/attribution lines.
+
+**When you PICK UP work (abrupt cutoff or not):**
 1. Read this whole file.
-2. `git log --oneline -10` and `git status` to confirm reality matches §5.
-3. Continue from "next step." Keep PRs small.
+2. `git log --oneline -15`, then `git status`, then `git diff` — reconcile the
+   real tree against §5. If §5 says "IN PROGRESS PR n" and `git diff` shows
+   half-written files, resume those; the diff IS the state.
+3. If a WIP commit is the last thing, continue from there. Keep PRs small.
