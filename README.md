@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A desktop-style window for the Claude and OpenAI coding CLIs, with a UI modeled on Freebuff.
+  A desktop-style window for Claude, Codex, OpenCode, Gemini CLI and Freebuff, with a UI modeled on Freebuff.
 </p>
 
 ---
@@ -11,7 +11,7 @@
 ezCLI is not a harness. Each session spawns the real CLI in a real pseudo-terminal, so
 the agent's own text UI renders unchanged. Nothing is proxied, re-prompted, or rewritten.
 The window adds the parts a bare terminal lacks: tabs, an agent switcher, a file and diff
-browser, and model and mode flags you pick before launch.
+browser, and model, effort and mode flags you pick before launch.
 
 ![ezCLI running](docs/screenshot-launcher.jpg)
 
@@ -23,13 +23,41 @@ the agent CLIs already resolved from PATH.
 
 The app writes its editable config to `~/.ezcli/agents.json` on first run.
 
-## What's new in 1.1
+## Free users and backend support
+
+ezCLI launches local CLIs; it does not include, proxy, or bill for model
+access. During onboarding it checks which CLI commands are installed and whether
+a local sign-in or API-key configuration is present. It does not inspect your
+subscription, balance, or provider account.
+
+If no ready Claude Code or Codex backend is found, ezCLI recommends the first
+installed free agent instead of sending you to a known paid-plan gate. A
+**Free** badge means that the CLI has a route that does not require a paid
+plan—it does not mean that every model supplied by an optional connected
+provider is free.
+
+| Backend | Free route | PC control | Install / setup |
+| --- | --- | --- | --- |
+| OpenCode | Yes. It includes key-free models and can also use connected providers or local Ollama. Its Model menu is refreshed from `opencode models`. | No | `npm install -g opencode-ai` |
+| Gemini CLI | Yes, with a personal Google-account sign-in. | No | `npm install -g @google/gemini-cli` |
+| Freebuff | Yes, ad-supported. It chooses models server-side and completes its own setup on first use. | No | `npm install -g freebuff` |
+| Claude Code | No Claude Free-plan route. Use a paid Claude plan or API access. | Yes | `npm install -g @anthropic-ai/claude-code` |
+| Codex | Account/API access dependent. Some ChatGPT Free accounts may have limited access, but ezCLI does not assume it as its fallback. | Yes | `npm install -g @openai/codex` |
+| Claude | No separate free route; this is the `claude` CLI configuration. | No | Installed with Claude Code |
+| ChatGPT | No bundled free route; enabled only when a compatible `chatgpt` executable is already on `PATH`. | No | Provide that executable on `PATH` |
+
+PC control is currently screenshot-only. It is attached at launch and can be
+used only by **Claude Code** and **Codex**; switching it on or off restarts the
+session.
+
+## Current features
 
 - **Sessions survive restarts.** Every open tab comes back as a "parked" tab on next
   launch, with a Resume button that relaunches the same agent, model, mode and folder.
-- **Promoted model picker.** Three labeled pills on the launcher — Agent, Model, Mode —
-  so switching the model is one click, not a submenu dive. The live session head gets
-  its own Model chip too.
+- **Promoted launch controls.** Labeled Agent, Model, Effort and Mode pills on
+  the launcher make the configuration explicit before a CLI starts. Claude and
+  Codex expose their supported effort levels; agents that do not expose one
+  retain their own default. The live session head gets its own Model chip too.
 - **Usage view.** Honest local counters, plus one-click shortcuts to the Anthropic Console
   and OpenAI Dashboard where the real billing lives.
 - **Local chat import.** A read-only picker for recognized Claude Code transcripts. It never
@@ -66,8 +94,8 @@ cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_1.0.
 | Area | Behaviour |
 | --- | --- |
 | Session tabs | One pseudo-terminal per tab. A colored dot shows running, exited, or failed. |
-| Agent switcher | Claude Code, Claude, Codex and ChatGPT. A CLI that is not on PATH shows as disabled instead of failing on launch. |
-| Model and mode chips | Map to real CLI flags from `agents.json`. You set them before launch; a running session locks them until you restart. |
+| Agent switcher | Claude Code, Claude, Codex, ChatGPT, OpenCode, Gemini CLI and Freebuff. A CLI that is not on PATH shows as disabled instead of failing on launch. |
+| Model, effort and mode chips | Map to real CLI flags from `agents.json`. You set them before launch; a running session locks them until you restart. |
 | Terminal | xterm.js with the Freebuff dark palette and JetBrains Mono. Full color, cursor, and live resize. |
 | Files pane | Browse the session folder and preview any text file, up to 256 KB. |
 | Changes pane | Branch, working-tree status, and a colored diff for each changed file, straight from `git`. |
@@ -95,7 +123,7 @@ The window claims only `Ctrl+Alt` combinations, so the agent's own terminal shor
 ## Configuring agents
 
 `agents.json` lists every launchable CLI. Each entry gives a `command` resolved on PATH,
-plus `modes` and `models` whose `args` are appended to the launch line. Edit the file,
+plus `modes`, `models` and optional `efforts` whose `args` are appended to the launch line. Edit the file,
 then choose "Reload agents.json" from the gear menu. No restart needed.
 
 ```json
@@ -108,6 +136,9 @@ then choose "Reload agents.json" from the gear menu. No restart needed.
   ],
   "models": [
     { "id": "opus", "label": "Opus", "args": ["--model", "opus"] }
+  ],
+  "efforts": [
+    { "id": "high", "label": "High", "args": ["--effort", "high"] }
   ]
 }
 ```
@@ -118,6 +149,9 @@ Detected on a typical setup:
 - Claude, from `claude`
 - Codex, from `codex --no-daemon`
 - ChatGPT, disabled until a `chatgpt` binary is on PATH
+- OpenCode, from `opencode` (live model list via `opencode models`)
+- Gemini CLI, from `gemini`
+- Freebuff, from `freebuff`
 
 ### Why Codex passes `--no-daemon`
 
@@ -175,9 +209,8 @@ tool server.
 - Nothing an agent prints can grant permission. Only the chip can.
 
 **Supported agents:** Claude Code (attached with `--mcp-config`) and Codex
-(attached with `-c mcp_servers.ezcli.url=…`). Other agents show the chip
-disabled. Add `"mcp": "claude"`, `"codex"`, or `"none"` to an entry in
-`agents.json` to override the default, which is inferred from the command name.
+(attached with `-c mcp_servers.ezcli.url=…`). Other built-in agents, including
+the Claude chat preset, keep the chip disabled.
 
 **Verified so far:** screen capture on Windows (1920x1080 to 1280x720 in about
 0.2 s); the tool server's protocol, grant, and revoke behaviour over real
