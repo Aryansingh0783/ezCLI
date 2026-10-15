@@ -161,6 +161,30 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v1.3.0 — images and videos in chat (`612d442`, 2026-10-16, Claude).**
+
+Aryan: "does not have option to add video and images in chat". New
+`src-tauri/src/media.rs` (`save_pasted_image`, `stage_attachment`,
+`extract_video_frames`, startup prune of `~/.ezcli/attachments` >7 days) and a
+rewritten attachment block in `public/app.js` (Attach button for every agent
+whose `imageTransport` isn't `none`, Ctrl+V of images, `tauri://drag-drop`).
+Routes, each verified live over CDP without submitting a prompt:
+- Claude Code / Claude / Codex (`PASTE_ATTACH_AGENTS`): each path is sent as
+  its own bracketed paste; both CLIs show `[Image #n]` in their composer
+  (Codex attached 7 at once). Falls back to quoted path text if bracketed
+  paste is off. Claude was tested in `F:\WORK` because it shows a trust prompt
+  in untrusted folders; do not accept that prompt on Aryan's behalf.
+- OpenCode / Gemini: `@relative` mention; files outside the folder or with
+  spaces are copied into `<cwd>/.ezcli-attachments/` (self `.gitignore` `*`,
+  sanitised names).
+- Ollama: plain absolute path in the prompt (multimodal models only).
+- Video: Gemini native `@video`; others get 6 ffmpeg frames (`ffprobe`
+  duration, mid-slice timestamps, ≤1280px JPG). Missing ffmpeg → toast with
+  `winget install Gyan.FFmpeg`. Opt-in test `real_ffmpeg_samples_frames_from_a_clip` passes.
+Not verified: a real model answer about an image (needs a paid/cloud prompt or
+a local vision model download — ask Aryan first). Antigravity untested (not
+installed), keeps quoted path text.
+
 **v1.2.2 — clearer "not installed" state (`e71ac23`, 2026-10-16, Claude).**
 
 Acceptance pass of Codex's v1.2.1 work: 12 Node + 44 Rust tests green,
@@ -647,6 +671,9 @@ when PR 1 started; latest tag `v1.1.0`.
 - 2026-10-16 — Claude: reviewed Codex's v1.2.1 work (tests/build/live CDP all
   good), fixed the missing-CLI message and install hints, docs debt, released
   v1.2.2 (run `38800667079`).
+- 2026-10-16 — Claude: image/video attachments for all capable agents
+  (paste, drop, picker, ffmpeg frames), 49 Rust + 12 Node tests, released v1.3.0
+  (run `38802386115`).
 
 ---
 
