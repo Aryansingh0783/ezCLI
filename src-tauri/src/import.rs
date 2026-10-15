@@ -406,6 +406,33 @@ mod tests {
         assert_eq!(conversation.messages[1].content, "First answer\n\nSecond answer");
     }
 
+    /// Opt-in check against the developer's real Claude Code store:
+    /// `scripts\test-rust.ps1 --ignored --nocapture real_store`.
+    /// The newest transcript on disk must be the first conversation offered,
+    /// which is exactly what the walk-order truncation bug used to break.
+    #[test]
+    #[ignore = "reads the real ~/.claude/projects store"]
+    fn real_store_offers_newest_transcript_first() {
+        let root = claude_projects_dir().expect("home dir");
+        let (files, truncated) = collect_jsonl_files(&root).unwrap();
+        let newest_on_disk = files.first().cloned().expect("at least one transcript");
+        let discovery = discover().unwrap();
+        eprintln!(
+            "scanned {} files (truncated={truncated}), {} conversations, newest file {}",
+            files.len(),
+            discovery.conversations.len(),
+            newest_on_disk.display()
+        );
+        let newest_id = opaque_id(&newest_on_disk);
+        if let Some(first) = discovery.conversations.first() {
+            eprintln!("first offered: {:?} ({} messages)", first.title, first.messages.len());
+            // The newest file only has to come first if it parsed into a chat.
+            if discovery.conversations.iter().any(|c| c.id == newest_id) {
+                assert_eq!(first.id, newest_id);
+            }
+        }
+    }
+
     #[test]
     fn rejects_malformed_or_non_conversation_records() {
         let input = b"not json\n{\"type\":\"queue-operation\"}\n";
