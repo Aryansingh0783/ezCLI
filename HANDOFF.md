@@ -144,15 +144,20 @@ UI polish rides along in every PR; don't batch it.
 
 **Claude picked up PR 4 (2026-10-15, Opus 5.5).** Review of Codex PRs 1–4 done.
 Working now, in order:
-1. [ ] Fix PR 3 import truncation: with 2,695 local transcripts the scan stops at
-   600 files in walk order *before* sorting by mtime, so recent chats can be
-   missed. Collect path+mtime for all, sort newest-first, then cap.
-2. [ ] Harden PR 4 on the Rust side: `allowed()` must also require the PTY to be
-   live; refuse grants for non-live ids; `kill_session` revokes. Frontend-only
-   revocation does not survive a webview reload.
-3. [ ] Then ask Aryan how to get Rust compiling (none of PRs 1–4 Rust has ever
-   built): local mingw-w64 toolchain download vs. a non-release CI build.
-No native PC-control action until Rust can be built and validated.
+1. [x] Fix PR 3 import truncation (`7bf51d0`): collect path+mtime for every
+   transcript, sort newest-first, then cap at 600.
+2. [x] Harden PR 4 on the Rust side (`7bf51d0`): grants refused for non-live
+   PTYs, `kill_session` revokes, `lib.rs::pc_control_allowed` requires grant AND
+   live process. Future native actions must call that guard, not `allowed()`.
+3. [~] Aryan approved BOTH build paths:
+   a. Local: niXman mingw-w64 `x86_64-16.2.0-release-posix-seh-ucrt-rt_v14-rev1.7z`
+      (102.9 MB) extracted to `%LOCALAPPDATA%\mingw-builds\mingw64` (outside the
+      repo), its `bin` prepended to PATH for cargo; plus `rustup component add
+      rustfmt`. Then `cargo test` + `cargo check` in `src-tauri`. Updating
+      `Cargo.lock` is legitimate here (it predates the 1.1.0 bump + opener plugin).
+   b. CI: push local commits to origin/main and `gh workflow run release.yml`
+      on main (no tag => attach-to-release step is skipped). Approved by Aryan.
+No native PC-control action until Rust builds and tests pass.
 
 **Previous state — PR 4: local PC-control permission foundation** (Codex, 2026-10-15)
 
