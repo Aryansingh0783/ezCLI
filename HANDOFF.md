@@ -172,8 +172,9 @@ careful, with one real bug, now fixed.**
   - OK: all 10 agents listed; Free badges on OpenCode / Antigravity / Ollama
     Local / Freebuff, none on Gemini CLI; uninstalled agents greyed "not
     installed"; parked tabs from a previous run restored; home hero + pills intact.
-  - POLISH TODO: Model pill value is clipped mid-word (`nemotron-3-ultra-`) with
-    no ellipsis; needs `text-overflow: ellipsis` + a title tooltip.
+  - FIXED `d221a62`: Model pill value was clipped mid-word (`nemotron-3-ultra-`);
+    the value span inherited display:flex, which disables text-overflow. Now it
+    ellipsizes and the full value shows on hover. Needs a rebuild to see it.
   - UNCONFIRMED: clicking the Model pill showed no menu within ~3 s. The check
     was interrupted (Aryan began using the PC), so re-test before calling it a
     bug: it awaits `opencode models` (~1.5 s) before opening.
