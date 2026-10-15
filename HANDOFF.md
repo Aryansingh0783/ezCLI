@@ -153,6 +153,21 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**Claude review of Codex's 7fac9ef..b949304 (2026-10-15, Opus 5.5): correct and
+careful, with one real bug, now fixed.**
+- BUG FIXED `f67b41b`: npm `.cmd` shims were launched as `cmd.exe /d /s /c
+  <path>`. `/s` strips the quotes around a shim path with a space, so for any
+  Windows user whose username has a space NO npm CLI (Claude Code, Codex,
+  OpenCode, Gemini, Freebuff) could start. Now `cmd.exe /d /c <8.3 short path>`.
+  Real-PTY tests cover a plain path, a spaced path, and a quoted spaced argument.
+- Verified independently: Rust 39/39 + live Ollama Cloud catalog (18 aliases) +
+  real OpenCode shim start; Node 7/7; `git diff --check`.
+- Verified true (web): Gemini CLI no longer serves personal Google accounts;
+  Antigravity CLI `agy` is the replacement (antigravity.google/docs/cli/install).
+- Reviewed safe: catalog fetch (System32 curl, fixed URL, `--disable`, caps),
+  remote-name allowlisting before argv, DXGI probe release order, innerHTML sites.
+- Cosmetic `b188b64`: Ollama notice rendered literal backticks.
+
 **Post-PR 4c — Cloud-first Ollama, PC guidance, and truthful agent capability
 UX (CODE COMPLETE in `b949304`; human desktop click-through still needed).**
 
@@ -499,3 +514,4 @@ mid-PR, no chance to write a goodbye). Three safety nets make that recoverable:
    real tree against §5. If §5 says "IN PROGRESS PR n" and `git diff` shows
    half-written files, resume those; the diff IS the state.
 3. If a WIP commit is the last thing, continue from there. Keep PRs small.
+- 2026-10-15 — Claude (Opus 5.5): reviewed Codex's PR 4c follow-ups and Cloud Ollama work (sound). Fixed npm shim launch for user paths with spaces (`f67b41b`), Ollama notice markup (`b188b64`). 39/39 Rust tests.
