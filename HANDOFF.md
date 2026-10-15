@@ -76,9 +76,19 @@ README.md  GUIDE.md     user docs
 
 ## 2. Build & release
 
-**Local builds do NOT work on this machine.** Rust is installed (GNU default
-toolchain) but the self-contained mingw lacks `as.exe`, so `windows-sys` fails
-to link. MSVC Build Tools would fix it but aren't installed.
+**Local builds work as of 2026-10-15** (GNU default toolchain). Rust's bundled
+mingw lacks `as.exe`, so a full mingw-w64 lives OUTSIDE the repo at
+`%LOCALAPPDATA%\mingw-builds\mingw64` (niXman 16.2.0 ucrt, 103 MB). Prepend its
+`bin` to PATH for any cargo command:
+
+```powershell
+$env:PATH = "$env:LOCALAPPDATA\mingw-builds\mingw64\bin;$env:PATH"
+cd src-tauri; cargo check
+```
+
+**Rust unit tests:** run `powershell -File scripts\test-rust.ps1`. Plain
+`cargo test` builds but the test exe can't start here (needs a comctl32 v6
+manifest and `WebView2Loader.dll` beside it); the script handles both. 6 tests.
 
 **CI is the build path.** Push a `v*` tag → `.github/workflows/release.yml`
 runs on `windows-latest` (real MSVC), builds `cargo tauri build --bundles msi`,
@@ -149,7 +159,11 @@ Working now, in order:
 2. [x] Harden PR 4 on the Rust side (`7bf51d0`): grants refused for non-live
    PTYs, `kill_session` revokes, `lib.rs::pc_control_allowed` requires grant AND
    live process. Future native actions must call that guard, not `allowed()`.
-3. [~] Aryan approved BOTH build paths:
+3. [x] Local: DONE. All PRs 1–4 Rust compiles with 0 errors / 0 warnings;
+   6/6 Rust unit tests pass via `scripts\test-rust.ps1`. Cargo.lock synced
+   (`8fa5716`, no new deps — it predated dialog/opener + 1.1.0).
+   CI: in progress (run 38719087611, workflow_dispatch on main, no release).
+   Original plan, approved by Aryan — BOTH build paths:
    a. Local: niXman mingw-w64 `x86_64-16.2.0-release-posix-seh-ucrt-rt_v14-rev1.7z`
       (102.9 MB) extracted to `%LOCALAPPDATA%\mingw-builds\mingw64` (outside the
       repo), its `bin` prepended to PATH for cargo; plus `rustup component add
