@@ -27,8 +27,22 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0" --locked
+      # Compiling tauri-cli from source eats 4-6 minutes every build.
+      # The project ships prebuilt binaries per host, so we grab one and
+      # drop it on PATH as `cargo-tauri`.
+      - name: Install Tauri CLI (prebuilt)
+        shell: pwsh
+        run: |
+          $tag = gh api repos/tauri-apps/tauri/releases --jq '.[] | select(.tag_name | startswith("tauri-cli-v2.")) | .tag_name' | Select-Object -First 1
+          Write-Host "Using Tauri CLI $tag"
+          $zip = Join-Path $env:RUNNER_TEMP 'cargo-tauri.zip'
+          Invoke-WebRequest -UseBasicParsing "https://github.com/tauri-apps/tauri/releases/download/$tag/cargo-tauri-x86_64-pc-windows-msvc.zip" -OutFile $zip
+          $dir = Join-Path $env:RUNNER_TEMP 'cargo-tauri'
+          Expand-Archive -Force $zip -DestinationPath $dir
+          "$dir" | Out-File -Encoding ascii -Append $env:GITHUB_PATH
+          & "$dir\cargo-tauri.exe" --version
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Build MSI
         run: cargo tauri build --bundles msi

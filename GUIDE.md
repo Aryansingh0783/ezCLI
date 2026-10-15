@@ -41,15 +41,37 @@ is green while the process runs and red once it exits.
 
 ## Start a session
 
-1. Pick an agent from the cards on the launcher or the sidebar list.
-2. Optionally set the model and mode with the chips at the top left. They lock
-   once the session starts, so set them first.
-3. Optionally type a first message in the composer. ezCLI sends it as soon as the
-   CLI is ready.
-4. Press the up-arrow button, click "Start a session", or press `Enter` in the composer.
+The home screen has three labeled pills under the message box:
 
-A new pseudo-terminal opens and the real CLI boots inside it, exactly as it would in
-your own shell.
+| Pill | What it picks |
+| --- | --- |
+| **Agent** | Which CLI to launch (Claude Code, Claude, Codex, ChatGPT). |
+| **Model** | Which model that agent should use. Hidden when the agent only has one. |
+| **Mode** | Launch flags such as `--permission-mode plan` or `--full-auto`. |
+
+Click any pill to open its menu — the current value is shown right under the caption, so
+you always see what will launch. Mode is tucked away for power users; Model is right next
+to Agent because that's the switch people actually flip.
+
+To start a session:
+
+1. Pick the agent, model and mode.
+2. Optionally type a first message. ezCLI sends it once the CLI is ready.
+3. Press the up-arrow, click "Start a session", or press `Enter` in the composer.
+
+A new pseudo-terminal opens and the real CLI boots inside it, exactly as it would in your
+own shell. The session head along the top of the terminal shows the model in use and
+lets you Stop, Restart, or (when a model is changed) relaunch with the new choice.
+
+## Resume parked sessions
+
+ezCLI remembers every open tab across restarts. The CLI process itself cannot survive the
+app dying, but the tab configuration (agent, model, mode, folder, title) comes back as a
+**parked** session on next launch. Click **Resume** in the session head to relaunch it in
+the exact same configuration. Close it instead if you don't need it anymore.
+
+Per-space active tab is also remembered, so switching spaces drops you back where you
+were.
 
 ## Work in a session
 
@@ -88,9 +110,22 @@ instead of failing silently.
 
 ## Switch the working folder
 
-New sessions start in the folder shown at the bottom of the sidebar, which defaults
-to your home folder. To change it, click that row or the folder chip on the
-launcher, and enter a path. Existing sessions keep the folder they started in.
+New sessions start in the folder shown next to the home title, which defaults to your
+home folder. To change it, click the folder chip and either pick one in the native
+dialog or type a path. Existing sessions keep the folder they started in.
+
+## Usage view
+
+Open **Settings → Open usage view** to see what ezCLI can honestly measure: how many
+sessions you've started per agent, their cumulative active time, and when you last used
+each. Two buttons sit next to it:
+
+- **Anthropic Console** — opens `console.anthropic.com/settings/usage` in your real
+  browser.
+- **OpenAI Dashboard** — opens `platform.openai.com/usage`.
+
+ezCLI never calls model APIs, so it can't see your real spend. The counters here are
+local and shared only with you; the real totals live with each provider.
 
 ## Keyboard shortcuts
 

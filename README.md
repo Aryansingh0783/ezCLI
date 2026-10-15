@@ -23,6 +23,20 @@ the agent CLIs already resolved from PATH.
 
 The app writes its editable config to `~/.ezcli/agents.json` on first run.
 
+## What's new in 1.1
+
+- **Sessions survive restarts.** Every open tab comes back as a "parked" tab on next
+  launch, with a Resume button that relaunches the same agent, model, mode and folder.
+- **Promoted model picker.** Three labeled pills on the launcher — Agent, Model, Mode —
+  so switching the model is one click, not a submenu dive. The live session head gets
+  its own Model chip too.
+- **Usage view.** Honest local counters, plus one-click shortcuts to the Anthropic Console
+  and OpenAI Dashboard where the real billing lives.
+- **Home opens in your home folder** instead of `C:\Program Files\ezCLI` when you launch
+  from the Start Menu.
+- Polish: tab enter animation, status-bar glow when a session is working, primary-button
+  depth, brand mark shimmer on hover.
+
 ## Build from source
 
 ezCLI is a Rust desktop app built with Tauri 2 and a vanilla HTML/CSS/JS frontend.
