@@ -8,6 +8,7 @@ use anyhow::{anyhow, Result};
 use dashmap::DashMap;
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{AppHandle, Emitter};
@@ -16,6 +17,8 @@ pub struct Session {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    /// Cleared by the wait thread once the child exits.
+    alive: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -104,10 +107,13 @@ impl SessionStore {
         });
 
         // Wait thread: fire a single exit event once the child dies.
+        let alive = Arc::new(AtomicBool::new(true));
+        let alive_w = alive.clone();
         let id_w = args.id.clone();
         let app_w = app.clone();
         thread::spawn(move || {
             let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
+            alive_w.store(false, Ordering::SeqCst);
             let _ = app_w.emit(&format!("pty-exit:{}", id_w), code);
         });
 
@@ -117,9 +123,18 @@ impl SessionStore {
                 master: pair.master,
                 writer,
                 killer,
+                alive,
             })),
         );
         Ok(pid)
+    }
+
+    /// Sessions whose process is still running.
+    pub fn live_count(&self) -> usize {
+        self.sessions
+            .iter()
+            .filter(|e| e.value().lock().map(|s| s.alive.load(Ordering::SeqCst)).unwrap_or(false))
+            .count()
     }
 
     pub fn write(&self, id: &str, data: &[u8]) -> Result<()> {

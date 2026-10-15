@@ -2,6 +2,22 @@
   "$schema": "../gen/schemas/windows-schema.json",
   "identifier": "default",
   "description": "Default permissions for the main window",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:webview:allow-set-webview-zoom",
+    "dialog:allow-open",
+    "dialog:allow-ask",
+    "opener:default",
+    "opener:allow-open-url"
+  ]
 }

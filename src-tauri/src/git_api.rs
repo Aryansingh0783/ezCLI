@@ -27,6 +27,9 @@ pub struct GitFile {
     pub code: String,
     pub file: String,
     pub untracked: bool,
+    /// Lines added / removed against HEAD; None for binaries and untracked files.
+    pub added: Option<u64>,
+    pub removed: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -69,9 +72,26 @@ fn parse_porcelain(porcelain: &str) -> Vec<GitFile> {
                 code,
                 file: name,
                 untracked,
+                added: None,
+                removed: None,
             }
         })
         .collect()
+}
+
+/// Fill in per-file line counts from `git diff --numstat` output
+/// (`<added>\t<removed>\t<path>`, with `-` for binary files).
+fn apply_numstat(files: &mut [GitFile], numstat: &str) {
+    for line in numstat.lines() {
+        let mut parts = line.splitn(3, '\t');
+        let (Some(a), Some(r), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        if let Some(f) = files.iter_mut().find(|f| f.file == path) {
+            f.added = a.parse().ok();
+            f.removed = r.parse().ok();
+        }
+    }
 }
 
 pub fn git_status(cwd: &str) -> GitStatus {
@@ -101,7 +121,14 @@ pub fn git_status(cwd: &str) -> GitStatus {
     };
 
     let porcelain = git(cwd, &["status", "--porcelain=v1", "-uall"]).unwrap_or_default();
-    let files = parse_porcelain(&porcelain);
+    let mut files = parse_porcelain(&porcelain);
+
+    // Against HEAD so staged and unstaged edits are counted together. A repo
+    // with no commits has no HEAD; fall back to the unstaged diff there.
+    let numstat = git(cwd, &["diff", "HEAD", "--numstat", "--no-renames"])
+        .or_else(|_| git(cwd, &["diff", "--numstat", "--no-renames"]))
+        .unwrap_or_default();
+    apply_numstat(&mut files, &numstat);
 
     GitStatus::Repo(RepoStatus {
         repo: true,

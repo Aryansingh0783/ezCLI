@@ -1,224 +1,280 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ezCLI</title>
-    <meta name="description" content="A desktop-style window for the Claude and OpenAI coding CLIs." />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23b5cea5'/%3E%3Cpath d='M6.5 8.5 10 12l-3.5 3.5M12.5 16h5' stroke='%231c211b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E"
-    />
+    <meta name="description" content="A desktop window for the Claude and OpenAI coding CLIs." />
+    <script>
+      // Apply the saved theme before first paint so the window never flashes.
+      (function () {
+        try {
+          var s = JSON.parse(localStorage.getItem('ezcli.v2') || '{}');
+          var t = s.theme || 'system';
+          if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
     <link rel="stylesheet" href="/vendor/xterm/css/xterm.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <!-- window chrome -->
-    <header class="titlebar">
-      <button class="icon-btn is-on" id="toggleSidebar" aria-label="Hide sidebar" title="Sidebar (Ctrl+Alt+B)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-          <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" />
-        </svg>
-      </button>
-      <div class="tabstrip" id="tabstrip" role="tablist" aria-label="Sessions"></div>
-      <button class="icon-btn" id="newTab" aria-label="New session" title="New session (Ctrl+Alt+N)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </button>
-    </header>
+    <!-- Shown only if app.js never mounts (missing asset, script error at load). -->
+    <main id="startupRecovery" role="alert">
+      <section>
+        <h1>ezCLI couldn’t load</h1>
+        <p>Part of the interface did not start. Reload once; if this screen comes back, reinstall the latest version.</p>
+        <a class="btn primary" href="">Reload ezCLI</a>
+      </section>
+    </main>
 
-    <div class="shell">
-      <nav class="rail" aria-label="Primary">
-        <button class="rail-btn is-active" id="railHome" aria-label="Launcher" title="Launcher">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-            <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" />
-          </svg>
+    <div class="app" id="app" hidden>
+      <!-- titlebar: brand, session tabs, window controls. The whole bar drags the window. -->
+      <header class="tabbar" data-tauri-drag-region>
+        <button class="brand-btn" id="brandBtn" title="Home" aria-label="Home">
+          <span class="mark"><i></i><i></i></span>
         </button>
-        <button class="rail-btn" id="railSessions" aria-label="Sessions" title="Sessions">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18" />
-          </svg>
+        <div class="tabs" id="tabs" role="tablist" aria-label="Open tabs" data-tauri-drag-region></div>
+        <button class="tab-new" id="tabNew" title="New session (Ctrl+Alt+N)" aria-label="New session">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" /></svg>
         </button>
-        <button class="rail-btn" id="railSettings" aria-label="Settings" title="Settings">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-            <circle cx="12" cy="12" r="3.2" />
-            <path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5" />
-          </svg>
+        <span class="drag-fill" data-tauri-drag-region></span>
+        <button class="head-icon" id="closedTabsBtn" title="Closed tabs (Ctrl+Alt+Shift+T)" aria-label="Closed tabs">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
         </button>
-        <div class="spacer"></div>
-        <button class="rail-btn" id="railHelp" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" /><path d="M9.6 9.3a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.8-.9 1.4v.4" /><path d="M12 17h.01" />
-          </svg>
+        <button class="head-icon explorer-toggle" id="explorerToggle" title="Explorer (Ctrl+Alt+B)" aria-label="Toggle explorer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></svg>
+          <span class="explorer-tab-dot" id="explorerDot" hidden></span>
         </button>
-      </nav>
-
-      <aside class="sidebar" id="sidebar" aria-label="Sessions and agents">
-        <div class="sidebar-head">
-          <div class="wordmark"><span class="bars"><i></i><i></i></span>ezCLI</div>
+        <div class="window-controls">
+          <button class="window-control" id="winMin" aria-label="Minimize window">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" /></svg>
+          </button>
+          <button class="window-control" id="winMax" aria-label="Maximize window">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2.5" y="2.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.2" /></svg>
+          </button>
+          <button class="window-control close" id="winClose" aria-label="Close window">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.2" /></svg>
+          </button>
         </div>
+      </header>
 
-        <div class="sidebar-scroll">
-          <button class="side-row" id="sideNew">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            <span class="label">New session</span>
+      <div class="app-body">
+        <!-- spaces: one per project folder, each with its own tabs -->
+        <nav class="rail" aria-label="Spaces">
+          <div class="spaces" id="spaces"></div>
+          <button class="rail-btn rail-add" id="spaceAdd" title="Open folder…" aria-label="New space">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" /></svg>
           </button>
-
-          <h2 class="side-section">Sessions</h2>
-          <div id="sessionTree"></div>
-
-          <h2 class="side-section">Agents</h2>
-          <div id="agentList"></div>
-        </div>
-
-        <div class="sidebar-foot">
-          <button class="side-row" id="pickCwd" title="Change the folder new sessions start in">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            </svg>
-            <span class="label" id="cwdLabel">Working folder</span>
+          <span class="grow"></span>
+          <button class="rail-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button>
-          <div class="promo">
-            <p>Each session is a real terminal. Your CLIs run on this machine, unchanged.</p>
-            <button class="btn-brand is-wide" id="promoNew">Start a session</button>
-          </div>
-        </div>
-      </aside>
-
-      <main class="main">
-        <div class="topbar">
-          <button class="chip" id="chipAgent" aria-haspopup="menu">
-            <span id="chipAgentLabel">Agent</span>
-            <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          <button class="rail-btn" id="helpBtn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M9.6 9.3a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.8-.9 1.4v.4" /><path d="M12 17h.01" /></svg>
           </button>
-          <button class="chip" id="chipModel" aria-haspopup="menu">
-            <span id="chipModelLabel">Default</span>
-            <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-          </button>
-          <button class="chip" id="chipMode" aria-haspopup="menu">
-            <span id="chipModeLabel">Default</span>
-            <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-          </button>
+        </nav>
 
-          <nav class="topnav" aria-label="Session actions">
-            <button id="navStop" title="Stop the running process">Stop</button>
-            <button id="navRestart" title="Stop and launch again">Restart</button>
-            <button id="navClear" title="Clear the terminal (Ctrl+Alt+K)">Clear</button>
-          </nav>
-        </div>
+        <main class="main">
+          <!-- home: start a new session in the active space -->
+          <section class="home" id="home" aria-label="New session">
+            <div class="home-inner">
+              <div class="home-mark"><span class="mark big"><i></i><i></i></span></div>
+              <h1 id="homeTitle">What should we work on?</h1>
+              <button class="project-trigger" id="homeProject" title="Change the folder this space runs in">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+                <span id="homeProjectLabel">Folder</span>
+                <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+              </button>
 
-        <div class="stage">
-          <!-- launcher -->
-          <section class="hero" id="hero" aria-label="Launcher">
-            <div class="counter"><b id="sessionCount">0</b><span>Sessions</span></div>
-            <div class="hero-inner">
-              <h1>Run every coding CLI in <em>one</em> window</h1>
-              <p class="sub">Claude Code, Claude, Codex and ChatGPT, each in a real terminal.</p>
-
-              <div class="composer">
-                <label class="sr-only" for="heroInput">First message</label>
-                <textarea id="heroInput" rows="1" placeholder="Type a first message, or start an empty session"></textarea>
-                <div class="composer-bar">
-                  <button class="chip" id="heroCwd" title="Change the folder new sessions start in">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-                      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    </svg>
-                    <span id="heroCwdLabel">Working folder</span>
+              <div class="composer-box" id="homeComposer">
+                <label class="sr-only" for="homeInput">First message</label>
+                <textarea id="homeInput" rows="2" placeholder="Describe a task, or press Enter to open an empty session"></textarea>
+                <div class="composer-row runconfig">
+                  <button class="pill-pick" id="homeAgent" aria-label="Choose agent">
+                    <span class="pill-cap">Agent</span><span class="pill-val"></span>
+                  </button>
+                  <button class="pill-pick" id="homeModel" aria-label="Choose model">
+                    <span class="pill-cap">Model</span><span class="pill-val"></span>
+                  </button>
+                  <button class="pill-pick" id="homeMode" aria-label="Choose mode">
+                    <span class="pill-cap">Mode</span><span class="pill-val"></span>
                   </button>
                   <span class="grow"></span>
-                  <button class="send-btn" id="heroStart" aria-label="Start session" title="Start session">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" aria-hidden="true">
-                      <path d="M12 19V5" /><path d="m5 12 7-7 7 7" />
-                    </svg>
+                  <span class="send-key"><kbd>Enter</kbd></span>
+                  <button class="send-btn" id="homeSend" aria-label="Start session" title="Start session">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
                   </button>
                 </div>
               </div>
 
-              <div class="agent-grid" id="agentGrid" role="radiogroup" aria-label="Agent"></div>
+              <div class="suggested-prompts" id="suggested" aria-label="Suggested next steps"></div>
+              <div class="agent-strip" id="agentStrip" role="radiogroup" aria-label="Agent"></div>
             </div>
           </section>
 
-          <!-- live session -->
+          <!-- a live session -->
           <section class="workspace" id="workspace" aria-label="Session">
-            <div class="panetabs" role="tablist" aria-label="Session panes">
-              <button class="panetab is-active" data-pane="term" role="tab" aria-selected="true">Terminal</button>
-              <button class="panetab" data-pane="files" role="tab" aria-selected="false">Files</button>
-              <button class="panetab" data-pane="changes" role="tab" aria-selected="false">Changes</button>
+            <div class="session-head">
+              <span class="agent-status" id="headStatus"></span>
+              <span class="head-title" id="headTitle"></span>
+              <button class="head-chip" id="headModel" title="Change model (restarts the session)" hidden></button>
+              <span class="head-branch" id="headBranch" hidden></span>
               <span class="grow"></span>
-              <button class="panetab" id="paneRefresh" title="Reload this pane">Refresh</button>
-            </div>
-
-            <div class="panes">
-              <div class="pane is-active" data-pane="term"><div class="term-host" id="termHost"></div></div>
-
-              <div class="pane" data-pane="files">
-                <div class="crumbs" id="fileCrumbs"></div>
-                <div class="browser">
-                  <ul class="filelist" id="fileList"></ul>
-                  <div class="preview" id="filePreview"></div>
-                </div>
-              </div>
-
-              <div class="pane" data-pane="changes">
-                <div class="crumbs" id="gitHead"></div>
-                <div class="browser">
-                  <ul class="filelist" id="gitList"></ul>
-                  <div class="preview" id="gitPreview"></div>
-                </div>
+              <button class="btn primary" id="actResume" title="Launch this session again" hidden>Resume</button>
+              <button class="btn quiet" id="actRestart" title="Stop and launch again">Restart</button>
+              <button class="btn quiet" id="actStop" title="Stop the running process">Stop</button>
+              <div class="open-in">
+                <button class="btn open-in-primary" id="openInPrimary" title="Open the session folder">Open</button>
+                <button class="btn open-in-menu-trigger" id="openInMenu" aria-label="Open in…">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+                </button>
               </div>
             </div>
-
-            <div class="term-foot" id="termFoot">
-              <div class="composer">
+            <div class="terminal-panel">
+              <div class="term-hosts" id="termHosts"></div>
+              <button class="scroll-bottom-btn" id="scrollBottom" hidden aria-label="Jump to latest output">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
+              </button>
+            </div>
+            <div class="thread-bottom">
+              <div class="composer-box" id="ptyComposer">
+                <div class="composer-context" id="composerContext" hidden></div>
                 <label class="sr-only" for="ptyInput">Send to the CLI</label>
-                <textarea id="ptyInput" rows="1" placeholder="Type here, then press Enter to send to the CLI"></textarea>
-                <div class="composer-bar">
+                <textarea id="ptyInput" rows="1" placeholder="Message the CLI — Enter sends, Shift+Enter for a new line, ↑ for history"></textarea>
+                <div class="composer-row">
                   <button class="chip" id="btnInterrupt" title="Send Ctrl+C to the process">Ctrl+C</button>
                   <button class="chip" id="btnEsc" title="Send Escape to the process">Esc</button>
+                  <button class="chip" id="btnHistory" title="Prompt history" aria-label="Prompt history">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+                    History
+                  </button>
                   <span class="grow"></span>
                   <button class="send-btn" id="btnSend" aria-label="Send" title="Send">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" aria-hidden="true">
-                      <path d="M12 19V5" /><path d="m5 12 7-7 7 7" />
-                    </svg>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
                   </button>
                 </div>
               </div>
             </div>
           </section>
-        </div>
 
-        <div class="statusbar">
-          <span id="stState" class="dead">idle</span>
-          <code id="stCmd">no session</code>
-          <span class="sep"></span>
-          <code id="stCwd"></code>
-          <span id="stSize"></span>
-        </div>
-      </main>
+          <!-- explorer: files and git changes for the active space -->
+          <aside class="explorer" id="explorer" aria-label="Explorer" hidden>
+            <button class="pane-resize-handle" id="explorerResize" aria-label="Resize explorer panel"></button>
+            <div class="explorer-header">
+              <div class="explorer-tabs" role="tablist">
+                <button class="explorer-tab active" data-xtab="files" role="tab">Files</button>
+                <button class="explorer-tab" data-xtab="changes" role="tab">
+                  Changes <span class="explorer-tab-count" id="changesCount" hidden></span>
+                </button>
+              </div>
+              <button class="head-icon" id="explorerRefresh" title="Refresh" aria-label="Refresh">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8" /><path d="M21 3v5h-5" /></svg>
+              </button>
+              <button class="head-icon" id="explorerClose" title="Close (Ctrl+Alt+B)" aria-label="Close explorer">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" /></svg>
+              </button>
+            </div>
+            <div class="explorer-content" id="explorerContent"></div>
+          </aside>
+        </main>
+      </div>
+
+      <footer class="statusbar">
+        <span class="st-state" id="stState">idle</span>
+        <code id="stCmd">no session</code>
+        <span class="grow"></span>
+        <code id="stCwd"></code>
+        <span id="stSize"></span>
+      </footer>
     </div>
 
     <div class="scrim" id="scrim" hidden></div>
     <div class="menu" id="menu" role="menu" hidden></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
 
     <dialog class="sheet" id="helpSheet">
       <h2>Keyboard shortcuts</h2>
       <dl class="keys">
-        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>N</kbd></dt><dd>New session</dd>
-        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>W</kbd></dt><dd>Close session</dd>
-        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>B</kbd></dt><dd>Show or hide the sidebar</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>N</kbd></dt><dd>New session in this space</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>W</kbd></dt><dd>Close the current tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd></dt><dd>Reopen the last closed tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></dt><dd>Jump to a tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>B</kbd></dt><dd>Show or hide the explorer</dd>
         <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>K</kbd></dt><dd>Clear the terminal</dd>
-        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></dt><dd>Jump to a session</dd>
-        <dt><kbd>Enter</kbd></dt><dd>Send the composer to the CLI</dd>
-        <dt><kbd>Shift</kbd><kbd>Enter</kbd></dt><dd>New line in the composer</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>/</kbd></dt><dd>Focus the composer</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>=</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, reset</dd>
+        <dt><kbd>Enter</kbd> / <kbd>Shift</kbd><kbd>Enter</kbd></dt><dd>Send / new line in the composer</dd>
+        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Walk prompt history from an empty composer</dd>
       </dl>
       <p class="note">
-        Everything else goes straight to the terminal. Arrow keys, <kbd>Tab</kbd>, <kbd>Ctrl</kbd><kbd>C</kbd>
-        and the agent's own slash commands all work as they do in a normal shell.
+        Everything else goes straight to the terminal. Arrow keys, <kbd>Tab</kbd>, <kbd>Ctrl</kbd><kbd>C</kbd> and the
+        agent’s own slash commands work exactly as they do in a normal shell.
       </p>
-      <form method="dialog"><button class="btn-brand">Close</button></form>
+      <form method="dialog"><button class="btn primary">Close</button></form>
+    </dialog>
+
+    <dialog class="sheet" id="settingsSheet">
+      <h2>Settings</h2>
+      <div class="settings-section">
+        <h3>Appearance</h3>
+        <div class="segmented" id="themeSeg" role="radiogroup" aria-label="Appearance">
+          <button class="theme-option" data-theme-opt="system" role="radio">Match system</button>
+          <button class="theme-option" data-theme-opt="dark" role="radio">Dark</button>
+          <button class="theme-option" data-theme-opt="light" role="radio">Light</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Terminal font size</h3>
+        <div class="stepper">
+          <button class="btn" id="fontDown" aria-label="Smaller">−</button>
+          <span id="fontSizeLabel">13 px</span>
+          <button class="btn" id="fontUp" aria-label="Larger">+</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Agents</h3>
+        <p class="note">Launch commands live in <code id="agentsPath">~/.ezcli/agents.json</code>. Edit it, then reload.</p>
+        <div class="row-actions">
+          <button class="btn" id="openConfig">Open config folder</button>
+          <button class="btn" id="reloadAgents">Reload agents</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Usage</h3>
+        <p class="note">Local session counters, plus quick links to your provider dashboards.</p>
+        <div class="row-actions">
+          <button class="btn" id="openUsage">Open usage view</button>
+        </div>
+      </div>
+      <form method="dialog"><button class="btn primary">Done</button></form>
+    </dialog>
+
+    <dialog class="sheet wide" id="usageSheet">
+      <h2>Session usage</h2>
+      <p class="note">
+        ezCLI never calls model APIs, so it can't see your actual spend. Billing and token
+        totals live with each provider.
+      </p>
+      <div class="usage-table" id="usageTable"></div>
+      <div class="row-actions wrap">
+        <button class="btn" id="openAnthropic">Anthropic Console →</button>
+        <button class="btn" id="openOpenai">OpenAI Dashboard →</button>
+        <span class="grow"></span>
+        <button class="btn quiet" id="resetUsage">Reset local counters</button>
+      </div>
+      <form method="dialog" class="row-actions end"><button class="btn primary">Done</button></form>
+    </dialog>
+
+    <dialog class="sheet" id="confirmSheet">
+      <h2 id="confirmTitle">Are you sure?</h2>
+      <p class="note" id="confirmBody"></p>
+      <form method="dialog" class="row-actions end">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn danger" value="ok" id="confirmOk">Confirm</button>
+      </form>
     </dialog>
 
     <script src="/vendor/xterm/lib/xterm.js"></script>

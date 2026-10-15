@@ -6,6 +6,7 @@
 mod agents;
 mod files_api;
 mod git_api;
+mod open_in;
 mod pty_mgr;
 
 use agents::{AgentDef, AgentOut};
@@ -27,6 +28,7 @@ struct AgentsResponse {
     home: String,
     platform: String,
     sep: String,
+    config_path: String,
     agents: Vec<AgentOut>,
 }
 
@@ -34,15 +36,16 @@ struct AgentsResponse {
 fn list_agents(state: State<AppState>) -> AgentsResponse {
     let a = state.agents.lock().unwrap();
     AgentsResponse {
-        cwd: std::env::current_dir()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
+        // Launched-from-Start-Menu puts the process cwd in Program Files,
+        // which is not where anyone wants to start a coding session. Default
+        // to the user's home instead so new sessions open somewhere useful.
+        cwd: default_start_dir(),
         home: dirs::home_dir()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default(),
         platform: std::env::consts::OS.to_string(),
         sep: std::path::MAIN_SEPARATOR.to_string(),
+        config_path: state.agents_path.to_string_lossy().into_owned(),
         agents: agents::describe(&a),
     }
 }
@@ -105,12 +108,7 @@ fn start_session(
 
         let resolved_cwd = cwd
             .filter(|c| std::path::Path::new(c).is_dir())
-            .unwrap_or_else(|| {
-                std::env::current_dir()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned()
-            });
+            .unwrap_or_else(default_start_dir);
 
         let argv_for_log = format!("{} {}", a.command, argv.join(" "));
         (cmd, argv_for_log, final_args, resolved_cwd)
@@ -183,6 +181,57 @@ fn git_diff(
     git_api::git_diff(&path, &file, untracked.unwrap_or(false)).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn open_targets() -> Vec<open_in::OpenTarget> {
+    open_in::detect()
+}
+
+#[tauri::command]
+fn open_in(target: String, path: String) -> Result<(), String> {
+    open_in::open(&target, &path).map_err(|e| e.to_string())
+}
+
+/// How many sessions still have a live process. The window's close guard
+/// asks this before quitting so it never kills work without a prompt.
+#[tauri::command]
+fn running_sessions(state: State<AppState>) -> usize {
+    state.sessions.live_count()
+}
+
+/// A sensible default working folder for a new session. The process cwd
+/// comes from wherever the installer launched the exe (Program Files on
+/// Windows), so we only trust it when it is clearly a user folder.
+fn default_start_dir() -> String {
+    let home = dirs::home_dir();
+
+    if let Ok(cwd) = std::env::current_dir() {
+        let cwd_s = cwd.to_string_lossy().to_lowercase();
+        let looks_like_install =
+            cwd_s.contains("program files")
+                || cwd_s.contains("programdata")
+                || cwd_s.contains("appdata")
+                || cwd_s.contains("system32")
+                || cwd_s.ends_with("\\ezcli")
+                || cwd_s.ends_with("/ezcli");
+        if !looks_like_install {
+            if let Some(h) = &home {
+                // Trust the cwd when it is inside the user's home tree.
+                if cwd.starts_with(h) {
+                    return cwd.to_string_lossy().into_owned();
+                }
+            }
+        }
+    }
+
+    home.map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        })
+}
+
 /// Resolve the editable agents.json location.
 ///
 /// We embed a copy at compile time and, on first run, write it to
@@ -209,6 +258,8 @@ pub fn run() {
     });
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             agents: Mutex::new(loaded),
             agents_path,
@@ -224,7 +275,10 @@ pub fn run() {
             list_dir,
             read_file,
             git_status,
-            git_diff
+            git_diff,
+            open_targets,
+            open_in,
+            running_sessions
         ])
         .run(tauri::generate_context!())
         .expect("ezCLI failed to launch");
