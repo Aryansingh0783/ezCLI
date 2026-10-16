@@ -161,6 +161,23 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1 IN PROGRESS on branch `v2.1-dev` (2026-10-17, Claude). Not released.**
+
+Brief from Aryan (do not push/tag/release without his approval; no
+Co-Authored-By lines): (1) nothing paid may be listed or selectable
+(Ollama Cloud: free list only; Freebuff; OpenCode/DeepSeek free routes);
+(2) one Enter in the composer must submit one message in every CLI;
+(3) VS Code extension does not work; (4) first-run onboarding is badly
+scaled; (5) every machine should see the same curated models, including a
+"step 5 preview" model, plus more good free ones; (6) real session memory
+that survives restarts, stored locally; (7) optional GitHub sign-in that
+stores sessions and handoffs in the user's own repo; (8) group chat UI
+(round table, draft/review/revise, all answer then merge; everyone may edit).
+Already on the branch (270b3c7): group-chat backend (`group.rs`,
+`group_turn`/`group_cancel`, per-agent `headless` recipes in agents.json) and
+a "DeepSeek (free)" agent through OpenCode. Working order: bugs first (1-4),
+then models (5), memory (6), group chat UI (8), GitHub sync (7).
+
 **v2.0.0 — the 18-feature release + liquid glass (2026-10-16, Claude).**
 
 Aryan asked for every proposed feature in one release, then a liquid glass
