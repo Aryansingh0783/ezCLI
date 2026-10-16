@@ -293,8 +293,10 @@ function catalogModelDisplay(a, id) {
 /** Static models from agents.json plus, for agents with a live catalog, every
  *  model that catalog reported. Catalog entries keep their full id. */
 function allModels(a) {
-  const staticModels = (a.models || []).filter((m) => !(a.requiresModelSelection && m.id === 'default' && !(m.args || []).length));
-  const cat = (state.catalogs[a.id] || []).map((id) => {
+  // Models that need the user's own paid API key stay hidden unless they opt in.
+  const staticModels = (a.models || []).filter((m) => (prefs.showPaidModels || !m.paid) && !(a.requiresModelSelection && m.id === 'default' && !(m.args || []).length));
+  const known = new Set(staticModels.map((m) => m.id));
+  const cat = (state.catalogs[a.id] || []).filter((id) => !known.has(id)).map((id) => {
     const slash = id.indexOf('/');
     return {
       id,
@@ -306,6 +308,8 @@ function allModels(a) {
 }
 /** "Free" or "Paid" for a model, from the agent's modelPricing in agents.json. */
 function modelPrice(a, id) {
+  const own = a && (a.models || []).find((m) => m.id === id);
+  if (own && own.paid) return 'Paid';
   const pricing = a && a.modelPricing;
   if (!pricing) return '';
   const bare = (x) => String(x).toLowerCase().replace(/(-cloud|:cloud)$/, '');
@@ -1743,19 +1747,33 @@ function relativeTo(p, base) {
   return a;
 }
 
-/** Type text into a CLI. Multi-line text goes through bracketed paste when
- *  the program asked for it, so a newline doesn't submit half a message. */
+/** Put one message into a CLI's input box and submit it.
+ *
+ *  Terminal UIs (Codex, Claude Code, OpenCode) treat fast typed characters as
+ *  a paste and swallow the Enter that follows, so a message needed a second
+ *  manual Enter. When the CLI enabled bracketed paste we send the text as a
+ *  real paste (one atomic insert), wait for the UI to take it, then press
+ *  Enter. Without bracketed paste we type the text on one line instead.
+ *  Per-agent overrides live in agents.json under "submit". */
 function sendText(s, text) {
-  if (!s.ptyId) return;
-  const multi = /\r|\n/.test(text);
-  const bracketed = s.term.modes && s.term.modes.bracketedPasteMode;
-  if (multi && bracketed) {
-    invoke('send_input', { id: s.ptyId, data: `\x1b[200~${text.replace(/\r?\n/g, '\r')}\x1b[201~` }).catch(() => {});
-    setTimeout(() => invoke('send_input', { id: s.ptyId, data: '\r' }).catch(() => {}), 40);
-  } else {
-    invoke('send_input', { id: s.ptyId, data: text.replace(/\r?\n/g, ' ') }).catch(() => {});
-    setTimeout(() => invoke('send_input', { id: s.ptyId, data: '\r' }).catch(() => {}), 20);
-  }
+  if (!s.ptyId) return Promise.resolve(false);
+  const cfg = (agent(s.agentId) || {}).submit || {};
+  const bracketed = Boolean(s.term.modes && s.term.modes.bracketedPasteMode);
+  const usePaste = cfg.paste === 'always' || (cfg.paste !== 'never' && bracketed);
+  // Longer messages take the UI longer to lay out before it will accept Enter.
+  const delay = Number.isFinite(cfg.delayMs) ? cfg.delayMs : Math.min(900, 220 + Math.floor(text.length / 12));
+  const ptyId = s.ptyId;
+  const out = (data) => invoke('send_input', { id: ptyId, data }).catch(() => {});
+  if (usePaste) out(`\x1b[200~${text.replace(/\r?\n/g, '\r')}\x1b[201~`);
+  else out(text.replace(/\r?\n/g, ' '));
+  return new Promise((resolve) => {
+    setTimeout(async () => {
+      // The tab may have been restarted or closed while we waited.
+      if (s.ptyId !== ptyId) return resolve(false);
+      await out('\r');
+      resolve(true);
+    }, usePaste ? delay : Math.max(120, delay));
+  });
 }
 
 function pushHistory(text) {
@@ -1803,7 +1821,7 @@ async function sendComposer() {
   autoGrow(el);
   renderContext();
   await pasteImagePaths(s, media.pastes);
-  sendText(s, text);
+  await sendText(s, text);
 }
 
 let histPos = -1;
@@ -2324,7 +2342,7 @@ async function modelMenu(anchor, forAgent) {
   }));
   if (a.id === 'ollama-cloud') {
     items.unshift(
-      { label: 'Live cloud catalog — known sizes first', hint: 'Unreported sizes are unranked; account limits apply', disabled: true },
+      { label: 'Models that run on a free Ollama account', hint: 'Sign in once with "ollama signin"', disabled: true },
       { sep: true }
     );
   }
@@ -2730,9 +2748,13 @@ function renderOnboarding() {
   $('onboardingSummary').textContent = recommended && recommended.available
     ? `${recommended.label} is the recommended start. ${report.reason || ''}`.trim()
     : (report && report.reason) || 'Choose a local CLI when you are ready. You can change it for each session.';
-  $('backendFacts').innerHTML = backendFacts(report).map((fact) => `<li>${esc(fact)}</li>`).join('');
+  const facts = backendFacts(report);
+  $('backendFacts').innerHTML = facts.map((fact) => `<li>${esc(fact)}</li>`).join('');
+  $('backendFoundSummary').textContent = `What ezCLI found (${facts.length})`;
   renderFreeInstalls(report);
-  $('backendChoices').innerHTML = state.agents
+  // Installed agents first; the ones you would have to install come last.
+  const ordered = [...state.agents].sort((x, y) => Number(y.available) - Number(x.available));
+  $('backendChoices').innerHTML = ordered
     .map((a) => {
       const selected = a.id === prefs.agentId;
       const recommendedClass = recommended && a.id === recommended.id ? ' recommended' : '';

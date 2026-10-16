@@ -400,7 +400,7 @@ fn ollama_cloud_catalog_command() -> Result<(String, Vec<String>), String> {
 /// opening the Model menu or pressing refresh, never per turn.
 #[tauri::command]
 async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let (resolved, args, from) = {
+    let (resolved, args, from, pricing) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
             .iter()
@@ -418,7 +418,7 @@ async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Ve
                 .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
             (resolved, from.args.clone())
         };
-        (resolved, args, from)
+        (resolved, args, from, a.model_pricing.clone())
     };
     let stdout = tauri::async_runtime::spawn_blocking(move || run_catalog(&resolved, &args))
         .await
@@ -428,6 +428,9 @@ async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Ve
     } else {
         agents::parse_catalog_for(&from, &stdout)
     };
+    // Free routes only: an agent whose pricing says everything else is paid
+    // never gets a paid model into the catalog that launches are checked against.
+    let list = agents::keep_free_models(list, pricing.as_ref());
     state.catalogs.lock().unwrap().insert(agent_id, list.clone());
     Ok(list)
 }

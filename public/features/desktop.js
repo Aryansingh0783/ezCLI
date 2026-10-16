@@ -178,7 +178,8 @@ hooks.boot.push(() => {
     prefNotifications: ['notifications', true],
     prefCloseToTray: ['closeToTray', false],
     prefTranscripts: ['keepTranscripts', true],
-    prefProjectDefaults: ['projectDefaultsOff', false, true]
+    prefProjectDefaults: ['projectDefaultsOff', false, true],
+    prefShowPaid: ['showPaidModels', false]
   };
   for (const [id, [key, fallback, inverted]] of Object.entries(toggles)) {
     const box = $(id);

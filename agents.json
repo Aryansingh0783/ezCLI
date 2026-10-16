@@ -403,16 +403,123 @@
       "models": [
         {
           "id": "default",
-          "label": "Default",
+          "label": "OpenCode default",
           "args": []
+        },
+        {
+          "id": "opencode/nemotron-3-ultra-free",
+          "label": "Nemotron 3 Ultra",
+          "args": [
+            "-m",
+            "opencode/nemotron-3-ultra-free"
+          ]
+        },
+        {
+          "id": "opencode/deepseek-v4.1-flash-free",
+          "label": "DeepSeek V4.1 Flash",
+          "args": [
+            "-m",
+            "opencode/deepseek-v4.1-flash-free"
+          ]
+        },
+        {
+          "id": "opencode/glm-5.3-flash-free",
+          "label": "GLM-5.3 Flash",
+          "args": [
+            "-m",
+            "opencode/glm-5.3-flash-free"
+          ]
+        },
+        {
+          "id": "opencode/big-pickle",
+          "label": "Big Pickle",
+          "args": [
+            "-m",
+            "opencode/big-pickle"
+          ]
+        },
+        {
+          "id": "opencode/muse-spark-1.3-contributor-free",
+          "label": "Muse Spark 1.3",
+          "args": [
+            "-m",
+            "opencode/muse-spark-1.3-contributor-free"
+          ]
+        },
+        {
+          "id": "opencode/nemotron-3.5-super-vl-free",
+          "label": "Nemotron 3.5 Super VL",
+          "args": [
+            "-m",
+            "opencode/nemotron-3.5-super-vl-free"
+          ]
+        },
+        {
+          "id": "opencode/beam-free",
+          "label": "Beam",
+          "args": [
+            "-m",
+            "opencode/beam-free"
+          ]
+        },
+        {
+          "id": "opencode/longcat-2.5-preview-free",
+          "label": "LongCat 2.5 Preview",
+          "args": [
+            "-m",
+            "opencode/longcat-2.5-preview-free"
+          ]
+        },
+        {
+          "id": "opencode/mimo-v2.6-flash-free",
+          "label": "MiMo V2.6 Flash",
+          "args": [
+            "-m",
+            "opencode/mimo-v2.6-flash-free"
+          ]
+        },
+        {
+          "id": "opencode/nemotron-3.5-lightning-free",
+          "label": "Nemotron 3.5 Lightning",
+          "args": [
+            "-m",
+            "opencode/nemotron-3.5-lightning-free"
+          ]
+        },
+        {
+          "id": "opencode/ll-alpha-free",
+          "label": "LL Alpha",
+          "args": [
+            "-m",
+            "opencode/ll-alpha-free"
+          ]
+        },
+        {
+          "id": "opencode/space-bunny-free",
+          "label": "Space Bunny",
+          "args": [
+            "-m",
+            "opencode/space-bunny-free"
+          ]
+        },
+        {
+          "id": "openrouter/stepfun/step-5-preview",
+          "label": "Step 5 Preview (OpenRouter key)",
+          "args": [
+            "-m",
+            "openrouter/stepfun/step-5-preview"
+          ],
+          "paid": true
         }
       ],
-      "_modelsFrom_note": "The Model pill is filled from `opencode models`, which lists every model usable right now, including all key-free ones.",
+      "_modelsFrom_note": "The Model menu always shows the free OpenCode Zen models below, so every machine sees the same list. `opencode models --verbose` adds any other model that costs nothing (for example OpenRouter ':free' models once you add a free OpenRouter key). Anything with a price is dropped.",
       "modelsFrom": {
         "args": [
-          "models"
+          "models",
+          "--verbose"
         ],
-        "flag": "-m"
+        "flag": "-m",
+        "catalog": "opencode-free"
       },
       "imageTransport": "interactive_at_reference",
       "mcp": "none",
@@ -431,6 +538,10 @@
           "--agent",
           "build"
         ]
+      },
+      "modelPricing": {
+        "default": "free",
+        "note": "Only models that cost nothing are listed. Step 5 Preview is paid and stays hidden unless you turn on \"Show paid models that use my own API key\" in Settings."
       }
     },
     {
@@ -477,7 +588,8 @@
         }
       ],
       "modelPricing": {
-        "default": "free"
+        "default": "free",
+        "note": "DeepSeek V4.1 Flash through OpenCode Zen. No DeepSeek account or API key needed."
       },
       "imageTransport": "interactive_at_reference",
       "mcp": "none",
@@ -643,7 +755,7 @@
       "icon": "code",
       "command": "ollama",
       "install": "irm https://ollama.com/install.ps1 | iex",
-      "_tier_note": "Runs a signed-in Ollama cloud model remotely. It does not download a model to this PC and may be subject to your Ollama plan and usage limits.",
+      "_tier_note": "Runs a signed-in Ollama cloud model remotely. Only the models that work on a free account are offered.",
       "args": [],
       "modes": [
         {
@@ -676,7 +788,7 @@
           "gemma4:31b",
           "nemotron-3-ultra"
         ],
-        "note": "Free tier: starter credits, reported Sep 2026. Ollama checks your plan when the model starts."
+        "note": "Only models that run on a free Ollama account are listed (sign in once with \"ollama signin\"). Other cloud models need a paid plan and are hidden."
       },
       "imageTransport": "initial_positional",
       "mcp": "none",
@@ -718,7 +830,7 @@
       ],
       "modelPricing": {
         "default": "free",
-        "note": "Freebuff picks the model server-side. It is free and ad-supported."
+        "note": "Freebuff chooses its own model. Its in-app picker also lists paid models as locked; ezCLI can't change that list."
       },
       "imageTransport": "none",
       "mcp": "none"

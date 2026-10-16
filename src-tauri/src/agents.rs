@@ -19,6 +19,9 @@ pub struct Variant {
     pub args: Vec<String>,
     #[serde(default, rename = "resumesSession")]
     pub resumes_session: bool,
+    /// Needs the user's own paid API key. Hidden unless they opt in.
+    #[serde(default)]
+    pub paid: bool,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -68,6 +71,23 @@ pub struct AgentDef {
     /// How to run one non-interactive turn, for group chats.
     #[serde(default)]
     pub headless: Option<Headless>,
+    /// How the composer hands a message to this CLI's own input box.
+    #[serde(default)]
+    pub submit: Option<Submit>,
+}
+
+/// Timing for sending a composer message into a CLI's terminal UI. TUIs treat
+/// fast typed characters as a paste and swallow the Enter that follows, so the
+/// default is a real bracketed paste, a pause, then Enter.
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct Submit {
+    /// "auto" (default): paste when the CLI enabled bracketed paste, else type.
+    /// "always" / "never" force one or the other.
+    #[serde(default)]
+    pub paste: Option<String>,
+    /// Milliseconds to wait after the text before pressing Enter.
+    #[serde(default, rename = "delayMs")]
+    pub delay_ms: Option<u32>,
 }
 
 /// A one-shot, non-interactive run of an agent: the conversation goes in,
@@ -259,6 +279,7 @@ pub struct AgentOut {
     /// Its headless turns can be allowed to change files.
     #[serde(rename = "groupCanEdit")]
     pub group_can_edit: bool,
+    pub submit: Option<Submit>,
 }
 
 #[derive(Deserialize)]
@@ -381,6 +402,12 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.headless = builtin_agent.headless.clone();
             }
+            if existing.submit.is_none()
+                && builtin_agent.submit.is_some()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.submit = builtin_agent.submit.clone();
+            }
             // Price labels are display-only; add them to older stock configs
             // but keep a list the user has edited.
             if existing.model_pricing.is_none()
@@ -430,6 +457,7 @@ pub fn parse_catalog_for(from: &ModelsFrom, stdout: &str) -> Vec<String> {
     match from.catalog.as_deref() {
         Some("ollama") => parse_ollama_catalog(stdout),
         Some("codex") => parse_codex_catalog(stdout),
+        Some("opencode-free") => parse_opencode_free(stdout),
         _ => parse_catalog(stdout),
     }
 }
@@ -542,6 +570,90 @@ fn parse_ollama_catalog(stdout: &str) -> Vec<String> {
     out
 }
 
+/// `opencode models --verbose` prints one `provider/model` header line per
+/// model followed by a JSON object with its metadata, including `cost`. Keep
+/// only models that cost nothing, on every provider, so a paid model the user
+/// happens to have a key for (for example Google's) is never listed.
+fn parse_opencode_free(stdout: &str) -> Vec<String> {
+    fn is_header(line: &str) -> bool {
+        let mut parts = line.splitn(2, '/');
+        match (parts.next(), parts.next()) {
+            (Some(p), Some(m)) => {
+                !p.is_empty()
+                    && p.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+                    && p.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+                    && !m.is_empty()
+                    && m.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:/@".contains(c))
+            }
+            _ => false,
+        }
+    }
+    let mut out = Vec::new();
+    let mut current: Option<String> = None;
+    let mut body = String::new();
+    let mut flush = |id: Option<String>, body: &mut String, out: &mut Vec<String>| {
+        if let Some(id) = id {
+            let free = serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| {
+                    let cost = v.get("cost")?;
+                    let zero = |k: &str| cost.get(k).and_then(|x| x.as_f64()).map(|x| x == 0.0);
+                    // Image, music and video generators can cost nothing yet
+                    // cannot work as a coding agent: require text output.
+                    let text_out = v
+                        .pointer("/capabilities/output/text")
+                        .and_then(|x| x.as_bool())
+                        .unwrap_or(true);
+                    Some(zero("input")? && zero("output")? && text_out)
+                })
+                .unwrap_or(false);
+            if free {
+                out.push(id);
+            }
+        }
+        body.clear();
+    };
+    for line in stdout.lines() {
+        let t = line.trim();
+        if is_header(t) {
+            flush(current.take(), &mut body, &mut out);
+            current = Some(t.to_string());
+        } else if current.is_some() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+    flush(current.take(), &mut body, &mut out);
+    out.sort();
+    out.dedup();
+    out.truncate(1000);
+    out
+}
+
+/// A model id with any cloud-alias suffix removed, lower-cased, so a catalog
+/// name (`gpt-oss:120b`) and its CLI alias (`gpt-oss:120b-cloud`) compare equal.
+pub fn bare_model_name(id: &str) -> String {
+    let lower = id.to_ascii_lowercase();
+    lower
+        .strip_suffix("-cloud")
+        .or_else(|| lower.strip_suffix(":cloud"))
+        .unwrap_or(&lower)
+        .to_string()
+}
+
+/// When an agent's pricing says "everything is paid unless listed", keep only
+/// the listed models. Applied in the backend so a paid model can never reach
+/// the catalog `start_session` validates against.
+pub fn keep_free_models(list: Vec<String>, pricing: Option<&ModelPricing>) -> Vec<String> {
+    match pricing {
+        Some(p) if p.default.as_deref() == Some("paid") => list
+            .into_iter()
+            .filter(|id| p.free.iter().any(|f| bare_model_name(f) == bare_model_name(id)))
+            .collect(),
+        _ => list,
+    }
+}
+
 /// `codex debug models` prints Codex's own JSON catalog. Only entries it
 /// marks `"visibility": "list"` are user-facing, and every slug must be a
 /// plain model id so it can never be read as a flag by `codex -m`. Codex's
@@ -581,7 +693,7 @@ fn default_variant() -> Variant {
         id: "default".into(),
         label: "Default".into(),
         args: vec![],
-        resumes_session: false,
+        resumes_session: false, paid: false,
     }
 }
 
@@ -778,6 +890,7 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                 model_pricing: a.model_pricing.clone(),
                 group_chat: a.headless.is_some(),
                 group_can_edit: a.headless.as_ref().is_some_and(|h| !h.edit.is_empty()),
+                submit: a.submit.clone(),
             }
         })
         .collect()
@@ -1019,6 +1132,7 @@ mod tests {
             install: None,
             model_pricing: None,
             headless: None,
+            submit: None,
         }
     }
 
@@ -1064,7 +1178,7 @@ mod tests {
             id: "continue".into(),
             label: "Continue".into(),
             args: vec!["--continue".into()],
-            resumes_session: true,
+            resumes_session: true, paid: false,
         })
         .unwrap();
         assert_eq!(value["resumesSession"], true);
@@ -1078,7 +1192,7 @@ mod tests {
             id: "gpt-5".into(),
             label: "gpt-5".into(),
             args: vec!["-m".into(), "gpt-5".into()],
-            resumes_session: false,
+            resumes_session: false, paid: false,
         }];
         assert!(model_selection_is_valid(&a, "gpt-5", None));
         assert!(!model_selection_is_valid(&a, "stale-model", None));
@@ -1160,19 +1274,19 @@ mod tests {
             id: "high".into(),
             label: "High".into(),
             args: vec!["-c".into(), "model_reasoning_effort=\"high\"".into()],
-            resumes_session: false,
+            resumes_session: false, paid: false,
         }];
         a.models = vec![Variant {
             id: "gpt".into(),
             label: "GPT".into(),
             args: vec!["-m".into(), "gpt-5".into()],
-            resumes_session: false,
+            resumes_session: false, paid: false,
         }];
         a.modes = vec![Variant {
             id: "resume".into(),
             label: "Resume".into(),
             args: vec!["resume".into(), "--last".into()],
-            resumes_session: true,
+            resumes_session: true, paid: false,
         }];
         assert_eq!(
             build_argv(&a, "resume", "gpt", "high", None),
@@ -1280,6 +1394,34 @@ mod tests {
     }
 
     #[test]
+    fn opencode_catalog_keeps_only_zero_cost_models() {
+        let raw = "opencode/beam-free\n{\n  \"id\": \"beam-free\",\n  \"cost\": { \"input\": 0, \"output\": 0 }\n}\n\
+                   google/gemini-2.5-pro\n{\n  \"cost\": { \"input\": 1.25, \"output\": 10 }\n}\n\
+                   opencode/paid-one\n{\n  \"cost\": { \"input\": 0, \"output\": 3 }\n}\n\
+                   openrouter/nvidia/nemotron:free\n{\n  \"cost\": { \"input\": 0, \"output\": 0 }\n}\n\
+                   opencode/no-cost-field\n{\n  \"id\": \"x\"\n}\n\
+                   google/veo-free\n{\n  \"cost\": { \"input\": 0, \"output\": 0 },\n  \"capabilities\": { \"output\": { \"text\": false, \"video\": true } }\n}\n";
+        assert_eq!(parse_opencode_free(raw), vec!["opencode/beam-free", "openrouter/nvidia/nemotron:free"]);
+    }
+
+    #[test]
+    fn free_filter_matches_cloud_aliases_and_drops_everything_else() {
+        let pricing = ModelPricing {
+            default: Some("paid".into()),
+            free: vec!["gpt-oss:120b".into(), "gemma4:31b".into()],
+            note: None,
+        };
+        let list = vec!["gpt-oss:120b-cloud".to_string(), "kimi-k3:cloud".to_string(), "gemma4:31b-cloud".to_string(), "minimax-m3:cloud".to_string()];
+        assert_eq!(keep_free_models(list.clone(), Some(&pricing)), vec!["gpt-oss:120b-cloud", "gemma4:31b-cloud"]);
+        // No pricing, or a free-by-default agent, keeps the whole list.
+        assert_eq!(keep_free_models(list.clone(), None), list);
+        let free_default = ModelPricing { default: Some("free".into()), free: vec![], note: None };
+        assert_eq!(keep_free_models(list.clone(), Some(&free_default)), list);
+        assert_eq!(bare_model_name("GPT-OSS:120b-cloud"), "gpt-oss:120b");
+        assert_eq!(bare_model_name("kimi-k3:cloud"), "kimi-k3");
+    }
+
+    #[test]
     fn local_ollama_list_excludes_cloud_aliases() {
         let raw = "NAME                    ID              SIZE      MODIFIED\n\
                    llama3.2:3b             a80c4f17acd5    2.0 GB    3 days ago\n\
@@ -1290,7 +1432,7 @@ mod tests {
 
     #[test]
     fn old_stock_codex_models_move_to_the_live_catalog_but_custom_lists_stay() {
-        let variant = |id: &str| Variant { id: id.into(), label: id.into(), args: vec![], resumes_session: false };
+        let variant = |id: &str| Variant { id: id.into(), label: id.into(), args: vec![], resumes_session: false, paid: false };
         let mut stock = vec![def("codex", Some("codex"))];
         stock[0].id = "codex".into();
         stock[0].models = vec![variant("default"), variant("gpt-5-codex"), variant("gpt-5")];
