@@ -408,10 +408,26 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.submit = builtin_agent.submit.clone();
             }
-            // Price labels are display-only; add them to older stock configs
-            // but keep a list the user has edited.
-            if existing.model_pricing.is_none()
-                && builtin_agent.model_pricing.is_some()
+            // OpenCode's first-run config listed only "default" and read the
+            // unfiltered `opencode models`, which on a machine with a Google
+            // key returned dozens of paid models and on others fewer. An
+            // unedited stock entry takes the shipped fixed free list and the
+            // free-only catalog, so every machine shows the same models.
+            if existing.id == "opencode"
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+                && existing.models.iter().all(|m| m.id == "default")
+                && existing
+                    .models_from
+                    .as_ref()
+                    .map_or(true, |f| f.catalog.is_none() && f.args.first().map(String::as_str) == Some("models"))
+            {
+                existing.models = builtin_agent.models.clone();
+                existing.models_from = builtin_agent.models_from.clone();
+            }
+            // Which models are free is decided by the shipped list, not by a
+            // copy in an old config: a stale list could keep offering a model
+            // that now needs payment. Only an unchanged stock command takes it.
+            if builtin_agent.model_pricing.is_some()
                 && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
             {
                 existing.model_pricing = builtin_agent.model_pricing.clone();
@@ -1422,6 +1438,35 @@ mod tests {
     }
 
     #[test]
+    fn old_stock_opencode_config_gets_the_fixed_free_list_and_fresh_pricing() {
+        // What v1.x wrote: only "default", the unfiltered catalog, no pricing.
+        let mut old = vec![def("opencode", None)];
+        old[0].id = "opencode".into();
+        old[0].models = vec![Variant { id: "default".into(), label: "Default".into(), args: vec![], resumes_session: false, paid: false }];
+        old[0].models_from = Some(ModelsFrom { args: vec!["models".into()], flag: Some("-m".into()), launch: vec![], catalog: None, require_selection: false });
+        merge_builtin(&mut old);
+        let ids: Vec<_> = old[0].models.iter().map(|m| m.id.as_str()).collect();
+        assert!(ids.contains(&"opencode/nemotron-3-ultra-free") && ids.contains(&"opencode/big-pickle"));
+        assert_eq!(old[0].models_from.as_ref().unwrap().catalog.as_deref(), Some("opencode-free"));
+        assert!(old[0].model_pricing.is_some());
+
+        // A user who set their own models or command keeps them.
+        let mut custom = vec![def("opencode", None)];
+        custom[0].id = "opencode".into();
+        custom[0].models = vec![Variant { id: "mine".into(), label: "Mine".into(), args: vec![], resumes_session: false, paid: false }];
+        merge_builtin(&mut custom);
+        assert_eq!(custom[0].models.len(), 1);
+
+        // A stale pricing list in an old Ollama Cloud config is replaced.
+        let mut stale = vec![def("ollama", None)];
+        stale[0].id = "ollama-cloud".into();
+        stale[0].model_pricing = Some(ModelPricing { default: Some("paid".into()), free: vec!["kimi-k3".into()], note: None });
+        merge_builtin(&mut stale);
+        let free = &stale[0].model_pricing.as_ref().unwrap().free;
+        assert!(free.iter().any(|m| m == "gpt-oss:120b") && !free.iter().any(|m| m == "kimi-k3"));
+    }
+
+    #[test]
     fn local_ollama_list_excludes_cloud_aliases() {
         let raw = "NAME                    ID              SIZE      MODIFIED\n\
                    llama3.2:3b             a80c4f17acd5    2.0 GB    3 days ago\n\
@@ -1458,14 +1503,20 @@ mod tests {
         let cloud = price("ollama-cloud");
         assert_eq!(cloud.default.as_deref(), Some("paid"));
         assert!(cloud.free.iter().any(|m| m == "gpt-oss:120b"));
-        // An older stock config without labels receives them; an edited one keeps its own.
+        // A stock config always takes the shipped pricing, so a stale copy can
+        // never keep a now-paid model on offer; a custom command keeps its own.
         let mut old = vec![def("ollama", None)];
         old[0].id = "ollama-cloud".into();
         merge_builtin(&mut old);
         assert!(old[0].model_pricing.is_some());
         old[0].model_pricing = Some(ModelPricing { default: Some("free".into()), ..Default::default() });
         merge_builtin(&mut old);
-        assert_eq!(old[0].model_pricing.as_ref().unwrap().default.as_deref(), Some("free"));
+        assert_eq!(old[0].model_pricing.as_ref().unwrap().default.as_deref(), Some("paid"));
+        let mut custom = vec![def("my-ollama", None)];
+        custom[0].id = "ollama-cloud".into();
+        custom[0].model_pricing = Some(ModelPricing { default: Some("free".into()), ..Default::default() });
+        merge_builtin(&mut custom);
+        assert_eq!(custom[0].model_pricing.as_ref().unwrap().default.as_deref(), Some("free"));
     }
 
     #[test]
