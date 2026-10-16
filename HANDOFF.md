@@ -161,6 +161,26 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v1.4.0 — full bug pass, price labels, live Codex models (2026-10-16, Claude).**
+
+Bug pass: clippy (style lints only), 56 Rust + 12 Node tests, impeccable
+detector clean, CDP smoke over settings/usage/import/themes/every model
+menu/explorer and a live launch of every installed agent (no prompts).
+Fixed: git porcelain now `-z` (spaced/unicode paths) and `-unormal` (an
+untracked folder is one row; cli-gui reported 7,304 files), git runs with
+CREATE_NO_WINDOW + `effective_path()`, untracked-folder diff shows a file
+count; child PTYs drop Claude Code nested-session env markers
+(`NESTED_SESSION_VARS` in pty_mgr.rs); console-host titles are ignored for
+tab names; terminal refits via ResizeObserver when the composer grows
+(v1.3.1); `ollama list` cloud aliases (`:cloud`/`-cloud`) are excluded from
+Ollama Local. New: `modelPricing` in agents.json (Ollama Local + Freebuff
+free; Ollama Cloud free list = gpt-oss:120b, gemma4:31b, nemotron-3-ultra —
+Ollama does NOT publish this; based on a Sep 2026 third-party probe, edit when
+it changes). Codex models come from `codex debug models` (`visibility:"list"`
+only); stock configs with the old gpt-5 list migrate.
+Not done: the GitHub repo sidebar still shows a cached `@claude` contributor;
+API contributors = Aryansingh0783 only and no commit carries a trailer.
+
 **v1.3.0 — images and videos in chat (`612d442`, 2026-10-16, Claude).**
 
 Aryan: "does not have option to add video and images in chat". New
@@ -674,6 +694,9 @@ when PR 1 started; latest tag `v1.1.0`.
 - 2026-10-16 — Claude: image/video attachments for all capable agents
   (paste, drop, picker, ffmpeg frames), 49 Rust + 12 Node tests, released v1.3.0
   (run `38802386115`).
+- 2026-10-16 — Claude: README refresh + composer/terminal overlap fix (v1.3.1),
+  full bug pass, Free/Paid labels, live Codex catalog (v1.4.0, run
+  `38849923535`).
 
 ---
 
