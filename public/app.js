@@ -180,8 +180,13 @@ const spaceIdFor = (path) => String(path).replace(/[\\/]+$/, '').toLowerCase();
 function isMeaningfulTerminalTitle(title) {
   const text = String(title ?? '').trim();
   if (!text || text.length >= 80) return false;
-  const shell = basename(text).toLowerCase();
-  return !['cmd', 'cmd.exe', 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe', 'bash', 'bash.exe', 'sh', 'sh.exe', 'zsh', 'zsh.exe', 'fish', 'fish.exe'].includes(shell);
+  // Console hosts title a window "Windows PowerShell", "Administrator: Command
+  // Prompt" or a full exe path; none of those name the session.
+  const shell = basename(text).toLowerCase().replace(/^administrator:\s*/, '');
+  return ![
+    'cmd', 'cmd.exe', 'command prompt', 'powershell', 'powershell.exe', 'windows powershell', 'pwsh', 'pwsh.exe',
+    'bash', 'bash.exe', 'sh', 'sh.exe', 'zsh', 'zsh.exe', 'fish', 'fish.exe', 'node', 'node.exe'
+  ].includes(shell);
 }
 
 /* AgentOut will expose this value after the backend reload. The fallback makes
@@ -273,11 +278,21 @@ function allModels(a) {
     return {
       id,
       label: catalogModelDisplay(a, id),
-      provider: slash >= 0 ? id.slice(0, slash) : (a.id === 'ollama-cloud' ? 'cloud' : '')
+      provider: slash >= 0 ? id.slice(0, slash) : ''
     };
   });
   return [...staticModels, ...cat];
 }
+/** "Free" or "Paid" for a model, from the agent's modelPricing in agents.json. */
+function modelPrice(a, id) {
+  const pricing = a && a.modelPricing;
+  if (!pricing) return '';
+  const bare = (x) => String(x).toLowerCase().replace(/(-cloud|:cloud)$/, '');
+  const free = (pricing.free || []).map(bare).includes(bare(id)) || pricing.default === 'free';
+  if (free) return 'Free';
+  return pricing.default === 'paid' ? 'Paid' : '';
+}
+
 const modelLabel = (a, id) => {
   if (!a) return '';
   const m = allModels(a).find((x) => x.id === id);
@@ -1978,11 +1993,12 @@ async function renderChanges(fromCache = false) {
   const add = g.files.reduce((n, f) => n + (f.added || 0), 0);
   const del = g.files.reduce((n, f) => n + (f.removed || 0), 0);
   box.innerHTML = `<div class="files-toolbar"><span class="head-branch">${ICONS.branch}${esc(g.branch)}</span><span class="grow"></span>
-      <span class="meta">${g.files.length} file${g.files.length > 1 ? 's' : ''} · <span class="num-add">+${add}</span> <span class="num-del">−${del}</span></span></div>
+      <span class="meta">${g.files.length} change${g.files.length > 1 ? 's' : ''} · <span class="num-add">+${add}</span> <span class="num-del">−${del}</span></span></div>
     <ul class="explorer-list">${g.files
       .map((f) => {
         const [code, kind] = changeKind(f);
-        const name = basename(f.file);
+        // An untracked folder arrives once, as "path/to/folder/".
+        const name = basename(f.file) + (f.file.endsWith('/') ? '/' : '');
         const dir = f.file.slice(0, f.file.length - name.length);
         const nums =
           f.added != null ? `<span class="meta"><span class="num-add">+${f.added}</span> <span class="num-del">−${f.removed}</span></span>` : '';
@@ -2097,8 +2113,8 @@ function openMenu(anchor, { title, items, search, empty, at } = {}) {
               : `<button class="header-menu-item ${it.on ? 'on' : ''} ${it.danger ? 'danger' : ''}" data-i="${items.indexOf(it)}" ${
                   it.disabled ? 'disabled' : ''
                 } role="menuitem"><span class="header-menu-check">${ICONS.check}</span><span class="label">${esc(it.label)}</span>${
-                  it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''
-                }</button>`
+                  it.badge ? `<span class="${it.badge === 'Free' ? 'free-badge' : 'paid-badge'}">${esc(it.badge)}</span>` : ''
+                }${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</button>`
           )
           .join('')
       : `<div class="menu-empty">${esc(empty || 'Nothing here.')}</div>`;
@@ -2244,6 +2260,7 @@ async function modelMenu(anchor, forAgent) {
   const items = allModels(a).map((m) => ({
     label: m.label,
     hint: m.provider || '',
+    badge: modelPrice(a, m.id),
     on: m.id === p.model,
     run: () => choose(m.id)
   }));
@@ -2253,6 +2270,16 @@ async function modelMenu(anchor, forAgent) {
       { sep: true }
     );
   }
+  const pricing = a.modelPricing;
+  if (pricing && pricing.note && items.length) {
+    items.push({ sep: true }, { label: pricing.note, disabled: true });
+  }
+  const emptyText = a.id === 'ollama-cloud'
+    ? 'No cloud models were returned. Check your connection and refresh.'
+    : a.id === 'ollama'
+      ? 'No local models downloaded yet. Run "ollama pull <model>" in a terminal, then refresh. Cloud models are under Ollama Cloud.'
+      : 'No models were returned. Refresh after the CLI is ready.';
+  if (!allModels(a).length) items.unshift({ label: emptyText, disabled: true });
   if (a.dynamic_models) {
     items.push({ sep: true });
     items.push({
@@ -2267,9 +2294,7 @@ async function modelMenu(anchor, forAgent) {
   openMenu(anchor, {
     title: `${a.label} · Model`,
     search: items.length > 8 ? 'Search models' : '',
-    empty: a.id === 'ollama-cloud'
-      ? 'No cloud models were returned. Check your connection and refresh.'
-      : 'No models were returned. Refresh after the CLI is ready.',
+    empty: emptyText,
     items
   });
 }

@@ -1578,6 +1578,21 @@ body.resizing-pane .xterm {
   color: var(--faint);
   font-size: 11.5px;
 }
+/* Disabled rows are notes (catalog context, price caveats, empty states);
+   they must be readable in full rather than cut off with an ellipsis. */
+.header-menu-item:disabled {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.header-menu-item:disabled .label {
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+.header-menu-item:disabled .hint {
+  flex-basis: 100%;
+  padding-left: 22px;
+}
 .header-menu-item.danger {
   color: var(--danger);
 }
@@ -1815,6 +1830,21 @@ body.resizing-pane .xterm {
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.4;
+}
+.paid-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+.header-menu-item .free-badge,
+.header-menu-item .paid-badge {
+  flex: none;
 }
 
 .free-installs {

@@ -76,11 +76,9 @@
         { "id": "auto", "label": "Full auto", "args": ["--full-auto"] },
         { "id": "resume", "label": "Resume", "args": ["resume", "--last"], "resumesSession": true }
       ],
-      "models": [
-        { "id": "default", "label": "Default", "args": [] },
-        { "id": "gpt-5-codex", "label": "gpt-5-codex", "args": ["-m", "gpt-5-codex"] },
-        { "id": "gpt-5", "label": "gpt-5", "args": ["-m", "gpt-5"] }
-      ],
+      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "_modelsFrom_note": "The Model pill is filled from `codex debug models` (Codex's own catalog, user-facing entries only) and launches with `-m <model>`.",
+      "modelsFrom": { "args": ["debug", "models"], "flag": "-m", "catalog": "codex" },
       "efforts": [
         { "id": "default", "label": "Agent default", "args": [] },
         { "id": "low", "label": "Low", "args": ["-c", "model_reasoning_effort=\"low\""] },
@@ -171,6 +169,7 @@
       "models": [{ "id": "default", "label": "Choose a local model", "args": [] }],
       "_modelsFrom_note": "The Model pill is filled from `ollama list`; select one before starting and it launches as `ollama run <model>`.",
       "modelsFrom": { "args": ["list"], "launch": ["run"], "catalog": "ollama", "requireSelection": true },
+      "modelPricing": { "default": "free", "note": "Local models run on your PC, so they are free." },
       "imageTransport": "initial_positional",
       "mcp": "none"
     },
@@ -187,6 +186,12 @@
       "models": [{ "id": "default", "label": "Choose a cloud model", "args": [] }],
       "_modelsFrom_note": "The Model pill lists Ollama's live public cloud catalog. A selected hosted model launches through its matching `:cloud` or `-cloud` CLI alias; sign in with `ollama signin` first.",
       "modelsFrom": { "args": [], "launch": ["run"], "catalog": "ollama-cloud", "requireSelection": true },
+      "_modelPricing_note": "Ollama does not publish which cloud models its Free plan covers. This list is the set reported working on Free accounts in Sep 2026; edit it if Ollama changes it.",
+      "modelPricing": {
+        "default": "paid",
+        "free": ["gpt-oss:120b", "gemma4:31b", "nemotron-3-ultra"],
+        "note": "Free tier: starter credits, reported Sep 2026. Ollama checks your plan when the model starts."
+      },
       "imageTransport": "initial_positional",
       "mcp": "none"
     },
@@ -205,6 +210,7 @@
         { "id": "continue", "label": "Continue", "args": ["--continue"], "resumesSession": true }
       ],
       "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "modelPricing": { "default": "free", "note": "Freebuff picks the model server-side. It is free and ad-supported." },
       "imageTransport": "none",
       "mcp": "none"
     }

@@ -62,6 +62,23 @@ pub struct AgentDef {
     /// only; ezCLI never runs it.
     #[serde(default)]
     pub install: Option<String>,
+    /// Free/paid labels for this agent's models, shown in the Model menu.
+    #[serde(default, rename = "modelPricing")]
+    pub model_pricing: Option<ModelPricing>,
+}
+
+/// Display-only price labels. `default` applies to every model not listed in
+/// `free`; both are "free" or "paid". Model ids match without a `-cloud` /
+/// `:cloud` suffix, so a catalog name and its CLI alias get the same label.
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct ModelPricing {
+    #[serde(default)]
+    pub default: Option<String>,
+    #[serde(default)]
+    pub free: Vec<String>,
+    /// One line of context shown under the model list.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// Run `<command> <args>` to list models, then launch a chosen one with an
@@ -172,6 +189,8 @@ pub struct AgentOut {
     #[serde(rename = "requiresModelSelection")]
     pub requires_model_selection: bool,
     pub install: Option<String>,
+    #[serde(rename = "modelPricing")]
+    pub model_pricing: Option<ModelPricing>,
 }
 
 #[derive(Deserialize)]
@@ -272,6 +291,29 @@ fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.install = builtin_agent.install.clone();
             }
+            // Codex's first-run config hardcoded gpt-5-codex / gpt-5, which
+            // newer Codex releases no longer list. An unedited stock entry
+            // switches to Codex's live catalog; any other model list stays.
+            if existing.id == "codex"
+                && existing.models_from.is_none()
+                && builtin_agent.models_from.is_some()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+                && existing
+                    .models
+                    .iter()
+                    .all(|m| ["default", "gpt-5-codex", "gpt-5"].contains(&m.id.as_str()))
+            {
+                existing.models = builtin_agent.models.clone();
+                existing.models_from = builtin_agent.models_from.clone();
+            }
+            // Price labels are display-only; add them to older stock configs
+            // but keep a list the user has edited.
+            if existing.model_pricing.is_none()
+                && builtin_agent.model_pricing.is_some()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.model_pricing = builtin_agent.model_pricing.clone();
+            }
         } else {
             user.push(builtin_agent);
         }
@@ -312,6 +354,7 @@ pub fn parse_catalog(stdout: &str) -> Vec<String> {
 pub fn parse_catalog_for(from: &ModelsFrom, stdout: &str) -> Vec<String> {
     match from.catalog.as_deref() {
         Some("ollama") => parse_ollama_catalog(stdout),
+        Some("codex") => parse_codex_catalog(stdout),
         _ => parse_catalog(stdout),
     }
 }
@@ -410,13 +453,52 @@ fn parse_ollama_catalog(stdout: &str) -> Vec<String> {
             // reused as a launch argument.
             let looks_like_digest = digest.len() >= 7 && digest.chars().all(|c| c.is_ascii_hexdigit());
             let safe_name = safe_ollama_model_name(name);
-            (looks_like_digest && safe_name).then(|| name.to_string())
+            // `ollama list` also shows cloud aliases (`foo:cloud`, `foo:tag-cloud`)
+            // once used. They run remotely on the user's Ollama plan, so they
+            // belong to Ollama Cloud, not to the free local route.
+            let lower = name.to_ascii_lowercase();
+            let cloud_alias = lower.ends_with(":cloud") || lower.ends_with("-cloud");
+            (looks_like_digest && safe_name && !cloud_alias).then(|| name.to_string())
         })
         .collect();
     out.sort();
     out.dedup();
     out.truncate(1000);
     out
+}
+
+/// `codex debug models` prints Codex's own JSON catalog. Only entries it
+/// marks `"visibility": "list"` are user-facing, and every slug must be a
+/// plain model id so it can never be read as a flag by `codex -m`. Codex's
+/// order (recommended first) is kept.
+fn parse_codex_catalog(stdout: &str) -> Vec<String> {
+    #[derive(Deserialize)]
+    struct Catalog {
+        models: Vec<Entry>,
+    }
+    #[derive(Deserialize)]
+    struct Entry {
+        slug: String,
+        #[serde(default)]
+        visibility: Option<String>,
+    }
+    let Ok(catalog) = serde_json::from_str::<Catalog>(stdout.trim()) else {
+        return Vec::new();
+    };
+    let mut seen = std::collections::HashSet::new();
+    catalog
+        .models
+        .into_iter()
+        .filter(|m| m.visibility.as_deref().map_or(true, |v| v.eq_ignore_ascii_case("list")))
+        .map(|m| m.slug)
+        .filter(|s| {
+            s.len() <= 100
+                && s.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:".contains(c))
+        })
+        .filter(|s| seen.insert(s.clone()))
+        .take(200)
+        .collect()
 }
 
 fn default_variant() -> Variant {
@@ -615,6 +697,7 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                     .as_ref()
                     .is_some_and(|from| from.require_selection),
                 install: a.install.clone(),
+                model_pricing: a.model_pricing.clone(),
             }
         })
         .collect()
@@ -854,6 +937,7 @@ mod tests {
             tier: None,
             models_from: None,
             install: None,
+            model_pricing: None,
         }
     }
 
@@ -1094,6 +1178,71 @@ mod tests {
         assert!(user[0].efforts.iter().any(|e| e.id == "high"));
         assert_eq!(user[0].command, "claude");
         assert_eq!(user[0].install.as_deref(), Some("npm install -g @anthropic-ai/claude-code"));
+    }
+
+    #[test]
+    fn codex_catalog_keeps_listed_safe_models_in_order() {
+        let raw = r#"{"models":[
+            {"slug":"gpt-6-luna","visibility":"list"},
+            {"slug":"gpt-reserve","visibility":"hide"},
+            {"slug":"gpt-5.6-terra","visibility":"list"},
+            {"slug":"--yolo","visibility":"list"},
+            {"slug":"gpt-6-luna","visibility":"list"},
+            {"slug":"no-visibility-field"}
+        ]}"#;
+        assert_eq!(parse_codex_catalog(raw), vec!["gpt-6-luna", "gpt-5.6-terra", "no-visibility-field"]);
+        assert!(parse_codex_catalog("not json").is_empty());
+        let codex = { let mut u = vec![]; merge_builtin(&mut u); u.into_iter().find(|a| a.id == "codex").unwrap() };
+        let from = codex.models_from.as_ref().expect("codex has a live catalog");
+        assert_eq!(from.args, vec!["debug", "models"]);
+        assert_eq!(parse_catalog_for(from, raw), vec!["gpt-6-luna", "gpt-5.6-terra", "no-visibility-field"]);
+    }
+
+    #[test]
+    fn local_ollama_list_excludes_cloud_aliases() {
+        let raw = "NAME                    ID              SIZE      MODIFIED\n\
+                   llama3.2:3b             a80c4f17acd5    2.0 GB    3 days ago\n\
+                   kimi-k3:cloud           1f2e3d4c5b6a    -         2 hours ago\n\
+                   gemma4:31b-cloud        9a8b7c6d5e4f    -         1 day ago\n";
+        assert_eq!(parse_ollama_catalog(raw), vec!["llama3.2:3b"]);
+    }
+
+    #[test]
+    fn old_stock_codex_models_move_to_the_live_catalog_but_custom_lists_stay() {
+        let variant = |id: &str| Variant { id: id.into(), label: id.into(), args: vec![], resumes_session: false };
+        let mut stock = vec![def("codex", Some("codex"))];
+        stock[0].id = "codex".into();
+        stock[0].models = vec![variant("default"), variant("gpt-5-codex"), variant("gpt-5")];
+        merge_builtin(&mut stock);
+        assert!(stock[0].models_from.is_some());
+        assert_eq!(stock[0].models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["default"]);
+
+        let mut custom = vec![def("codex", Some("codex"))];
+        custom[0].id = "codex".into();
+        custom[0].models = vec![variant("default"), variant("my-finetune")];
+        merge_builtin(&mut custom);
+        assert!(custom[0].models_from.is_none());
+        assert_eq!(custom[0].models.len(), 2);
+    }
+
+    #[test]
+    fn ollama_and_freebuff_ship_model_price_labels() {
+        let mut user = vec![];
+        merge_builtin(&mut user);
+        let price = |id: &str| user.iter().find(|a| a.id == id).and_then(|a| a.model_pricing.clone()).unwrap();
+        assert_eq!(price("ollama").default.as_deref(), Some("free"));
+        assert_eq!(price("freebuff").default.as_deref(), Some("free"));
+        let cloud = price("ollama-cloud");
+        assert_eq!(cloud.default.as_deref(), Some("paid"));
+        assert!(cloud.free.iter().any(|m| m == "gpt-oss:120b"));
+        // An older stock config without labels receives them; an edited one keeps its own.
+        let mut old = vec![def("ollama", None)];
+        old[0].id = "ollama-cloud".into();
+        merge_builtin(&mut old);
+        assert!(old[0].model_pricing.is_some());
+        old[0].model_pricing = Some(ModelPricing { default: Some("free".into()), ..Default::default() });
+        merge_builtin(&mut old);
+        assert_eq!(old[0].model_pricing.as_ref().unwrap().default.as_deref(), Some("free"));
     }
 
     #[test]
