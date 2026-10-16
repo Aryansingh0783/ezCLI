@@ -213,7 +213,7 @@ pub fn extract_video_frames(video: &str, count: u32, workspace: Option<&str>) ->
 
     let duration: f64 = run_tool(
         &ffprobe,
-        &&strings(&["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", src_s.as_str()]),
+        &strings(&["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", src_s.as_str()]),
     )?
     .trim()
     .parse()

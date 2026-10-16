@@ -59,8 +59,29 @@ fn session_command(args: &SpawnArgs, child_path: OsString) -> CommandBuilder {
     // (including OpenCode) and prints a warning into the user's terminal.
     cmd.env_remove("NO_COLOR");
     cmd.env("FORCE_COLOR", "3");
+    // When ezCLI itself was started from inside a Claude Code session, these
+    // markers make a launched `claude` think it is a nested child of that
+    // session (no transcript saving, the host's session ids and messaging
+    // socket). ezCLI's tabs are independent sessions, so drop them. User
+    // configuration such as CLAUDE_CODE_USE_BEDROCK is left alone.
+    for var in NESTED_SESSION_VARS {
+        cmd.env_remove(var);
+    }
     cmd
 }
+
+const NESTED_SESSION_VARS: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_HOST_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_SSE_PORT",
+    "CLAUDE_PID",
+];
 
 impl SessionStore {
     pub fn new() -> Self {
