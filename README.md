@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A desktop-style window for Claude, Codex, OpenCode, Antigravity, Gemini CLI, Ollama and Freebuff, with a UI modeled on Freebuff.
+  A liquid-glass desktop window for Claude Code, Codex, OpenCode, Antigravity, Gemini CLI, Ollama and Freebuff.
 </p>
 
 ---
@@ -11,20 +11,32 @@
 ezCLI is not a harness. Each session spawns the real CLI in a real pseudo-terminal, so
 the agent's own text UI renders unchanged. Nothing is proxied, re-prompted, or rewritten.
 The window adds the parts a bare terminal lacks: tabs, an agent switcher, a file and diff
-browser, model, effort and mode flags you pick before launch, and images and videos
-you can paste or drop into the chat.
+browser with git actions, model, effort and mode flags you pick before launch, images and
+videos in the chat, and a compare mode that runs one prompt on several agents at once.
 
-![The ezCLI launcher: pick an agent, model, effort and mode, then describe the task](docs/screenshot-launcher.png)
+![The ezCLI launcher in the liquid glass style](docs/screenshot-launcher.png)
 
-![An OpenCode session with an image and a video attached in the composer](docs/screenshot-session.png)
+![Compare mode: one prompt running on three agents side by side](docs/screenshot-compare.png)
+
+![A session with an image and a video attached in the composer](docs/screenshot-session.png)
 
 ## Install
 
-The Windows installer lives on the [Releases page](https://github.com/Aryansingh0783/ezCLI/releases).
-Grab the latest `ezCLI_x.y.z_x64_en-US.msi`, double-click, done. The window opens with
-the agent CLIs already resolved from PATH.
+Download from the [Releases page](https://github.com/Aryansingh0783/ezCLI/releases/latest):
 
-The app writes its editable config to `~/.ezcli/agents.json` on first run.
+| Platform | File |
+| --- | --- |
+| Windows | `ezCLI_x.y.z_x64_en-US.msi` |
+| macOS (Apple silicon) | `ezCLI_x.y.z_aarch64.dmg` |
+| Linux | `ezCLI_x.y.z_amd64.deb` or `ezCLI_x.y.z_amd64.AppImage` |
+| VS Code | `ezcli-x.y.z.vsix`, then Extensions › … › Install from VSIX |
+
+The app writes its editable config to `~/.ezcli/agents.json` on first run. After that,
+ezCLI checks for new releases at startup and installs them with one click; an update is
+installed only when its download matches the SHA-256 published with the release.
+
+The macOS and Linux builds are new and less tested than Windows. PC control and voice
+typing are Windows-only for now.
 
 ## Free users and backend support
 
@@ -42,7 +54,7 @@ provider is free.
 | Backend | Free route | PC control | Install / setup |
 | --- | --- | --- | --- |
 | OpenCode | Yes. It includes key-free models and can also use connected providers or local Ollama. Its Model menu is refreshed from `opencode models`. | No | `npm install -g opencode-ai` |
-| Antigravity CLI | Yes, with a personal Google-account sign-in. It is the supported personal-Google route. | No | `irm https://antigravity.google/cli/install.ps1 \| iex` |
+| Antigravity CLI | Yes, with a personal Google-account sign-in. It is the supported personal-Google route. The Antigravity desktop app does not include this CLI. | No | `irm https://antigravity.google/cli/install.ps1 \| iex` |
 | Gemini CLI | Not through personal Google login. Use a Gemini API key, Vertex AI, or an enterprise configuration. | No | `npm install -g @google/gemini-cli` |
 | Ollama Local | Yes, after you choose a model that is already downloaded locally. The app detects coarse PC capacity to explain this route, but never pulls a model itself. | No | `irm https://ollama.com/install.ps1 \| iex` |
 | Ollama Cloud | Your signed-in Ollama account and its usage/plan limits apply. The Model pill reads Ollama's live public cloud catalog; it launches the matching Cloud CLI alias without a model download. | No | Install Ollama, then run `ollama signin` yourself |
@@ -72,6 +84,47 @@ an Ollama API key. It uses the signed-in local CLI only after you choose a live
 catalog entry.
 
 ## Current features
+
+### New in 2.0
+
+- **Compare agents.** Press `Ctrl+Alt+M`, pick up to six agents or models (or "All
+  ready agents"), and give one prompt. Each runs as its own CLI session, and the
+  window shows them side by side. "Send to all" sends every follow-up to the whole
+  group. Each session uses its own account and limits.
+- **Liquid glass.** Frosted panels over a slow aurora in your accent colour, with
+  small controls that refract what is behind them. Settings › Appearance switches
+  to Solid. Six accent colours.
+- **Command palette.** `Ctrl+Alt+P` searches every action, tab, folder and agent.
+- **Health check.** One screen with every CLI's version, path and sign-in state, and
+  the exact install command for anything missing. A provider's desktop app is not
+  its CLI; this screen says so.
+- **Updates.** ezCLI checks GitHub at startup and installs a new release with one
+  click after verifying its SHA-256.
+- **Prompt library.** Saved prompts with `{{variables}}` that are filled in before
+  insertion. `Ctrl+Alt+L`.
+- **Search past sessions.** Tab text is saved on this PC when a session ends, kept
+  for 30 days, and searchable with `Ctrl+Alt+F`. Turn it off in Settings.
+- **Export.** Save a session as Markdown or an HTML page (`Ctrl+Alt+E`).
+- **Git actions.** Stage, unstage, discard and commit from the Changes pane.
+  Discarding asks first.
+- **Usage-limit router.** When an agent says it is out of usage, a banner offers to
+  continue in another installed agent, free ones first, with a summary of your
+  recent requests.
+- **Notifications and tray.** A notification when a long task finishes in a tab you
+  are not looking at. Optionally keep running in the tray when the window closes.
+- **Per-folder defaults.** Each folder remembers the agent, model and mode it last
+  launched with.
+- **More windows.** Open a new window, or right-click a tab and move it, still
+  running, into its own window.
+- **Remote view.** Watch your sessions from a phone on the same Wi-Fi through a
+  private link and QR code. Typing from the phone is a separate switch.
+- **Voice typing.** `Ctrl+Alt+D` opens Windows voice typing in the message box.
+- **Web chat (experimental).** For plans with no CLI access, such as Claude Free,
+  open the provider's own site in a separate window with no ezCLI permissions.
+- **VS Code extension.** Start agents from your ezCLI setup in VS Code terminals,
+  compare them side by side, or open a folder in the app.
+
+### Earlier
 
 - **Sessions survive restarts.** Every open tab comes back as a "parked" tab on next
   launch, with a Resume button that relaunches the same agent, model, mode and folder.
@@ -154,6 +207,12 @@ The window claims only `Ctrl+Alt` combinations, so the agent's own terminal shor
 | `Enter` | Send the composer |
 | `Shift+Enter` | New line in the composer |
 | `Ctrl+V` (in the composer) | Attach a copied image or screenshot |
+| `Ctrl+Alt+P` | Command palette |
+| `Ctrl+Alt+M` | Compare agents |
+| `Ctrl+Alt+L` | Prompt library |
+| `Ctrl+Alt+F` | Search past sessions |
+| `Ctrl+Alt+E` | Export the session as Markdown |
+| `Ctrl+Alt+D` | Voice typing (Windows) |
 
 ## Configuring agents
 
@@ -273,6 +332,12 @@ src-tauri/
     files_api.rs        directory listing, 256KB text preview, binary heuristic
     git_api.rs          git status / diff via std::process
     media.rs            pasted images, workspace staging, ffmpeg video frames
+    features.rs         commands for the v2 features below
+    health.rs           CLI and tool versions, sign-in presence
+    transcripts.rs      saved session text and search
+    updater.rs          GitHub release check, SHA-256 verified install
+    remote.rs           token-gated remote view server (+ remote_page.html)
+    tray.rs             system tray icon
     backends.rs         installed-CLI and sign-in detection for onboarding
     capture.rs          primary-screen capture for PC control
     mcp_server.rs       loopback MCP tool server for PC control
@@ -283,8 +348,11 @@ public/                 the frontend, served from inside the Tauri window
   styles.css            Freebuff design tokens and components
   app.js                calls backend via window.__TAURI__.core.invoke
                         + window.__TAURI__.event.listen
+  features/             one script per v2 feature, plugged into app.js hooks;
+                        glass.css / glass.js hold the liquid glass style
   vendor/               xterm.js + addons, vendored (no bundler)
 
+vscode-ezcli/           the VS Code extension (plain JavaScript, no build step)
 agents.json             shipped default; copied to ~/.ezcli/agents.json on first run
 ```
 
@@ -306,10 +374,13 @@ there is no Node server or WebSocket relay.
 
 ## Design source
 
-Colors, radii, type scale, and spacing come from the live Freebuff dark shell and sit as
-tokens at the top of `public/styles.css`: background `#000`, sidebar `#1c1d1c`, border
-`#2f322f`, text `#dedfdd`, brand `#b5cea5`. The frontend passes the Impeccable design
-detector with no findings.
+The base tokens (radii, type scale, spacing, the lime accent) come from the Freebuff
+dark shell and sit at the top of `public/styles.css`. The liquid glass style in
+`public/features/glass.css` layers translucent surfaces, a backdrop blur, and an SVG
+displacement filter over those tokens, so every accent colour and both themes apply to
+it. The spotlight cards and the glowing border on the home box are vanilla
+re-implementations of ideas from React Bits and 21st.dev; no React or bundler is added.
+The frontend passes the Impeccable design detector with no findings.
 
 ## License
 

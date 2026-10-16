@@ -9,6 +9,14 @@ How to install ezCLI, launch sessions, and use every part of the window.
 - [Start a session](#start-a-session)
 - [Work in a session](#work-in-a-session)
 - [Images and videos](#images-and-videos)
+- [Compare agents](#compare-agents)
+- [Command palette and prompts](#command-palette-and-prompts)
+- [Past sessions and export](#past-sessions-and-export)
+- [Health check and updates](#health-check-and-updates)
+- [Windows, tray and notifications](#windows-tray-and-notifications)
+- [Remote view](#remote-view)
+- [Web chat](#web-chat)
+- [VS Code extension](#vs-code-extension)
 - [Files pane](#files-pane)
 - [Changes pane](#changes-pane)
 - [Switch the working folder](#switch-the-working-folder)
@@ -123,6 +131,106 @@ own `.gitignore`, so git never picks it up, and you can delete it at any time.
 Pasted images and frames for the other agents live in `~/.ezcli/attachments`
 and are cleared after a week.
 
+## Compare agents
+
+Press `Ctrl+Alt+M`, or the two-column button in the home box.
+
+1. Type a prompt, or leave it empty to type later.
+2. Add agents with the buttons under the list. Add the same agent twice to compare two
+   of its models, and pick each model from the row's menu. **All ready agents** fills
+   the list with every installed agent, up to six.
+3. Press **Start**.
+
+Each pick launches as its own session, with its own CLI process, account and usage
+limits. While one of them is open, the terminal area shows the whole group side by side;
+the outlined pane is the one your keyboard goes to. With **Send to all** on, every
+message from the composer goes to all running sessions in the group. Attachments go to
+the focused session only. **Show one at a time** switches back to normal tabs.
+
+## Command palette and prompts
+
+`Ctrl+Alt+P`, or the magnifier in the titlebar, opens the command palette: every
+action, open tab, folder and installed agent in one searchable list. Type a few letters
+of any word and press `Enter`.
+
+`Ctrl+Alt+L` opens the prompt library. It starts with a few useful prompts. Write
+`{{name}}` in a prompt where a value should be filled in; when you use it, ezCLI asks
+for each value and puts the finished text in the message box for you to check. Nothing
+is sent automatically. **Manage prompts** adds, edits and deletes them, and **Save
+current text as a prompt** turns whatever is in the message box into a new one.
+
+## Past sessions and export
+
+When a session exits or its tab closes, ezCLI saves the terminal text to
+`~/.ezcli/transcripts` on this PC. Saved text is kept for 30 days. `Ctrl+Alt+F` searches
+all of it; open a result to read the whole session, copy it, or delete it. Settings ›
+Desktop turns saving off, and **Delete all saved sessions** removes everything.
+
+`Ctrl+Alt+E`, or **Export** in the session head, saves the current tab as a Markdown
+file. The Export menu also offers an HTML page that opens in any browser. Both contain
+the terminal's plain text, without colours.
+
+## Health check and updates
+
+Settings › Desktop › **Health check** lists every agent with its version, where ezCLI
+found it, and whether it looks signed in. Anything missing shows its install command
+with a Copy button. ezCLI checks sign-in by looking for the CLI's own auth file or API
+key variable; it never reads them. Where it cannot tell (Ollama Cloud), it says so.
+
+At startup ezCLI asks GitHub whether a newer release exists; an **Update** badge
+appears in the titlebar if one does. **Download and install** fetches the installer,
+checks it against the SHA-256 published with the release, starts it, and closes ezCLI.
+If the release has no checksum, ezCLI opens the release page instead. The check can be
+turned off in the Updates sheet.
+
+## Windows, tray and notifications
+
+- **New window**: from the command palette or the tray menu. Each window has its own tabs.
+- **Move a tab**: right-click a running tab › **Move to new window**. The CLI keeps
+  running; the new window replays its recent output and takes over.
+- **Tray**: ezCLI has a tray icon with Show, New window and Quit. Turn on **Keep running
+  in the tray** in Settings to hide the window on close instead of quitting.
+- **Notifications**: when a tab you are not looking at finishes a task that ran for more
+  than 15 seconds, Windows shows a notification. Turn it off in Settings.
+- **Per-folder defaults**: each folder remembers the agent, model and mode it last
+  launched with, and selects them when you switch to it.
+- **Voice typing**: `Ctrl+Alt+D` or the microphone button opens Windows voice typing in
+  the message box. Windows does the recognition.
+
+## Remote view
+
+Settings › Desktop › **Remote view** › **Turn on**. ezCLI shows a QR code and a link;
+open it on a phone or tablet on the same Wi-Fi to watch this window's sessions live.
+The link contains a long random code, so only people you give it to can open it.
+
+The view is read-only. **Allow typing from the phone** adds a message box and a Ctrl+C
+button; ezCLI asks you to confirm first, because typing into a CLI can edit files and
+run commands. The connection is plain HTTP on your local network. **Turn off** ends the
+link immediately, and the next one is different. Windows may ask once whether ezCLI
+can accept network connections.
+
+## Web chat
+
+For plans with no CLI access, such as Claude Free, **Web chat** under the agent list
+opens the provider's own website (Claude, ChatGPT, Gemini or Copilot) in a separate
+window. You sign in there yourself. That window has no ezCLI permissions, and ezCLI does
+not read or script anything in it. This is experimental and is not a session: it has no
+tab, history or compare support.
+
+## VS Code extension
+
+Install `ezcli-x.y.z.vsix` from the release page (Extensions › … › Install from VSIX).
+It reads the same `~/.ezcli/agents.json`, so open the ezCLI app once first. Then, from
+the Command Palette:
+
+- **ezCLI: Start an agent in a terminal** picks an agent and model and starts it in a new
+  terminal in your workspace.
+- **ezCLI: Compare agents side by side** opens two to four agents in editor-area terminals.
+- **ezCLI: Open this folder in the ezCLI app** opens the folder in the app, or in the copy
+  that is already running.
+
+The first two are also in the Explorer's right-click menu for folders.
+
 ## Files pane
 
 The **Files** tab browses the session's working folder. Click a folder to go in,
@@ -134,7 +242,14 @@ dumping bytes.
 
 The **Changes** tab runs `git` in the session folder. It shows the current branch,
 every file in the working tree that differs from the last commit, and a colored diff
-when you pick a file. New untracked files show as an all-added diff.
+when you pick a file. New untracked files show as an all-added diff, and a new folder
+shows as one row with its file count.
+
+Hover a row for its actions: **+** stages it, **−** unstages it, and the curved arrow
+discards it. Discarding asks first, because it cannot be undone from ezCLI: a tracked
+file goes back to its last commit, and a new file is deleted. The box above the list
+commits what is staged, or every tracked change when nothing is staged. **Stage all**
+stages everything at once.
 
 If the folder is not a git repository, or `git` is not installed, the pane says so
 instead of failing silently.
@@ -237,7 +352,7 @@ The MSI lands in `src-tauri/target/release/bundle/msi/`.
 
 ## Troubleshooting
 
-**An agent card is disabled.** The `command` is not on PATH. ezCLI runs command line
+**An agent card is disabled.** Open the Health check (Settings › Desktop) to see why. The `command` is not on PATH. ezCLI runs command line
 tools, so a provider's desktop app (Claude Desktop, the ChatGPT app) does not count.
 Install the CLI (for example `npm install -g @anthropic-ai/claude-code` or
 `npm install -g @openai/codex`), then click **Reload agents** in Settings. ezCLI reads
