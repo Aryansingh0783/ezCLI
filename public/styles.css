@@ -1693,11 +1693,63 @@ body.resizing-pane .xterm {
 .sheet.wide {
   width: min(640px, calc(100vw - 32px));
 }
-.onboarding-sheet {
-  width: min(620px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
+/* First-run setup. The dialog is modeless on purpose (the model menu and the
+   rest of the window stay usable), and a modeless <dialog> is otherwise laid
+   out in normal page flow, below the app, which scrolled the whole window.
+   Pin it to the viewport instead and keep the buttons visible: only the
+   middle part scrolls. */
+.onboarding-sheet[open] {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(700px, calc(100vw - 24px));
+  height: fit-content;
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+}
+.onboarding-sheet > h2 {
+  margin: 0;
+  padding: 20px 22px 6px;
+}
+.onboarding-sheet > #onboardingSummary {
+  margin: 0;
+  padding: 0 22px 12px;
+}
+.onboarding-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 0 22px 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.onboarding-actions {
+  flex: none;
+  margin: 0;
+  padding: 12px 22px 16px;
+  border-top: 1px solid var(--border);
+}
+.backend-found {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.backend-found > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.backend-found > summary::before {
+  content: '›';
+  display: inline-block;
+  width: 12px;
+  transition: transform 0.15s ease;
+}
+.backend-found[open] > summary::before {
+  transform: rotate(90deg);
 }
 .backend-facts {
   display: flex;
@@ -1714,18 +1766,21 @@ body.resizing-pane .xterm {
   color: var(--muted);
   font-size: 11.5px;
 }
+/* Two compact columns, installed agents first, so the whole list fits a
+   small window without a long scroll. */
 .backend-choices {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 6px;
-  margin: 16px 0;
+  margin: 8px 0 12px;
 }
 .backend-choice {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 44px;
-  padding: 9px 11px;
+  gap: 10px;
+  min-height: 38px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-2);

@@ -249,7 +249,11 @@
     <dialog class="sheet onboarding-sheet" id="onboardingSheet" aria-labelledby="onboardingTitle">
       <h2 id="onboardingTitle">Start with a working CLI</h2>
       <p class="note" id="onboardingSummary"></p>
-      <ul class="backend-facts" id="backendFacts" aria-label="Detected setup"></ul>
+      <div class="onboarding-scroll">
+      <details class="backend-found">
+        <summary id="backendFoundSummary">What ezCLI found</summary>
+        <ul class="backend-facts" id="backendFacts" aria-label="Detected setup"></ul>
+      </details>
       <div class="backend-choices" id="backendChoices" role="radiogroup" aria-label="Choose default backend"></div>
       <section class="onboarding-config" id="onboardingConfig" aria-label="Selected session configuration" hidden>
         <div class="onboarding-config-head"><span>Selected session</span><strong id="onboardingAgentLabel"></strong></div>
@@ -268,10 +272,11 @@
       </section>
       <div class="free-installs" id="freeInstalls" hidden></div>
       <p class="note onboarding-note">ezCLI only opens local CLIs. It does not send prompts to a model itself, and you can switch backends for any session.</p>
+      </div>
       <div class="row-actions onboarding-actions">
         <button class="btn quiet" type="button" id="onboardingSkip">I’ll explore on my own</button>
         <span class="grow"></span>
-        <button class="btn primary" type="button" id="onboardingContinue">Use selected backend</button>
+        <button class="btn primary" type="button" id="onboardingContinue" autofocus>Use selected backend</button>
       </div>
     </dialog>
 
@@ -311,6 +316,7 @@
         <label class="toggle-row"><input type="checkbox" id="prefNotifications" /> <span>Notify me when a long task finishes in a tab I'm not looking at</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefCloseToTray" /> <span>Keep running in the tray when I close the window</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefProjectDefaults" /> <span>Remember the agent, model and mode for each folder</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefShowPaid" /> <span>Show paid models that use my own API key (hidden by default)</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefTranscripts" /> <span>Save session text on this PC so past sessions can be searched</span></label>
         <div class="row-actions wrap">
           <button class="btn" id="openHealth">Health check</button>
