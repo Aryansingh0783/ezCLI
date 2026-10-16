@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/windows-schema.json",
   "identifier": "default",
-  "description": "Default permissions for the main window",
+  "description": "Permissions for ezCLI's own windows. Provider web-chat windows (web-*) are not listed, so they get no ezCLI permissions.",
   "windows": [
-    "main"
+    "main",
+    "win-*"
   ],
   "permissions": [
     "core:default",
@@ -14,8 +15,13 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "core:window:allow-destroy",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
     "core:webview:allow-set-webview-zoom",
     "dialog:allow-open",
+    "dialog:allow-save",
     "dialog:allow-ask",
     "opener:default",
     "opener:allow-open-url"

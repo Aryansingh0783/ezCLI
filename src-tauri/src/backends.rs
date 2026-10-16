@@ -52,7 +52,7 @@ fn home() -> Option<PathBuf> {
 /// Heuristic: does a Claude sign-in exist? Claude Code can keep credentials
 /// under ~/.claude or account metadata in ~/.claude.json. We only check that
 /// one of those files exists, never its contents.
-fn claude_signed_in() -> bool {
+pub(crate) fn claude_signed_in() -> bool {
     let Some(h) = home() else { return false };
     let base = h.join(".claude");
     [".credentials.json", "credentials.json"]
@@ -62,7 +62,7 @@ fn claude_signed_in() -> bool {
 }
 
 /// Presence of Codex's auth file. Contents are never read.
-fn codex_signed_in() -> bool {
+pub(crate) fn codex_signed_in() -> bool {
     home().is_some_and(|h| h.join(".codex").join("auth.json").is_file())
 }
 

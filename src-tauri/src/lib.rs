@@ -6,6 +6,8 @@
 mod agents;
 mod backends;
 mod capture;
+mod features;
+mod health;
 mod files_api;
 mod git_api;
 mod import;
@@ -14,19 +16,23 @@ mod media;
 mod open_in;
 mod pc_control;
 mod pty_mgr;
+mod remote;
 mod system_profile;
+mod transcripts;
+mod tray;
+mod updater;
 
 use agents::{AgentDef, AgentOut};
 use pty_mgr::{SessionStore, SpawnArgs};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct AppState {
     agents: Mutex<Vec<AgentDef>>,
     agents_path: PathBuf,
-    sessions: SessionStore,
+    sessions: Arc<SessionStore>,
     imports: import::ImportStore,
     pc_control: pc_control::PcControlStore,
     /// Model catalogs fetched from agents that declare `modelsFrom`, keyed by
@@ -587,20 +593,37 @@ pub fn run() {
     });
 
     tauri::Builder::default()
+        // A second launch (for example "Open in ezCLI" from VS Code) hands its
+        // folder to the running app instead of starting another copy.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+            if let Some(folder) = features::folder_arg(argv.into_iter().skip(1)) {
+                let _ = app.emit_to("main", "open-folder", folder);
+            }
+        }))
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             agents: Mutex::new(loaded),
             agents_path,
-            sessions: SessionStore::new(),
+            sessions: Arc::new(SessionStore::new()),
             imports: import::ImportStore::default(),
             pc_control: pc_control::PcControlStore::default(),
             catalogs: Mutex::new(Default::default()),
         })
+        .manage(remote::Remote::default())
+        .manage(features::Handoffs::default())
         .setup(|app| {
             // Stale per-session config files from a crashed run hold dead tokens.
             let _ = std::fs::remove_dir_all(mcp_config_dir());
             std::thread::spawn(media::prune_old_attachments);
+            std::thread::spawn(transcripts::prune);
+            tray::install(app)?;
             let handle = app.handle().clone();
             let server = mcp_server::McpServer::start(mcp_server::Hooks {
                 allowed: Box::new(move |pty_id| pc_control_allowed(&handle.state::<AppState>(), pty_id)),
@@ -631,7 +654,34 @@ pub fn run() {
             running_sessions,
             save_pasted_image,
             stage_attachment,
-            extract_video_frames
+            extract_video_frames,
+            features::write_text_file,
+            features::save_transcript,
+            features::search_transcripts,
+            features::read_transcript,
+            features::delete_transcript,
+            features::clear_transcripts,
+            features::health_report,
+            features::git_stage,
+            features::git_unstage,
+            features::git_discard,
+            features::git_commit,
+            features::check_update,
+            features::download_update,
+            features::install_update,
+            features::remote_status,
+            features::remote_start,
+            features::remote_stop,
+            features::remote_allow_input,
+            features::remote_set_sessions,
+            features::pty_tail,
+            features::stash_handoff,
+            features::take_handoff,
+            features::open_window,
+            features::open_web_chat,
+            features::notify,
+            features::dictate,
+            features::launch_folder
         ])
         .run(tauri::generate_context!())
         .expect("ezCLI failed to launch");

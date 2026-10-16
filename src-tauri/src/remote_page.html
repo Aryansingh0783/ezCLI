@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#0a0a0b" />
+    <title>ezCLI remote</title>
+    <link rel="stylesheet" href="xterm.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0e0e0e;
+        --chrome: #0a0a0b;
+        --surface: #151517;
+        --surface-2: #1b1b1e;
+        --border: #2a2a2e;
+        --text: #e7e7e8;
+        --muted: #9a9aa0;
+        --faint: #6a6a70;
+        --brand: #7cff3f;
+        --brand-ink: #0c0d0f;
+        --danger: #d56a6a;
+        --term-bg: #111318;
+        --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        --font-mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.45 var(--font-sans);
+        -webkit-tap-highlight-color: transparent;
+      }
+      ::selection { background: rgb(124 255 63 / 25%); }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+        background: var(--chrome);
+        border-bottom: 1px solid var(--border);
+      }
+      .mark { display: inline-flex; gap: 3px; align-items: flex-end; height: 16px; }
+      .mark i { width: 4px; border-radius: 2px; background: var(--brand); }
+      .mark i:first-child { height: 9px; }
+      .mark i:last-child { height: 16px; }
+      header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+      header .state { margin-left: auto; color: var(--faint); font-size: 12.5px; }
+      nav {
+        display: flex;
+        gap: 6px;
+        padding: 10px 14px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        border-bottom: 1px solid var(--border);
+      }
+      nav button {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        max-width: 220px;
+        padding: 7px 12px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--muted);
+        font: inherit;
+        font-size: 13.5px;
+      }
+      nav button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      nav button[aria-pressed='true'] { color: var(--text); border-color: rgb(124 255 63 / 45%); background: var(--surface-2); }
+      nav .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+      nav .dot.live { background: var(--brand); }
+      main { position: relative; flex: 1; min-height: 0; background: var(--term-bg); }
+      #term { position: absolute; inset: 6px 4px; }
+      .empty {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        padding: 24px;
+        color: var(--muted);
+        text-align: center;
+      }
+      .empty strong { display: block; color: var(--text); font-size: 16px; margin-bottom: 4px; }
+      form {
+        display: flex;
+        gap: 8px;
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+        background: var(--chrome);
+        border-top: 1px solid var(--border);
+      }
+      form[hidden] { display: none; }
+      form input {
+        flex: 1;
+        min-width: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+        caret-color: var(--brand);
+      }
+      form input:focus { outline: none; border-color: rgb(124 255 63 / 55%); }
+      form button {
+        padding: 0 14px;
+        border: 0;
+        border-radius: 9px;
+        background: var(--brand);
+        color: var(--brand-ink);
+        font: inherit;
+        font-weight: 600;
+      }
+      form button.quiet { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+      .readonly {
+        padding: 9px 14px calc(9px + env(safe-area-inset-bottom));
+        color: var(--faint);
+        font-size: 12.5px;
+        background: var(--chrome);
+        border-top: 1px solid var(--border);
+      }
+      .readonly[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="mark" aria-hidden="true"><i></i><i></i></span>
+      <h1>ezCLI</h1>
+      <span class="state" id="state">Connecting…</span>
+    </header>
+    <nav id="tabs" aria-label="Sessions"></nav>
+    <main>
+      <div id="term"></div>
+      <div class="empty" id="empty"><div><strong>No sessions yet</strong>Start a session in ezCLI on your computer and it appears here.</div></div>
+    </main>
+    <form id="input" hidden autocomplete="off">
+      <input id="msg" placeholder="Message the CLI" aria-label="Message the CLI" enterkeyhint="send" />
+      <button class="quiet" type="button" id="ctrlc" aria-label="Send Ctrl+C">Ctrl+C</button>
+      <button type="submit">Send</button>
+    </form>
+    <p class="readonly" id="readonly">View only. Turn on typing in ezCLI's Remote view settings to send messages.</p>
+    <script src="xterm.js"></script>
+    <script>
+      'use strict';
+      const $ = (id) => document.getElementById(id);
+      const term = new Terminal({
+        fontFamily: "'JetBrains Mono', 'Cascadia Code', ui-monospace, Menlo, Consolas, monospace",
+        fontSize: 11,
+        scrollback: 5000,
+        disableStdin: true,
+        convertEol: false,
+        theme: { background: '#111318', foreground: '#e7e7e8', cursor: '#7cff3f', selectionBackground: 'rgba(124,255,63,0.2)' }
+      });
+      term.open($('term'));
+      let current = null;
+      let seq = 0;
+      let sessions = [];
+      let allowInput = false;
+
+      // Cols from the phone width; the CLI keeps its own size, so long lines wrap.
+      function fit() {
+        const cell = term._core && term._core._renderService && term._core._renderService.dimensions;
+        const w = cell && cell.css && cell.css.cell && cell.css.cell.width;
+        const h = cell && cell.css && cell.css.cell && cell.css.cell.height;
+        const box = $('term').getBoundingClientRect();
+        if (w && h) term.resize(Math.max(20, Math.floor(box.width / w)), Math.max(8, Math.floor(box.height / h)));
+      }
+      addEventListener('resize', fit);
+
+      function renderTabs() {
+        const nav = $('tabs');
+        nav.innerHTML = '';
+        for (const s of sessions) {
+          const b = document.createElement('button');
+          b.setAttribute('aria-pressed', String(s.id === current));
+          const dot = document.createElement('i');
+          dot.className = 'dot' + (s.alive ? ' live' : '');
+          const label = document.createElement('span');
+          label.textContent = s.title || s.agent;
+          b.append(dot, label);
+          b.onclick = () => select(s.id);
+          nav.append(b);
+        }
+        $('empty').hidden = sessions.length > 0;
+        $('input').hidden = !(allowInput && current);
+        $('readonly').hidden = allowInput || !current;
+      }
+
+      function select(id) {
+        if (id === current) return;
+        current = id;
+        seq = 0;
+        term.reset();
+        renderTabs();
+        poll();
+      }
+
+      async function refreshSessions() {
+        try {
+          const r = await fetch('api/sessions', { cache: 'no-store' });
+          if (!r.ok) throw new Error(r.status);
+          const data = await r.json();
+          sessions = data.sessions;
+          allowInput = data.allowInput;
+          if (!sessions.some((s) => s.id === current)) {
+            current = null;
+            term.reset();
+            if (sessions[0]) select(sessions[0].id);
+          }
+          $('state').textContent = 'Connected';
+        } catch {
+          $('state').textContent = 'Reconnecting…';
+        }
+        renderTabs();
+      }
+
+      let polling = false;
+      async function poll() {
+        if (polling || !current) return;
+        polling = true;
+        const id = current;
+        try {
+          const r = await fetch(`api/output?id=${encodeURIComponent(id)}&since=${seq}`, { cache: 'no-store' });
+          if (r.ok && id === current) {
+            const data = await r.json();
+            if (data.data) term.write(data.data);
+            seq = data.seq;
+          }
+        } catch {
+          /* the next tick retries */
+        }
+        polling = false;
+      }
+
+      async function send(data) {
+        if (!current) return;
+        const r = await fetch('api/input', { method: 'POST', body: JSON.stringify({ id: current, data }) });
+        if (r.status === 403) {
+          allowInput = false;
+          renderTabs();
+        }
+      }
+      $('input').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = $('msg').value;
+        if (!text) return;
+        $('msg').value = '';
+        send(text).then(() => setTimeout(() => send('\r'), 60));
+      });
+      $('ctrlc').addEventListener('click', () => send('\x03'));
+
+      setTimeout(fit, 50);
+      refreshSessions();
+      setInterval(refreshSessions, 3000);
+      setInterval(poll, 600);
+    </script>
+  </body>
+</html>

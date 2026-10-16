@@ -204,6 +204,97 @@ pub fn git_diff(cwd: &str, file: &str, untracked: bool) -> Result<DiffOut> {
     Ok(DiffOut { diff: out, note })
 }
 
+/// A repo-relative path from the Changes list. Absolute paths, parent
+/// segments and option-looking names are refused so an action can only
+/// touch a file inside this repository.
+fn repo_path(file: &str) -> Result<&str> {
+    let f = file.trim();
+    let bad = f.is_empty()
+        || f.starts_with('-')
+        || f.starts_with('/')
+        || f.starts_with('\\')
+        || f.contains(':')
+        || f.split(['/', '\\']).any(|part| part == "..");
+    if bad {
+        return Err(anyhow!("not a path inside this repository"));
+    }
+    Ok(f)
+}
+
+fn root_of(cwd: &str) -> Result<String> {
+    Ok(git(cwd, &["rev-parse", "--show-toplevel"])?.trim().to_string())
+}
+
+/// `git add` one path (a file or an untracked folder).
+pub fn stage(cwd: &str, file: &str) -> Result<()> {
+    let root = root_of(cwd)?;
+    git(&root, &["add", "--", repo_path(file)?])?;
+    Ok(())
+}
+
+/// Take one path out of the index, keeping the working-tree edits.
+pub fn unstage(cwd: &str, file: &str) -> Result<()> {
+    let root = root_of(cwd)?;
+    let f = repo_path(file)?;
+    // `restore --staged` needs a HEAD; a repo with no commits yet uses the
+    // index-only removal instead.
+    if git(&root, &["restore", "--staged", "--", f]).is_err() {
+        git(&root, &["rm", "--cached", "-r", "-q", "--", f])?;
+    }
+    Ok(())
+}
+
+/// Throw away the changes to one path. Tracked files return to HEAD;
+/// untracked files and folders are deleted. The UI confirms first.
+pub fn discard(cwd: &str, file: &str, untracked: bool) -> Result<()> {
+    let root = root_of(cwd)?;
+    let f = repo_path(file)?;
+    if untracked {
+        git(&root, &["clean", "-f", "-d", "-q", "--", f])?;
+    } else {
+        git(&root, &["restore", "--staged", "--worktree", "--source=HEAD", "--", f])?;
+    }
+    Ok(())
+}
+
+/// Commit what is staged, or every tracked change when `all` is set.
+/// Returns the new commit's short hash and subject.
+pub fn commit(cwd: &str, message: &str, all: bool) -> Result<String> {
+    let msg = message.trim();
+    if msg.is_empty() {
+        return Err(anyhow!("Write a commit message first."));
+    }
+    let root = root_of(cwd)?;
+    // `git commit` reports "nothing to commit" on stdout, which `git()` does
+    // not surface, so check first. `diff --quiet` exits 1 when there is a diff.
+    let nothing = if all {
+        git(&root, &["diff", "HEAD", "--quiet"]).is_ok()
+    } else {
+        git(&root, &["diff", "--cached", "--quiet"]).is_ok()
+    };
+    if nothing {
+        return Err(anyhow!(if all {
+            "There are no changes to tracked files to commit."
+        } else {
+            "Nothing is staged. Stage files first, or commit all changes."
+        }));
+    }
+    let mut args = vec!["commit", "-q"];
+    if all {
+        args.push("-a");
+    }
+    args.extend(["-m", msg]);
+    git(&root, &args).map_err(|e| {
+        let text = e.to_string();
+        if text.contains("Please tell me who you are") || text.contains("user.email") || text.contains("identity") {
+            anyhow!("git needs your name and email first: git config --global user.name and user.email.")
+        } else {
+            e
+        }
+    })?;
+    Ok(git(&root, &["log", "-1", "--format=%h %s"])?.trim().to_string())
+}
+
 /// Count files under a folder, stopping at `cap` so a huge tree stays cheap.
 fn walk_count(dir: &std::path::Path, cap: usize) -> usize {
     let mut n = 0;
@@ -249,6 +340,46 @@ mod tests {
         let mut files = parse_porcelain(" M src/my file.rs\0");
         apply_numstat(&mut files, "3\t1\tsrc/my file.rs\0-\t-\tlogo.png\0");
         assert_eq!((files[0].added, files[0].removed), (Some(3), Some(1)));
+    }
+
+    #[test]
+    fn action_paths_stay_inside_the_repo() {
+        assert!(repo_path("src/my file.rs").is_ok());
+        assert!(repo_path("new folder/").is_ok());
+        for bad in ["", "-rf", "../x", "a/../../x", "C:\\x", "/etc/passwd", "\\\\server\\x"] {
+            assert!(repo_path(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn real_repo_stage_commit_discard_cycle() {
+        let dir = std::env::temp_dir().join(format!("ezcli git actions {}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let d = dir.to_string_lossy().into_owned();
+        if git(&d, &["init", "-q"]).is_err() {
+            return;
+        }
+        git(&d, &["config", "user.email", "test@example.com"]).unwrap();
+        git(&d, &["config", "user.name", "ezCLI test"]).unwrap();
+        std::fs::write(dir.join("a file.txt"), "one\n").unwrap();
+        stage(&d, "a file.txt").unwrap();
+        unstage(&d, "a file.txt").unwrap(); // no HEAD yet: index-only path
+        assert!(commit(&d, "first", false).is_err(), "nothing staged");
+        stage(&d, "a file.txt").unwrap();
+        let head = commit(&d, "first", false).unwrap();
+        assert!(head.ends_with(" first"), "{head}");
+        std::fs::write(dir.join("a file.txt"), "two\n").unwrap();
+        stage(&d, "a file.txt").unwrap();
+        unstage(&d, "a file.txt").unwrap();
+        discard(&d, "a file.txt", false).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a file.txt")).unwrap().trim(), "one");
+        std::fs::write(dir.join("a file.txt"), "three\n").unwrap();
+        assert!(commit(&d, "all", true).unwrap().ends_with(" all"));
+        std::fs::write(dir.join("scratch.txt"), "x").unwrap();
+        discard(&d, "scratch.txt", true).unwrap();
+        assert!(!dir.join("scratch.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

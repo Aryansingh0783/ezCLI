@@ -217,15 +217,15 @@ fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-struct Request {
-    method: String,
-    path: String,
+pub(crate) struct Request {
+    pub(crate) method: String,
+    pub(crate) path: String,
     headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    pub(crate) body: Vec<u8>,
 }
 
 impl Request {
-    fn header(&self, name: &str) -> Option<&str> {
+    pub(crate) fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case(name))
@@ -233,7 +233,7 @@ impl Request {
     }
 }
 
-fn read_request(stream: &TcpStream) -> Result<Request> {
+pub(crate) fn read_request(stream: &TcpStream) -> Result<Request> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     let mut header_bytes = 0;
@@ -274,7 +274,7 @@ fn read_request(stream: &TcpStream) -> Result<Request> {
     Ok(Request { method, path, headers, body })
 }
 
-fn http(status: u16, content_type: &str, body: Vec<u8>, extra: &[(&str, &str)]) -> Vec<u8> {
+pub(crate) fn http(status: u16, content_type: &str, body: Vec<u8>, extra: &[(&str, &str)]) -> Vec<u8> {
     let reason = match status {
         200 => "OK",
         202 => "Accepted",

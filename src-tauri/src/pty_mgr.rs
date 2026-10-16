@@ -20,6 +20,36 @@ pub struct Session {
     killer: Box<dyn ChildKiller + Send + Sync>,
     /// Cleared by the wait thread once the child exits.
     alive: Arc<AtomicBool>,
+    /// Recent output, for the remote view and for moving a tab to a new window.
+    tail: Arc<Mutex<Tail>>,
+}
+
+/// The last `TAIL_BYTES` of a session's output plus a running byte count.
+/// `seq` only grows, so a reader asks "what came after seq N" and gets either
+/// the missing bytes or, if it fell too far behind, everything still held.
+#[derive(Default)]
+pub struct Tail {
+    buf: std::collections::VecDeque<u8>,
+    seq: u64,
+}
+
+pub const TAIL_BYTES: usize = 256 * 1024;
+
+impl Tail {
+    pub fn push(&mut self, bytes: &[u8]) {
+        self.seq += bytes.len() as u64;
+        self.buf.extend(bytes);
+        let excess = self.buf.len().saturating_sub(TAIL_BYTES);
+        self.buf.drain(..excess);
+    }
+
+    /// Bytes after `since`, and the new sequence number to ask from next.
+    pub fn since(&self, since: u64) -> (u64, Vec<u8>) {
+        let start_seq = self.seq - self.buf.len() as u64;
+        let from = since.clamp(start_seq, self.seq);
+        let skip = (from - start_seq) as usize;
+        (self.seq, self.buf.iter().skip(skip).copied().collect())
+    }
 }
 
 #[derive(Default)]
@@ -127,12 +157,17 @@ impl SessionStore {
         // and only touches bytes that would be invalid UTF-8 anyway.
         let id_r = args.id.clone();
         let app_r = app.clone();
+        let tail = Arc::new(Mutex::new(Tail::default()));
+        let tail_r = tail.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 8192];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
+                        if let Ok(mut t) = tail_r.lock() {
+                            t.push(&buf[..n]);
+                        }
                         let s = String::from_utf8_lossy(&buf[..n]).into_owned();
                         if app_r.emit(&format!("pty-data:{}", id_r), s).is_err() {
                             break;
@@ -161,6 +196,7 @@ impl SessionStore {
                 writer,
                 killer,
                 alive,
+                tail,
             })),
         );
         Ok(pid)
@@ -174,6 +210,17 @@ impl SessionStore {
             .get(id)
             .map(|e| e.value().lock().map(|s| s.alive.load(Ordering::SeqCst)).unwrap_or(false))
             .unwrap_or(false)
+    }
+
+    /// Output after `since` (see `Tail::since`), lossily decoded. A chunk can
+    /// start mid-UTF-8 sequence; the replacement character is acceptable for
+    /// a viewer, and ANSI escapes are 7-bit so they survive intact.
+    pub fn tail(&self, id: &str, since: u64) -> Option<(u64, String)> {
+        let entry = self.sessions.get(id)?;
+        let tail = entry.lock().ok()?.tail.clone();
+        let t = tail.lock().ok()?;
+        let (seq, bytes) = t.since(since);
+        Some((seq, String::from_utf8_lossy(&bytes).into_owned()))
     }
 
     /// Sessions whose process is still running.
@@ -218,6 +265,27 @@ impl SessionStore {
         } else {
             Err(anyhow!("unknown session"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tail_tests {
+    use super::*;
+
+    #[test]
+    fn tail_keeps_the_newest_bytes_and_resumes_by_sequence() {
+        let mut t = Tail::default();
+        t.push(b"hello ");
+        let (seq, first) = t.since(0);
+        assert_eq!((seq, first.as_slice()), (6, &b"hello "[..]));
+        t.push(b"world");
+        assert_eq!(t.since(seq).1, b"world");
+        assert_eq!(t.since(999).1, b"");
+        let big = vec![b'x'; TAIL_BYTES + 10];
+        t.push(&big);
+        let (seq2, all) = t.since(0);
+        assert_eq!(seq2, 11 + TAIL_BYTES as u64 + 10);
+        assert_eq!(all.len(), TAIL_BYTES);
     }
 }
 
