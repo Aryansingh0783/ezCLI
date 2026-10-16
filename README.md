@@ -87,6 +87,11 @@ catalog entry.
   (multimodal models only). Gemini reads video directly; for the other agents
   ezCLI samples six still frames with your own `ffmpeg`. Nothing is uploaded
   by ezCLI; the files stay on your PC and the CLI reads them locally.
+- **Free and Paid labels.** The Model menu marks Ollama Local and Freebuff models
+  **Free**, and marks each Ollama Cloud model **Free** (starter credits on a free
+  Ollama account) or **Paid**. Ollama does not publish its free list, so the
+  labels come from `modelPricing` in `agents.json`; edit that list if Ollama
+  changes it. Ollama always makes the final check when a model starts.
 - **Usage view.** Honest local counters, plus one-click shortcuts to the Anthropic Console
   and OpenAI Dashboard where the real billing lives.
 - **Local chat import.** A read-only picker for recognized Claude Code transcripts. It never
@@ -177,7 +182,7 @@ Detected on a typical setup:
 
 - Claude Code, from `claude`
 - Claude, from `claude`
-- Codex, from `codex --no-daemon`
+- Codex, from `codex --no-daemon` (live model list via `codex debug models`)
 - ChatGPT, disabled until a `chatgpt` binary is on PATH
 - OpenCode, from `opencode` (live model list via `opencode models`)
 - Antigravity CLI, from `agy` (personal Google route)
