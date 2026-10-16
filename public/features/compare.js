@@ -265,9 +265,10 @@ hooks.shortcut.push((code) => {
 
 hooks.boot.push(() => {
   const b = document.createElement('button');
-  b.className = 'chip home-compare';
+  b.className = 'chip icon-chip home-compare';
+  b.setAttribute('aria-label', 'Compare agents');
   b.title = 'Run this prompt on several agents or models at once (Ctrl+Alt+M)';
-  b.innerHTML = `${svg('<rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/>', 13)} Compare`;
+  b.innerHTML = `${svg('<rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/>', 13)}`;
   b.addEventListener('click', () => Compare.open());
   document.querySelector('#homeComposer .send-key').before(b);
 });

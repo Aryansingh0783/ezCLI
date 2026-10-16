@@ -86,6 +86,7 @@ const Windows = (() => {
       lineHeight: 1.3,
       cursorBlink: true,
       allowProposedApi: true,
+      allowTransparency: (prefs.style || 'glass') === 'glass',
       theme: TERM_THEMES[resolvedTheme()],
       scrollback: 10000
     });

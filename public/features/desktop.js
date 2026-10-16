@@ -104,7 +104,8 @@ function applyAccent() {
   const root = document.documentElement.style;
   root.setProperty('--brand', brand);
   root.setProperty('--brand-dim', dim);
-  for (const s of state.sessions) s.term.options.theme = { ...TERM_THEMES[resolvedTheme()], cursor: brand };
+  const base = typeof Glass !== 'undefined' ? Glass.terminalTheme() : TERM_THEMES[resolvedTheme()];
+  for (const s of state.sessions) s.term.options.theme = { ...base, cursor: brand };
   document.querySelectorAll('[data-accent]').forEach((b) => {
     const on = b.dataset.accent === key;
     b.classList.toggle('on', on);

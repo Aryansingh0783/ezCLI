@@ -745,6 +745,8 @@ function buildParked(sn) {
     lineHeight: 1.3,
     cursorBlink: false,
     allowProposedApi: true,
+    // Liquid glass draws the terminal over a frosted pane.
+    allowTransparency: (prefs.style || 'glass') === 'glass',
     theme: TERM_THEMES[resolvedTheme()],
     scrollback: 10000
   });
@@ -823,6 +825,8 @@ async function createSession(agentId, opts = {}) {
     lineHeight: 1.3,
     cursorBlink: true,
     allowProposedApi: true,
+    // Liquid glass draws the terminal over a frosted pane.
+    allowTransparency: (prefs.style || 'glass') === 'glass',
     theme: TERM_THEMES[resolvedTheme()],
     scrollback: 10000
   });

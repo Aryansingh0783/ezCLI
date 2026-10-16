@@ -172,9 +172,10 @@ hooks.boot.push(() => {
   $('btnHistory').after(chip);
 
   const homeChip = document.createElement('button');
-  homeChip.className = 'chip home-prompts';
+  homeChip.className = 'chip icon-chip home-prompts';
   homeChip.title = 'Prompt library (Ctrl+Alt+L)';
-  homeChip.innerHTML = `${ICONS.book} Prompts`;
+  homeChip.setAttribute('aria-label', 'Prompt library');
+  homeChip.innerHTML = ICONS.book;
   homeChip.addEventListener('click', (e) => Prompts.menu(e.currentTarget));
   document.querySelector('#homeComposer .send-key').before(homeChip);
 });

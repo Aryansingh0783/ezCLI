@@ -1,0 +1,313 @@
+/* Liquid glass.
+ *
+ * Applies when <html data-style="glass"> (the default). Panels are frosted
+ * glass over a slow aurora tinted by the accent colour; small controls also
+ * refract what is behind them through an SVG displacement filter. The
+ * terminal stays a darker, denser pane so text keeps full contrast.
+ * "Solid" in Settings removes all of this. */
+
+:root[data-style='glass'] {
+  --glass: rgb(26 28 36 / 44%);
+  --glass-strong: rgb(18 20 27 / 72%);
+  --glass-chrome: rgb(12 13 18 / 52%);
+  --glass-pane: rgb(9 11 15 / 74%);
+  --glass-edge: rgb(255 255 255 / 9%);
+  --glass-edge-strong: rgb(255 255 255 / 15%);
+  --glass-spec: rgb(255 255 255 / 15%);
+  --glass-shade: rgb(0 0 0 / 38%);
+  --glass-blur: blur(22px) saturate(165%);
+  --glass-blur-strong: blur(38px) saturate(180%);
+  --base: #06070a;
+  --aurora-1: color-mix(in srgb, var(--brand) 55%, transparent);
+  --aurora-2: rgb(92 112 255 / 42%);
+  --aurora-3: rgb(0 198 255 / 30%);
+  --aurora-opacity: 0.5;
+  --border: var(--glass-edge);
+}
+:root[data-style='glass'][data-theme='light'] {
+  --glass: rgb(255 255 255 / 46%);
+  --glass-strong: rgb(250 251 253 / 78%);
+  --glass-chrome: rgb(255 255 255 / 40%);
+  --glass-pane: rgb(255 255 255 / 80%);
+  --glass-edge: rgb(20 24 40 / 10%);
+  --glass-edge-strong: rgb(255 255 255 / 85%);
+  --glass-spec: rgb(255 255 255 / 75%);
+  --glass-shade: rgb(30 40 70 / 14%);
+  --base: #e6e9f1;
+  --aurora-1: color-mix(in srgb, var(--brand) 40%, transparent);
+  --aurora-2: rgb(110 120 255 / 30%);
+  --aurora-3: rgb(0 170 230 / 24%);
+  --aurora-opacity: 0.75;
+}
+
+/* ---------------------------------------------------------------- backdrop */
+
+:root[data-style='glass'] body {
+  background: var(--base);
+}
+.ambient {
+  display: none;
+}
+:root[data-style='glass'] .ambient {
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  display: block;
+  overflow: hidden;
+  opacity: var(--aurora-opacity);
+  pointer-events: none;
+}
+:root[data-style='glass'] .ambient i {
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  will-change: transform;
+}
+:root[data-style='glass'] .ambient i:nth-child(1) {
+  top: 0;
+  left: 6%;
+  background: radial-gradient(closest-side, var(--aurora-1), transparent 72%);
+  animation: aurora-a 48s ease-in-out infinite alternate;
+}
+:root[data-style='glass'] .ambient i:nth-child(2) {
+  right: 0;
+  bottom: 4%;
+  background: radial-gradient(closest-side, var(--aurora-2), transparent 70%);
+  animation: aurora-b 62s ease-in-out infinite alternate;
+}
+:root[data-style='glass'] .ambient i:nth-child(3) {
+  top: 30%;
+  left: 38%;
+  width: 46vmax;
+  height: 46vmax;
+  background: radial-gradient(closest-side, var(--aurora-3), transparent 70%);
+  animation: aurora-c 54s ease-in-out infinite alternate;
+}
+/* Fine grain so large gradients never band. */
+:root[data-style='glass'] .ambient::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+}
+@keyframes aurora-a {
+  to {
+    transform: translate(18vmax, 14vmax) scale(1.15);
+  }
+}
+@keyframes aurora-b {
+  to {
+    transform: translate(-22vmax, -10vmax) scale(0.9);
+  }
+}
+@keyframes aurora-c {
+  to {
+    transform: translate(-12vmax, 16vmax) scale(1.2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-style='glass'] .ambient i {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- material */
+
+/* The shared glass recipe: tint, blur, a 1px rim, and a specular top edge. */
+:root[data-style='glass'] :is(.tabbar, .rail, .statusbar) {
+  background: var(--glass-chrome);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-edge);
+}
+:root[data-style='glass'] .tabbar {
+  box-shadow: inset 0 -1px 0 var(--glass-edge), inset 0 1px 0 var(--glass-spec);
+}
+:root[data-style='glass'] :is(.app, .main, .home, .thread-bottom, .workspace) {
+  background: transparent;
+}
+:root[data-style='glass'] .app {
+  box-shadow: inset 0 0 0 1px var(--glass-edge-strong);
+}
+:root[data-style='glass'] :is(.composer-box, .suggested-prompt, .agent-option, .explorer, .commit-box, .compare-row, .toast) {
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-spec), 0 8px 24px -12px var(--glass-shade);
+}
+:root[data-style='glass'] .explorer {
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  box-shadow: inset 1px 0 0 var(--glass-spec), -16px 0 32px -18px var(--glass-shade);
+}
+:root[data-style='glass'] :is(.sheet, .menu, dialog.palette) {
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur-strong);
+  border-color: var(--glass-edge-strong);
+  box-shadow: inset 0 1px 0 var(--glass-spec), 0 24px 60px -20px var(--glass-shade), 0 2px 8px var(--glass-shade);
+}
+:root[data-style='glass'] :is(.sheet, dialog.palette)::backdrop {
+  background: rgb(4 6 10 / 32%);
+  backdrop-filter: blur(6px) saturate(120%);
+}
+:root[data-style='glass'][data-theme='light'] :is(.sheet, dialog.palette)::backdrop {
+  background: rgb(200 205 220 / 30%);
+}
+
+/* The terminal: a denser frosted pane with rounded corners, inset from the edges. */
+:root[data-style='glass'] .terminal-panel {
+  margin: 8px 10px 0;
+  border: 1px solid var(--glass-edge);
+  border-radius: 12px;
+  background: var(--glass-pane);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-spec), 0 10px 30px -18px var(--glass-shade);
+}
+:root[data-style='glass'] .session-head {
+  border-bottom-color: transparent;
+}
+:root[data-style='glass'] .thread-bottom {
+  border-top-color: transparent;
+}
+:root[data-style='glass'] .search-text,
+:root[data-style='glass'] .update-notes {
+  background: var(--glass-pane);
+}
+
+/* ---------------------------------------------------------------- liquid controls
+ *
+ * Small controls refract the aurora through #liquid-lens. Browsers without
+ * SVG backdrop filters keep the plain blur from the line before. */
+
+:root[data-style='glass'] :is(.pill-pick, .tab.active, .space, .head-chip, .chip, .btn:not(.primary):not(.danger):not(.quiet)) {
+  background: var(--glass);
+  backdrop-filter: blur(10px) saturate(170%);
+  backdrop-filter: url(#liquid-lens) blur(6px) saturate(180%);
+  border-color: var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-spec), inset 0 -1px 0 rgb(0 0 0 / 12%);
+}
+:root[data-style='glass'] .tab.active {
+  border: 1px solid var(--glass-edge-strong);
+  box-shadow: inset 0 1px 0 var(--glass-spec), 0 6px 16px -8px var(--glass-shade);
+}
+:root[data-style='glass'] .space.active {
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--glass-edge));
+}
+:root[data-style='glass'] :is(.pill-pick, .chip, .btn, .agent-option, .suggested-prompt, .space) {
+  transition: transform 0.18s var(--ease), border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+:root[data-style='glass'] :is(.pill-pick, .agent-option, .chip):hover:not(:disabled) {
+  border-color: var(--glass-edge-strong);
+  transform: translateY(-1px);
+}
+:root[data-style='glass'] :is(.pill-pick, .agent-option, .chip, .btn):active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+:root[data-style='glass'] .agent-option.selected {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--glass-edge));
+  background: color-mix(in srgb, var(--brand) 14%, var(--glass));
+}
+
+/* Primary actions: solid accent with a glass sheen on top. */
+:root[data-style='glass'] :is(.send-btn, .btn.primary) {
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 32%), rgb(255 255 255 / 0%) 55%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%), inset 0 -1px 0 rgb(0 0 0 / 18%), 0 4px 12px -4px var(--glass-shade);
+}
+
+/* ---------------------------------------------------------------- spotlight
+ * Cards light up where the pointer is (after React Bits' SpotlightCard). */
+
+:root[data-style='glass'] .spotlight {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+:root[data-style='glass'] .spotlight::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, -100%), color-mix(in srgb, var(--brand) 18%, transparent), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+:root[data-style='glass'] .spotlight:hover::after {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------- glow border
+ * The home message box gets a slow light sweep around its rim while focused
+ * (after 21st.dev's glowing border). */
+
+@property --sweep {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+:root[data-style='glass'] #homeComposer {
+  position: relative;
+}
+:root[data-style='glass'] #homeComposer::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--sweep), transparent 0deg, color-mix(in srgb, var(--brand) 85%, white) 40deg, transparent 110deg, transparent 220deg, rgb(120 140 255 / 70%) 270deg, transparent 330deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  animation: sweep 6s linear infinite;
+}
+:root[data-style='glass'] #homeComposer:focus-within::before {
+  opacity: 1;
+}
+:root[data-style='glass'] #homeComposer:focus-within {
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 var(--glass-spec), 0 16px 40px -18px var(--glass-shade);
+}
+@keyframes sweep {
+  to {
+    --sweep: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-style='glass'] #homeComposer::before {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------- details */
+
+:root[data-style='glass'] .home h1 {
+  letter-spacing: -0.02em;
+}
+:root[data-style='glass'] ::selection {
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+}
+:root[data-style='glass'] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:root[data-style='glass'] ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 14%) padding-box;
+}
+:root[data-style='glass'][data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: rgb(20 24 40 / 18%) padding-box;
+}
+:root[data-style='glass'] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Settings: style picker */
+.style-seg {
+  margin-top: 10px;
+}

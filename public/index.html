@@ -13,6 +13,7 @@
           var t = s.theme || 'system';
           if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
           document.documentElement.dataset.theme = t;
+          document.documentElement.dataset.style = s.style === 'solid' ? 'solid' : 'glass';
           var acc = { sky: ['#5cc8ff', '#0b6fb0'], violet: ['#b69cff', '#6a3fd0'], amber: ['#ffc04d', '#9a6200'], rose: ['#ff7aa2', '#b8325c'], mint: ['#4fe3c1', '#0f7f68'] }[s.accent];
           if (acc) document.documentElement.style.setProperty('--brand', acc[t === 'light' ? 1 : 0]);
         } catch (e) {}
@@ -21,6 +22,7 @@
     <link rel="stylesheet" href="/vendor/xterm/css/xterm.css" />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/features/features.css" />
+    <link rel="stylesheet" href="/features/glass.css" />
   </head>
   <body>
     <!-- Shown only if app.js never mounts (missing asset, script error at load). -->
@@ -95,23 +97,26 @@
                 <label class="sr-only" for="homeInput">First message</label>
                 <textarea id="homeInput" rows="2" placeholder="Describe a task, or press Enter to open an empty session"></textarea>
                 <div class="composer-row runconfig">
-                  <button class="pill-pick" id="homeAgent" aria-label="Choose agent">
-                    <span class="pill-cap">Agent</span><span class="pill-val"></span>
-                  </button>
-                  <button class="pill-pick" id="homeModel" aria-label="Choose model">
-                    <span class="pill-cap">Model</span><span class="pill-val"></span>
-                  </button>
-                  <button class="pill-pick" id="homeEffort" aria-label="Choose reasoning effort">
-                    <span class="pill-cap">Effort</span><span class="pill-val"></span>
-                  </button>
-                  <button class="pill-pick" id="homeMode" aria-label="Choose mode">
-                    <span class="pill-cap">Mode</span><span class="pill-val"></span>
-                  </button>
-                  <span class="grow"></span>
-                  <span class="send-key"><kbd>Enter</kbd></span>
-                  <button class="send-btn" id="homeSend" aria-label="Start session" title="Start session">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
-                  </button>
+                  <div class="pill-group">
+                    <button class="pill-pick" id="homeAgent" aria-label="Choose agent">
+                      <span class="pill-cap">Agent</span><span class="pill-val"></span>
+                    </button>
+                    <button class="pill-pick" id="homeModel" aria-label="Choose model">
+                      <span class="pill-cap">Model</span><span class="pill-val"></span>
+                    </button>
+                    <button class="pill-pick" id="homeEffort" aria-label="Choose reasoning effort">
+                      <span class="pill-cap">Effort</span><span class="pill-val"></span>
+                    </button>
+                    <button class="pill-pick" id="homeMode" aria-label="Choose mode">
+                      <span class="pill-cap">Mode</span><span class="pill-val"></span>
+                    </button>
+                  </div>
+                  <div class="composer-tools">
+                    <span class="send-key"><kbd>Enter</kbd></span>
+                    <button class="send-btn" id="homeSend" aria-label="Start session" title="Start session">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -279,6 +284,10 @@
           <button class="theme-option" data-theme-opt="dark" role="radio">Dark</button>
           <button class="theme-option" data-theme-opt="light" role="radio">Light</button>
         </div>
+        <div class="segmented style-seg" id="styleSeg" role="radiogroup" aria-label="Window style">
+          <button class="theme-option" data-style-opt="glass" role="radio">Liquid glass</button>
+          <button class="theme-option" data-style-opt="solid" role="radio">Solid</button>
+        </div>
         <div class="accent-seg" id="accentSeg" role="radiogroup" aria-label="Accent colour"></div>
       </div>
       <div class="settings-section">
@@ -388,5 +397,6 @@
     <script src="/features/windows.js"></script>
     <script src="/features/remote.js"></script>
     <script src="/features/webchat.js"></script>
+    <script src="/features/glass.js"></script>
   </body>
 </html>

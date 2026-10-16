@@ -25,7 +25,7 @@ jobs:
             patterns: 'bundle/dmg/*.dmg'
           - os: ubuntu-22.04
             bundles: deb,appimage
-            cli_asset: cargo-tauri-x86_64-unknown-linux-gnu.zip
+            cli_asset: cargo-tauri-x86_64-unknown-linux-gnu.tgz
             patterns: 'bundle/deb/*.deb bundle/appimage/*.AppImage'
     runs-on: ${{ matrix.os }}
     steps:
@@ -61,8 +61,12 @@ jobs:
           echo "Using Tauri CLI $tag"
           dir="$RUNNER_TEMP/cargo-tauri"
           mkdir -p "$dir"
-          curl -fsSL "https://github.com/tauri-apps/tauri/releases/download/$tag/${{ matrix.cli_asset }}" -o "$RUNNER_TEMP/cargo-tauri.zip"
-          unzip -o -q "$RUNNER_TEMP/cargo-tauri.zip" -d "$dir"
+          asset="${{ matrix.cli_asset }}"
+          curl -fsSL "https://github.com/tauri-apps/tauri/releases/download/$tag/$asset" -o "$RUNNER_TEMP/$asset"
+          case "$asset" in
+            *.tgz) tar -xzf "$RUNNER_TEMP/$asset" -C "$dir" ;;
+            *) unzip -o -q "$RUNNER_TEMP/$asset" -d "$dir" ;;
+          esac
           chmod +x "$dir"/cargo-tauri* || true
           echo "$dir" >> "$GITHUB_PATH"
 

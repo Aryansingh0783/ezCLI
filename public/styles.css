@@ -755,9 +755,25 @@ kbd {
    above the live value so the user can see which one controls model vs
    agent vs mode without opening a menu. */
 .runconfig {
+  align-items: flex-end;
   gap: 6px;
   padding: 6px 7px 8px;
+}
+/* The pickers wrap among themselves; the tools and the send button stay
+   together at the bottom right however narrow the window gets. */
+.pill-group {
+  display: flex;
+  flex: 1;
   flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.composer-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
 }
 .pill-pick {
   display: inline-flex;
