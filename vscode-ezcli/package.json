@@ -1,0 +1,48 @@
+{
+  "name": "ezcli",
+  "displayName": "ezCLI",
+  "description": "Start Claude Code, Codex, OpenCode, Gemini, Ollama and other coding CLIs in VS Code terminals, using your ezCLI agent setup.",
+  "version": "2.0.0",
+  "publisher": "aryansingh",
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Aryansingh0783/ezCLI"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["claude", "codex", "opencode", "gemini", "ollama", "cli", "agent"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "ezcli.startAgent", "title": "Start an agent in a terminal", "category": "ezCLI" },
+      { "command": "ezcli.compare", "title": "Compare agents side by side", "category": "ezCLI" },
+      { "command": "ezcli.openInApp", "title": "Open this folder in the ezCLI app", "category": "ezCLI" },
+      { "command": "ezcli.openConfig", "title": "Open agents.json", "category": "ezCLI" }
+    ],
+    "menus": {
+      "explorer/context": [
+        { "command": "ezcli.startAgent", "when": "explorerResourceIsFolder", "group": "navigation@90" },
+        { "command": "ezcli.openInApp", "when": "explorerResourceIsFolder", "group": "navigation@91" }
+      ]
+    },
+    "configuration": {
+      "title": "ezCLI",
+      "properties": {
+        "ezcli.appPath": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to ezcli.exe. Leave empty to use the default install location."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/agents.test.js",
+    "package": "npx --yes @vscode/vsce package --no-dependencies"
+  }
+}

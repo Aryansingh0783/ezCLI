@@ -9,13 +9,36 @@ permissions:
   contents: write
 
 jobs:
-  windows-msi:
-    runs-on: windows-latest
+  desktop:
+    strategy:
+      # One platform failing must not stop the others from shipping.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: msi
+            cli_asset: cargo-tauri-x86_64-pc-windows-msvc.zip
+            patterns: 'bundle/msi/*.msi'
+          - os: macos-latest
+            bundles: dmg
+            cli_asset: cargo-tauri-aarch64-apple-darwin.zip
+            patterns: 'bundle/dmg/*.dmg'
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+            cli_asset: cargo-tauri-x86_64-unknown-linux-gnu.zip
+            patterns: 'bundle/deb/*.deb bundle/appimage/*.AppImage'
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev
 
       - name: Cache cargo registry and target
         uses: actions/cache@v4
@@ -27,73 +50,100 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml', 'src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      # Compiling tauri-cli from source eats 4-6 minutes every build.
-      # The project ships prebuilt binaries per host, so we grab one and
-      # drop it on PATH as `cargo-tauri`.
+      # Compiling tauri-cli from source takes minutes on every build; the
+      # project publishes prebuilt binaries per host.
       - name: Install Tauri CLI (prebuilt)
-        shell: pwsh
-        run: |
-          $tag = gh api repos/tauri-apps/tauri/releases --jq '.[] | select(.tag_name | startswith("tauri-cli-v2.")) | .tag_name' | Select-Object -First 1
-          Write-Host "Using Tauri CLI $tag"
-          $zip = Join-Path $env:RUNNER_TEMP 'cargo-tauri.zip'
-          Invoke-WebRequest -UseBasicParsing "https://github.com/tauri-apps/tauri/releases/download/$tag/cargo-tauri-x86_64-pc-windows-msvc.zip" -OutFile $zip
-          $dir = Join-Path $env:RUNNER_TEMP 'cargo-tauri'
-          Expand-Archive -Force $zip -DestinationPath $dir
-          "$dir" | Out-File -Encoding ascii -Append $env:GITHUB_PATH
-          & "$dir\cargo-tauri.exe" --version
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-
-      - name: Build MSI
-        shell: pwsh
         run: |
-          # `target` is cached for compiler outputs. Bundle artifacts are release
-          # payloads, not compiler outputs: a cached older MSI must never be
-          # considered for this tag.
-          $msiDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/bundle/msi'
-          if (Test-Path -LiteralPath $msiDir) {
-            Remove-Item -LiteralPath $msiDir -Recurse -Force
-          }
-          cargo tauri build --bundles msi
-        working-directory: ${{ github.workspace }}
+          tag=$(gh api repos/tauri-apps/tauri/releases --jq '.[] | select(.tag_name | startswith("tauri-cli-v2.")) | .tag_name' | head -n 1)
+          echo "Using Tauri CLI $tag"
+          dir="$RUNNER_TEMP/cargo-tauri"
+          mkdir -p "$dir"
+          curl -fsSL "https://github.com/tauri-apps/tauri/releases/download/$tag/${{ matrix.cli_asset }}" -o "$RUNNER_TEMP/cargo-tauri.zip"
+          unzip -o -q "$RUNNER_TEMP/cargo-tauri.zip" -d "$dir"
+          chmod +x "$dir"/cargo-tauri* || true
+          echo "$dir" >> "$GITHUB_PATH"
 
-      - name: Collect installer
+      - name: Check tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match tauri.conf.json version $version"; exit 1
+          fi
+
+      - name: Build
+        shell: bash
+        run: |
+          # Bundles are release payloads, not compiler outputs: a cached older
+          # installer must never be picked up for this tag.
+          rm -rf src-tauri/target/release/bundle
+          cargo tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Collect installers and checksums
         id: collect
-        shell: pwsh
+        shell: bash
         run: |
-          $tauri = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json
-          $version = [string] $tauri.version
-          if ([string]::IsNullOrWhiteSpace($version)) {
-            throw 'src-tauri/tauri.conf.json has no usable version.'
-          }
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
-            throw "Tag '$env:GITHUB_REF_NAME' does not match Tauri version '$version'."
-          }
-          $msiDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/bundle/msi'
-          if (-not (Test-Path -LiteralPath $msiDir)) {
-            throw "MSI output directory was not created: $msiDir"
-          }
-          $expectedName = "ezCLI_${version}_x64_en-US.msi"
-          $msi = Get-Item -LiteralPath (Join-Path $msiDir $expectedName) -ErrorAction SilentlyContinue
-          if (-not $msi) {
-            $found = (Get-ChildItem -LiteralPath $msiDir -Filter '*.msi' -File | Select-Object -ExpandProperty Name) -join ', '
-            throw "Expected $expectedName for tauri.conf.json version $version; found: $found"
-          }
-          Write-Host "::notice::built $($msi.Name)  ($([math]::Round($msi.Length/1MB,2)) MB)"
-          "msi_path=$($msi.FullName)" | Out-File $env:GITHUB_OUTPUT -Append
-          "msi_name=$($msi.Name)" | Out-File $env:GITHUB_OUTPUT -Append
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          out="$RUNNER_TEMP/dist"
+          mkdir -p "$out"
+          cd src-tauri/target/release
+          found=0
+          for pattern in ${{ matrix.patterns }}; do
+            for f in $pattern; do
+              [ -f "$f" ] || continue
+              case "$f" in *"$version"*) ;; *) echo "skipping $f (not version $version)"; continue ;; esac
+              cp "$f" "$out/"
+              found=1
+            done
+          done
+          [ "$found" = 1 ] || { echo "No installer for version $version"; exit 1; }
+          cd "$out"
+          for f in *; do
+            case "$f" in *.sha256) continue ;; esac
+            if command -v sha256sum >/dev/null; then sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"; else shasum -a 256 "$f" | cut -d' ' -f1 > "$f.sha256"; fi
+            echo "::notice::built $f ($(du -h "$f" | cut -f1))"
+          done
+          ls -la
+          echo "dir=$out" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ezcli-windows-msi
-          path: ${{ steps.collect.outputs.msi_path }}
+          name: ezcli-${{ runner.os }}
+          path: ${{ steps.collect.outputs.dir }}/*
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.collect.outputs.msi_path }}
+          files: ${{ steps.collect.outputs.dir }}/*
           generate_release_notes: true
           draft: false
           prerelease: false
+
+  vscode-extension:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Test and package
+        working-directory: vscode-ezcli
+        run: |
+          node --test test/agents.test.js
+          npx --yes @vscode/vsce package --no-dependencies
+          ls -la *.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ezcli-vscode
+          path: vscode-ezcli/*.vsix
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vscode-ezcli/*.vsix
