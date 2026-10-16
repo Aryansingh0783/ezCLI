@@ -60,6 +60,10 @@
 .row-actions.wrap {
   flex-wrap: wrap;
 }
+/* Rows mix bare buttons with dialog forms; keep every button its own height. */
+.sheet .row-actions {
+  align-items: center;
+}
 .icon-chip {
   width: 28px;
   justify-content: center;
