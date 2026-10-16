@@ -191,8 +191,10 @@ pub fn take_handoff(id: String, handoffs: State<Handoffs>) -> Option<String> {
 static WINDOW_SEQ: AtomicU32 = AtomicU32::new(1);
 
 /// Open another ezCLI window. `handoff` names a stashed tab to adopt.
+/// Async on purpose: creating a window from a synchronous command blocks the
+/// main thread on Windows and the call never returns.
 #[tauri::command]
-pub fn open_window(handoff: Option<String>, app: AppHandle) -> Result<String, String> {
+pub async fn open_window(handoff: Option<String>, app: AppHandle) -> Result<String, String> {
     let n = WINDOW_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
     let label = format!("win-{n}");
     let query = match handoff.filter(|h| h.chars().all(|c| c.is_ascii_alphanumeric())) {
@@ -221,7 +223,7 @@ const WEB_CHATS: &[(&str, &str, &str)] = &[
 ];
 
 #[tauri::command]
-pub fn open_web_chat(provider: String, app: AppHandle) -> Result<(), String> {
+pub async fn open_web_chat(provider: String, app: AppHandle) -> Result<(), String> {
     let (id, title, url) = WEB_CHATS
         .iter()
         .find(|(id, _, _)| *id == provider)
@@ -245,7 +247,7 @@ pub fn open_web_chat(provider: String, app: AppHandle) -> Result<(), String> {
 
 /// Show a system notification.
 #[tauri::command]
-pub fn notify(title: String, body: String, app: AppHandle) -> Result<(), String> {
+pub async fn notify(title: String, body: String, app: AppHandle) -> Result<(), String> {
     use tauri_plugin_notification::NotificationExt;
     let title: String = title.chars().take(120).collect();
     let body: String = body.chars().take(400).collect();

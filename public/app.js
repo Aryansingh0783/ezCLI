@@ -166,6 +166,26 @@ const state = {
   explorer: { view: 'list', root: null, expanded: new Set(), cache: new Map(), filter: '', file: null, diff: null }
 };
 
+/* ------------------------------------------------------------- extensions
+ *
+ * Feature modules in public/features/ subscribe to these instead of patching
+ * the core. Each handler runs in isolation: one failing feature never breaks
+ * the session plumbing. */
+
+const hooks = { boot: [], output: [], idle: [], exit: [], launched: [], closing: [], tabs: [], view: [], shortcut: [] };
+function emit(name, ...args) {
+  for (const fn of hooks[name] || []) {
+    try {
+      fn(...args);
+    } catch (err) {
+      console.error(`[ezcli ${name} hook]`, err);
+    }
+  }
+}
+const WINDOW_PARAMS = new URLSearchParams(location.search);
+/** Only the first window restores and saves parked tabs; extra windows start empty. */
+const IS_MAIN_WINDOW = !WINDOW_PARAMS.get('window');
+
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const agent = (id) => state.agents.find((a) => a.id === id);
@@ -215,6 +235,7 @@ function imageTransport(a) {
  * and show a Resume button that calls launch() to spawn a fresh CLI. */
 
 function snapshotParked() {
+  if (!IS_MAIN_WINDOW) return;
   prefs.activeBySpace = { ...state.activeBySpace };
   if (state.activeId && active()) prefs.activeBySpace[active().spaceId] = state.activeId;
   prefs.parked = state.sessions
@@ -445,7 +466,7 @@ async function boot() {
 
   // Recreate every tab that was open at last shutdown as a parked session.
   // Nothing has launched yet; the user resumes with one click.
-  for (const sn of prefs.parked || []) {
+  for (const sn of IS_MAIN_WINDOW ? prefs.parked || [] : []) {
     if (!space(sn.spaceId) || !agent(sn.agentId)) continue;
     buildParked(sn);
   }
@@ -467,7 +488,8 @@ async function boot() {
   if (resetSavedResumeModes) {
     toast('Saved Continue/Resume modes were reset to Default. Pick one again only when you want to reopen the latest CLI conversation.');
   }
-  showOnboarding();
+  if (IS_MAIN_WINDOW) showOnboarding();
+  emit('boot');
 }
 
 function renderAll() {
@@ -636,11 +658,24 @@ function renderTabs() {
     .join('');
   const el = $('tabs').querySelector('.tab.active');
   if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  emit('tabs');
 }
 
 function updateTabMeta(s) {
   const el = $('tabs').querySelector(`[data-meta="${s.id}"]`);
   if (el) el.innerHTML = tabMeta(s);
+}
+
+/** Extra tab-menu entries contributed by feature modules. */
+const tabMenuItems = [];
+function tabMenuExtras(s) {
+  return tabMenuItems.flatMap((fn) => {
+    try {
+      return fn(s) || [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 function tabMenu(anchor, s, x, y) {
@@ -660,6 +695,7 @@ function tabMenu(anchor, s, x, y) {
       },
       { label: 'Restart', run: () => restartSession(s) },
       { label: 'Copy folder path', run: () => copy(s.cwd) },
+      ...tabMenuExtras(s),
       { sep: true },
       { label: 'Close', hint: 'Ctrl+Alt+W', run: () => closeSession(s.id) },
       { label: 'Close other tabs', disabled: !others.length, run: () => others.forEach((o) => closeSession(o.id)) }
@@ -890,68 +926,15 @@ async function launch(s) {
   // must not leak from the prior process into this one.
   s.usage = Usage.createUsageState();
   s.pcControl = false;
-  const ptyId = `p${++state.seq}`;
+  // Window-unique: every window numbers its tabs from 1, and the backend
+  // keeps one session table for all windows.
+  const ptyId = `p${WINDOW_PARAMS.get('window') || 1}-${++state.seq}`;
   s.ptyId = ptyId;
   s.status = 'starting';
   s.startedAt = Date.now();
   s.exitCode = null;
 
-  const unlistenData = await listen(`pty-data:${ptyId}`, (e) => {
-    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
-    s.term.write(e.payload);
-    const usageChanged = Usage.ingest(s.usage, e.payload);
-    s.lastOutputAt = Date.now();
-    if (!s.working) {
-      s.working = true;
-      updateTabMeta(s);
-      renderSpaces();
-      if (s.id === state.activeId) renderStatus();
-    }
-    if (s.id !== state.activeId || !document.hasFocus()) {
-      if (!s.unseen && s.id !== state.activeId) {
-        s.unseen = true;
-        updateTabMeta(s);
-      }
-    }
-    if (s.id === state.activeId) {
-      updateScrollButton(s);
-      if (usageChanged) renderStatus();
-    }
-  });
-  if (!isCurrentLaunch()) {
-    safe(unlistenData);
-    return false;
-  }
-  s.unlisten.push(unlistenData);
-  const unlistenExit = await listen(`pty-exit:${ptyId}`, (e) => {
-    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
-    invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
-    s.pcControl = false;
-    // Consent covers one process. Relaunching after an exit asks again.
-    s.wantPcControl = false;
-    Usage.ingest(s.usage, '', true);
-    s.status = 'exited';
-    s.exitCode = e.payload;
-    s.working = false;
-    s.term.write(`\r\n\x1b[38;2;106;106;112m── process exited (code ${e.payload}) ──\x1b[0m\r\n`);
-    recordUsage(s);
-    updateTabMeta(s);
-    renderSpaces();
-    if (s.id === state.activeId) {
-      renderHead();
-      renderStatus();
-    } else {
-      toast(`${s.title} exited (code ${e.payload})`, e.payload === 0 ? '' : 'error', () => {
-        selectSpace(s.spaceId);
-        selectSession(s.id);
-      });
-    }
-  });
-  if (!isCurrentLaunch()) {
-    safe(unlistenExit);
-    return false;
-  }
-  s.unlisten.push(unlistenExit);
+  if (!(await attachPty(s, ptyId, isCurrentLaunch))) return false;
 
   try {
     s.fit.fit();
@@ -982,6 +965,7 @@ async function launch(s) {
       // If the CLI never goes quiet, deliver the first message anyway.
       setTimeout(() => deliverPending(s), 10000);
     }
+    emit('launched', s);
   } catch (err) {
     if (!isCurrentLaunch() || s.ptyId !== ptyId) {
       invoke('kill_session', { id: ptyId }).catch(() => {});
@@ -999,6 +983,70 @@ async function launch(s) {
     renderStatus();
   }
   return s.status === 'running';
+}
+
+/** Subscribe a session to a PTY's output and exit events. Used by launch()
+ *  and by a window that adopts a running PTY moved from another window. */
+async function attachPty(s, ptyId, isCurrentLaunch = () => true) {
+  const unlistenData = await listen(`pty-data:${ptyId}`, (e) => {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
+    s.term.write(e.payload);
+    const usageChanged = Usage.ingest(s.usage, e.payload);
+    s.lastOutputAt = Date.now();
+    if (!s.working) {
+      s.working = true;
+      updateTabMeta(s);
+      renderSpaces();
+      if (s.id === state.activeId) renderStatus();
+    }
+    if (s.id !== state.activeId || !document.hasFocus()) {
+      if (!s.unseen && s.id !== state.activeId) {
+        s.unseen = true;
+        updateTabMeta(s);
+      }
+    }
+    if (s.id === state.activeId) {
+      updateScrollButton(s);
+      if (usageChanged) renderStatus();
+    }
+    emit('output', s, e.payload);
+  });
+  if (!isCurrentLaunch()) {
+    safe(unlistenData);
+    return false;
+  }
+  s.unlisten.push(unlistenData);
+  const unlistenExit = await listen(`pty-exit:${ptyId}`, (e) => {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
+    invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
+    s.pcControl = false;
+    // Consent covers one process. Relaunching after an exit asks again.
+    s.wantPcControl = false;
+    Usage.ingest(s.usage, '', true);
+    s.status = 'exited';
+    s.exitCode = e.payload;
+    s.working = false;
+    s.term.write(`\r\n\x1b[38;2;106;106;112m── process exited (code ${e.payload}) ──\x1b[0m\r\n`);
+    recordUsage(s);
+    updateTabMeta(s);
+    renderSpaces();
+    if (s.id === state.activeId) {
+      renderHead();
+      renderStatus();
+    } else {
+      toast(`${s.title} exited (code ${e.payload})`, e.payload === 0 ? '' : 'error', () => {
+        selectSpace(s.spaceId);
+        selectSession(s.id);
+      });
+    }
+    emit('exit', s, e.payload);
+  });
+  if (!isCurrentLaunch()) {
+    safe(unlistenExit);
+    return false;
+  }
+  s.unlisten.push(unlistenExit);
+  return true;
 }
 
 function deliverPending(s) {
@@ -1075,6 +1123,7 @@ async function closeSession(id) {
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i === -1) return;
   const s = state.sessions[i];
+  emit('closing', s);
   invalidateLaunch(s);
   if (s.status === 'running') recordUsage(s);
   if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
@@ -1146,7 +1195,10 @@ function fitSession(s) {
   }
   if (s.id === state.activeId) renderStatus();
 }
-const fitActive = () => fitSession(active());
+// A declaration, not a const, so the compare grid can extend it.
+function fitActive() {
+  return fitSession(active());
+}
 
 function updateScrollButton(s) {
   const b = s.term.buffer.active;
@@ -1177,6 +1229,7 @@ function onIdle(s) {
   // so a single labelled value can never be mistaken for complete telemetry.
   Usage.ingest(s.usage, '', true);
   deliverPending(s);
+  emit('idle', s);
   // The agent probably just edited files; refresh the change count.
   if (s.spaceId === prefs.activeSpace) {
     clearTimeout(gitTimer);
@@ -1193,6 +1246,7 @@ function renderView() {
   renderSessionAgentNotice(s);
   renderHead();
   renderStatus();
+  emit('view', s);
 }
 
 function renderSessionAgentNotice(s = active()) {
@@ -2762,14 +2816,17 @@ function setFontSize(n) {
 /* ----------------------------------------------------------------- window */
 
 let closing = false;
+let quitting = false;
 async function guardClose(event) {
   if (closing) return;
-  let live = 0;
-  try {
-    live = await invoke('running_sessions');
-  } catch {
-    live = state.sessions.filter((s) => s.status === 'running').length;
+  // Close to tray: keep every session running and just hide the window.
+  if (IS_MAIN_WINDOW && prefs.closeToTray && !quitting) {
+    event.preventDefault();
+    T.window.getCurrentWindow().hide();
+    return;
   }
+  // Each window owns its own tabs, so count only this window's processes.
+  const live = state.sessions.filter((s) => s.status === 'running' || s.status === 'starting').length;
   if (live > 0) {
     const ok = await confirmDialog(
       'Quit ezCLI?',
@@ -2806,7 +2863,7 @@ function isAppShortcut(e) {
   if (e.type !== 'keydown' || !(e.ctrlKey && e.altKey) || e.metaKey) return false;
   // AltGr reports as Ctrl+Alt on Windows; it types characters, never shortcuts.
   if (e.getModifierState && e.getModifierState('AltGraph')) return false;
-  return /^(Key[NWBKT]|Digit[1-9]|ArrowLeft|ArrowRight|Slash|Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code);
+  return /^(Key[NWBKTPLFEDM]|Digit[1-9]|ArrowLeft|ArrowRight|Slash|Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code);
 }
 
 function onShortcut(e) {
@@ -2831,7 +2888,13 @@ function onShortcut(e) {
   else if (/^Digit[1-9]$/.test(code)) {
     const s = list[Number(code.slice(5)) - 1];
     if (s) selectSession(s.id);
-  } else handled = false;
+  } else handled = hooks.shortcut.some((fn) => {
+    try {
+      return fn(code, e) === true;
+    } catch {
+      return false;
+    }
+  });
   if (handled) {
     e.preventDefault();
     e.stopPropagation();

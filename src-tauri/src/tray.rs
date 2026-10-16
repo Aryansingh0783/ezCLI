@@ -28,7 +28,10 @@ pub fn install(app: &App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
             "new-window" => {
-                let _ = crate::features::open_window(None, app.clone());
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = crate::features::open_window(None, app).await;
+                });
             }
             // The main window runs the "processes still running" check, so
             // ask it to quit rather than exiting underneath live sessions.

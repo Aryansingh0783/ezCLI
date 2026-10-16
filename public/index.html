@@ -13,11 +13,14 @@
           var t = s.theme || 'system';
           if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
           document.documentElement.dataset.theme = t;
+          var acc = { sky: ['#5cc8ff', '#0b6fb0'], violet: ['#b69cff', '#6a3fd0'], amber: ['#ffc04d', '#9a6200'], rose: ['#ff7aa2', '#b8325c'], mint: ['#4fe3c1', '#0f7f68'] }[s.accent];
+          if (acc) document.documentElement.style.setProperty('--brand', acc[t === 'light' ? 1 : 0]);
         } catch (e) {}
       })();
     </script>
     <link rel="stylesheet" href="/vendor/xterm/css/xterm.css" />
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/features/features.css" />
   </head>
   <body>
     <!-- Shown only if app.js never mounts (missing asset, script error at load). -->
@@ -221,6 +224,12 @@
         <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>B</kbd></dt><dd>Show or hide the explorer</dd>
         <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>K</kbd></dt><dd>Clear the terminal</dd>
         <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>/</kbd></dt><dd>Focus the composer</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>P</kbd></dt><dd>Command palette</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>M</kbd></dt><dd>Compare agents: one prompt, several models</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>L</kbd></dt><dd>Prompt library</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd></dt><dd>Search past sessions</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>E</kbd></dt><dd>Export the session as Markdown</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>D</kbd></dt><dd>Voice typing</dd>
         <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>=</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, reset</dd>
         <dt><kbd>Enter</kbd> / <kbd>Shift</kbd><kbd>Enter</kbd></dt><dd>Send / new line in the composer</dd>
         <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Walk prompt history from an empty composer</dd>
@@ -270,6 +279,7 @@
           <button class="theme-option" data-theme-opt="dark" role="radio">Dark</button>
           <button class="theme-option" data-theme-opt="light" role="radio">Light</button>
         </div>
+        <div class="accent-seg" id="accentSeg" role="radiogroup" aria-label="Accent colour"></div>
       </div>
       <div class="settings-section">
         <h3>Terminal font size</h3>
@@ -285,6 +295,19 @@
         <div class="row-actions">
           <button class="btn" id="openConfig">Open config folder</button>
           <button class="btn" id="reloadAgents">Reload agents</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Desktop</h3>
+        <label class="toggle-row"><input type="checkbox" id="prefNotifications" /> <span>Notify me when a long task finishes in a tab I'm not looking at</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefCloseToTray" /> <span>Keep running in the tray when I close the window</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefProjectDefaults" /> <span>Remember the agent, model and mode for each folder</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefTranscripts" /> <span>Save session text on this PC so past sessions can be searched</span></label>
+        <div class="row-actions wrap">
+          <button class="btn" id="openHealth">Health check</button>
+          <button class="btn" id="openSearch">Search past sessions</button>
+          <button class="btn" id="openUpdates">Check for updates</button>
+          <button class="btn" id="openRemote">Remote view</button>
         </div>
       </div>
       <div class="settings-section">
@@ -353,5 +376,17 @@
     <script src="/usage-parser.js"></script>
     <script src="/session-routing.js"></script>
     <script src="/app.js"></script>
+    <script src="/features/palette.js"></script>
+    <script src="/features/prompts.js"></script>
+    <script src="/features/health.js"></script>
+    <script src="/features/updates.js"></script>
+    <script src="/features/desktop.js"></script>
+    <script src="/features/transcripts.js"></script>
+    <script src="/features/git-actions.js"></script>
+    <script src="/features/compare.js"></script>
+    <script src="/features/router.js"></script>
+    <script src="/features/windows.js"></script>
+    <script src="/features/remote.js"></script>
+    <script src="/features/webchat.js"></script>
   </body>
 </html>
