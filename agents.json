@@ -12,25 +12,127 @@
       "imageTransport": "clipboard_only",
       "args": [],
       "modes": [
-        { "id": "default", "label": "Default", "args": [] },
-        { "id": "plan", "label": "Plan", "args": ["--permission-mode", "plan"] },
-        { "id": "accept-edits", "label": "Accept edits", "args": ["--permission-mode", "acceptEdits"] },
-        { "id": "continue", "label": "Continue", "args": ["--continue"], "resumesSession": true }
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        },
+        {
+          "id": "plan",
+          "label": "Plan",
+          "args": [
+            "--permission-mode",
+            "plan"
+          ]
+        },
+        {
+          "id": "accept-edits",
+          "label": "Accept edits",
+          "args": [
+            "--permission-mode",
+            "acceptEdits"
+          ]
+        },
+        {
+          "id": "continue",
+          "label": "Continue",
+          "args": [
+            "--continue"
+          ],
+          "resumesSession": true
+        }
       ],
       "models": [
-        { "id": "default", "label": "Default", "args": [] },
-        { "id": "opus", "label": "Opus", "args": ["--model", "opus"] },
-        { "id": "sonnet", "label": "Sonnet", "args": ["--model", "sonnet"] },
-        { "id": "haiku", "label": "Haiku", "args": ["--model", "haiku"] }
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        },
+        {
+          "id": "opus",
+          "label": "Opus",
+          "args": [
+            "--model",
+            "opus"
+          ]
+        },
+        {
+          "id": "sonnet",
+          "label": "Sonnet",
+          "args": [
+            "--model",
+            "sonnet"
+          ]
+        },
+        {
+          "id": "haiku",
+          "label": "Haiku",
+          "args": [
+            "--model",
+            "haiku"
+          ]
+        }
       ],
       "efforts": [
-        { "id": "default", "label": "Agent default", "args": [] },
-        { "id": "low", "label": "Low", "args": ["--effort", "low"] },
-        { "id": "medium", "label": "Medium", "args": ["--effort", "medium"] },
-        { "id": "high", "label": "High", "args": ["--effort", "high"] },
-        { "id": "xhigh", "label": "Extra high", "args": ["--effort", "xhigh"] },
-        { "id": "max", "label": "Max", "args": ["--effort", "max"] }
-      ]
+        {
+          "id": "default",
+          "label": "Agent default",
+          "args": []
+        },
+        {
+          "id": "low",
+          "label": "Low",
+          "args": [
+            "--effort",
+            "low"
+          ]
+        },
+        {
+          "id": "medium",
+          "label": "Medium",
+          "args": [
+            "--effort",
+            "medium"
+          ]
+        },
+        {
+          "id": "high",
+          "label": "High",
+          "args": [
+            "--effort",
+            "high"
+          ]
+        },
+        {
+          "id": "xhigh",
+          "label": "Extra high",
+          "args": [
+            "--effort",
+            "xhigh"
+          ]
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "args": [
+            "--effort",
+            "max"
+          ]
+        }
+      ],
+      "headless": {
+        "readOnly": [
+          "--permission-mode",
+          "plan"
+        ],
+        "args": [
+          "-p"
+        ],
+        "edit": [
+          "--permission-mode",
+          "acceptEdits"
+        ]
+      }
     },
     {
       "id": "claude-chat",
@@ -43,21 +145,88 @@
       "imageTransport": "clipboard_only",
       "args": [],
       "modes": [
-        { "id": "chat", "label": "Chat", "args": [] },
-        { "id": "print", "label": "One-shot", "args": ["--print"] }
+        {
+          "id": "chat",
+          "label": "Chat",
+          "args": []
+        },
+        {
+          "id": "print",
+          "label": "One-shot",
+          "args": [
+            "--print"
+          ]
+        }
       ],
       "models": [
-        { "id": "default", "label": "Default", "args": [] },
-        { "id": "opus", "label": "Opus", "args": ["--model", "opus"] },
-        { "id": "sonnet", "label": "Sonnet", "args": ["--model", "sonnet"] }
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        },
+        {
+          "id": "opus",
+          "label": "Opus",
+          "args": [
+            "--model",
+            "opus"
+          ]
+        },
+        {
+          "id": "sonnet",
+          "label": "Sonnet",
+          "args": [
+            "--model",
+            "sonnet"
+          ]
+        }
       ],
       "efforts": [
-        { "id": "default", "label": "Agent default", "args": [] },
-        { "id": "low", "label": "Low", "args": ["--effort", "low"] },
-        { "id": "medium", "label": "Medium", "args": ["--effort", "medium"] },
-        { "id": "high", "label": "High", "args": ["--effort", "high"] },
-        { "id": "xhigh", "label": "Extra high", "args": ["--effort", "xhigh"] },
-        { "id": "max", "label": "Max", "args": ["--effort", "max"] }
+        {
+          "id": "default",
+          "label": "Agent default",
+          "args": []
+        },
+        {
+          "id": "low",
+          "label": "Low",
+          "args": [
+            "--effort",
+            "low"
+          ]
+        },
+        {
+          "id": "medium",
+          "label": "Medium",
+          "args": [
+            "--effort",
+            "medium"
+          ]
+        },
+        {
+          "id": "high",
+          "label": "High",
+          "args": [
+            "--effort",
+            "high"
+          ]
+        },
+        {
+          "id": "xhigh",
+          "label": "Extra high",
+          "args": [
+            "--effort",
+            "xhigh"
+          ]
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "args": [
+            "--effort",
+            "max"
+          ]
+        }
       ]
     },
     {
@@ -70,23 +239,110 @@
       "mcp": "codex",
       "imageTransport": "initial_flag",
       "_args_note": "--no-daemon keeps codex in-process; without it codex tries to detach a background server, which fails when the GUI server runs inside a Windows job object.",
-      "args": ["--no-daemon"],
-      "modes": [
-        { "id": "default", "label": "Default", "args": [] },
-        { "id": "auto", "label": "Full auto", "args": ["--full-auto"] },
-        { "id": "resume", "label": "Resume", "args": ["resume", "--last"], "resumesSession": true }
+      "args": [
+        "--no-daemon"
       ],
-      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "modes": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        },
+        {
+          "id": "auto",
+          "label": "Full auto",
+          "args": [
+            "--full-auto"
+          ]
+        },
+        {
+          "id": "resume",
+          "label": "Resume",
+          "args": [
+            "resume",
+            "--last"
+          ],
+          "resumesSession": true
+        }
+      ],
+      "models": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ],
       "_modelsFrom_note": "The Model pill is filled from `codex debug models` (Codex's own catalog, user-facing entries only) and launches with `-m <model>`.",
-      "modelsFrom": { "args": ["debug", "models"], "flag": "-m", "catalog": "codex" },
+      "modelsFrom": {
+        "args": [
+          "debug",
+          "models"
+        ],
+        "flag": "-m",
+        "catalog": "codex"
+      },
       "efforts": [
-        { "id": "default", "label": "Agent default", "args": [] },
-        { "id": "low", "label": "Low", "args": ["-c", "model_reasoning_effort=\"low\""] },
-        { "id": "medium", "label": "Medium", "args": ["-c", "model_reasoning_effort=\"medium\""] },
-        { "id": "high", "label": "High", "args": ["-c", "model_reasoning_effort=\"high\""] },
-        { "id": "xhigh", "label": "Extra high", "args": ["-c", "model_reasoning_effort=\"xhigh\""] },
-        { "id": "max", "label": "Max", "args": ["-c", "model_reasoning_effort=\"max\""] }
-      ]
+        {
+          "id": "default",
+          "label": "Agent default",
+          "args": []
+        },
+        {
+          "id": "low",
+          "label": "Low",
+          "args": [
+            "-c",
+            "model_reasoning_effort=\"low\""
+          ]
+        },
+        {
+          "id": "medium",
+          "label": "Medium",
+          "args": [
+            "-c",
+            "model_reasoning_effort=\"medium\""
+          ]
+        },
+        {
+          "id": "high",
+          "label": "High",
+          "args": [
+            "-c",
+            "model_reasoning_effort=\"high\""
+          ]
+        },
+        {
+          "id": "xhigh",
+          "label": "Extra high",
+          "args": [
+            "-c",
+            "model_reasoning_effort=\"xhigh\""
+          ]
+        },
+        {
+          "id": "max",
+          "label": "Max",
+          "args": [
+            "-c",
+            "model_reasoning_effort=\"max\""
+          ]
+        }
+      ],
+      "headless": {
+        "readOnly": [
+          "-s",
+          "read-only"
+        ],
+        "args": [
+          "exec",
+          "--skip-git-repo-check",
+          "--color",
+          "never"
+        ],
+        "edit": [
+          "--full-auto"
+        ]
+      }
     },
     {
       "id": "chatgpt",
@@ -96,8 +352,20 @@
       "command": "chatgpt",
       "imageTransport": "none",
       "args": [],
-      "modes": [{ "id": "default", "label": "Default", "args": [] }],
-      "models": [{ "id": "default", "label": "Default", "args": [] }]
+      "modes": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ],
+      "models": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ]
     },
     {
       "id": "opencode",
@@ -110,15 +378,125 @@
       "_tier_note": "Ships free models that need no account or key. Connect more providers (OpenRouter free models, local Ollama) with `opencode providers`.",
       "args": [],
       "modes": [
-        { "id": "default", "label": "Build", "args": [] },
-        { "id": "plan", "label": "Plan", "args": ["--agent", "plan"] },
-        { "id": "continue", "label": "Continue", "args": ["--continue"], "resumesSession": true }
+        {
+          "id": "default",
+          "label": "Build",
+          "args": []
+        },
+        {
+          "id": "plan",
+          "label": "Plan",
+          "args": [
+            "--agent",
+            "plan"
+          ]
+        },
+        {
+          "id": "continue",
+          "label": "Continue",
+          "args": [
+            "--continue"
+          ],
+          "resumesSession": true
+        }
       ],
-      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "models": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ],
       "_modelsFrom_note": "The Model pill is filled from `opencode models`, which lists every model usable right now, including all key-free ones.",
-      "modelsFrom": { "args": ["models"], "flag": "-m" },
+      "modelsFrom": {
+        "args": [
+          "models"
+        ],
+        "flag": "-m"
+      },
       "imageTransport": "interactive_at_reference",
-      "mcp": "none"
+      "mcp": "none",
+      "headless": {
+        "fileFlag": "-f",
+        "readOnly": [
+          "--agent",
+          "plan"
+        ],
+        "args": [
+          "run",
+          "Read the attached group conversation and write your reply as asked at its end."
+        ],
+        "input": "file",
+        "edit": [
+          "--agent",
+          "build"
+        ]
+      }
+    },
+    {
+      "id": "deepseek",
+      "label": "DeepSeek (free)",
+      "vendor": "deepseek",
+      "icon": "code",
+      "command": "opencode",
+      "install": "npm install -g opencode-ai",
+      "tier": "free",
+      "_tier_note": "DeepSeek V4.1 Flash through OpenCode's free tier: no DeepSeek account or API key needed.",
+      "args": [],
+      "modes": [
+        {
+          "id": "default",
+          "label": "Build",
+          "args": []
+        },
+        {
+          "id": "plan",
+          "label": "Plan",
+          "args": [
+            "--agent",
+            "plan"
+          ]
+        },
+        {
+          "id": "continue",
+          "label": "Continue",
+          "args": [
+            "--continue"
+          ],
+          "resumesSession": true
+        }
+      ],
+      "models": [
+        {
+          "id": "deepseek-free",
+          "label": "DeepSeek V4.1 Flash (free)",
+          "args": [
+            "-m",
+            "opencode/deepseek-v4.1-flash-free"
+          ]
+        }
+      ],
+      "modelPricing": {
+        "default": "free"
+      },
+      "imageTransport": "interactive_at_reference",
+      "mcp": "none",
+      "headless": {
+        "fileFlag": "-f",
+        "readOnly": [
+          "--agent",
+          "plan"
+        ],
+        "args": [
+          "run",
+          "Read the attached group conversation and write your reply as asked at its end."
+        ],
+        "input": "file",
+        "edit": [
+          "--agent",
+          "build"
+        ]
+      }
     },
     {
       "id": "antigravity",
@@ -130,8 +508,20 @@
       "tier": "free",
       "_tier_note": "Free personal Google route. Complete the Antigravity sign-in on first launch.",
       "args": [],
-      "modes": [{ "id": "default", "label": "Default", "args": [] }],
-      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "modes": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ],
+      "models": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ],
       "imageTransport": "clipboard_only",
       "mcp": "none"
     },
@@ -145,15 +535,61 @@
       "_tier_note": "For Gemini API-key, Vertex AI, or enterprise configurations. Personal Google sign-in now uses Antigravity CLI.",
       "args": [],
       "modes": [
-        { "id": "default", "label": "Default", "args": [] },
-        { "id": "plan", "label": "Plan", "args": ["--approval-mode", "plan"] },
-        { "id": "auto-edit", "label": "Auto edit", "args": ["--approval-mode", "auto_edit"] },
-        { "id": "continue", "label": "Continue", "args": ["--resume", "latest"], "resumesSession": true }
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        },
+        {
+          "id": "plan",
+          "label": "Plan",
+          "args": [
+            "--approval-mode",
+            "plan"
+          ]
+        },
+        {
+          "id": "auto-edit",
+          "label": "Auto edit",
+          "args": [
+            "--approval-mode",
+            "auto_edit"
+          ]
+        },
+        {
+          "id": "continue",
+          "label": "Continue",
+          "args": [
+            "--resume",
+            "latest"
+          ],
+          "resumesSession": true
+        }
       ],
-      "models": [{ "id": "default", "label": "Default", "args": [] }],
+      "models": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ],
       "imageTransport": "interactive_at_reference",
       "_mcp_note": "Gemini CLI has no per-launch MCP flag; attaching would mean editing the user's settings files, so PC control is off.",
-      "mcp": "none"
+      "mcp": "none",
+      "headless": {
+        "readOnly": [
+          "--approval-mode",
+          "plan"
+        ],
+        "args": [
+          "-p",
+          "Reply as asked at the end of the conversation above."
+        ],
+        "edit": [
+          "--approval-mode",
+          "auto_edit"
+        ]
+      }
     },
     {
       "id": "ollama",
@@ -165,13 +601,40 @@
       "tier": "free",
       "_tier_note": "Runs models already downloaded on this computer. Your PC profile helps decide whether local is practical; ezCLI never downloads a model for you.",
       "args": [],
-      "modes": [{ "id": "default", "label": "Run", "args": [] }],
-      "models": [{ "id": "default", "label": "Choose a local model", "args": [] }],
+      "modes": [
+        {
+          "id": "default",
+          "label": "Run",
+          "args": []
+        }
+      ],
+      "models": [
+        {
+          "id": "default",
+          "label": "Choose a local model",
+          "args": []
+        }
+      ],
       "_modelsFrom_note": "The Model pill is filled from `ollama list`; select one before starting and it launches as `ollama run <model>`.",
-      "modelsFrom": { "args": ["list"], "launch": ["run"], "catalog": "ollama", "requireSelection": true },
-      "modelPricing": { "default": "free", "note": "Local models run on your PC, so they are free." },
+      "modelsFrom": {
+        "args": [
+          "list"
+        ],
+        "launch": [
+          "run"
+        ],
+        "catalog": "ollama",
+        "requireSelection": true
+      },
+      "modelPricing": {
+        "default": "free",
+        "note": "Local models run on your PC, so they are free."
+      },
       "imageTransport": "initial_positional",
-      "mcp": "none"
+      "mcp": "none",
+      "headless": {
+        "args": []
+      }
     },
     {
       "id": "ollama-cloud",
@@ -182,18 +645,44 @@
       "install": "irm https://ollama.com/install.ps1 | iex",
       "_tier_note": "Runs a signed-in Ollama cloud model remotely. It does not download a model to this PC and may be subject to your Ollama plan and usage limits.",
       "args": [],
-      "modes": [{ "id": "default", "label": "Run", "args": [] }],
-      "models": [{ "id": "default", "label": "Choose a cloud model", "args": [] }],
+      "modes": [
+        {
+          "id": "default",
+          "label": "Run",
+          "args": []
+        }
+      ],
+      "models": [
+        {
+          "id": "default",
+          "label": "Choose a cloud model",
+          "args": []
+        }
+      ],
       "_modelsFrom_note": "The Model pill lists Ollama's live public cloud catalog. A selected hosted model launches through its matching `:cloud` or `-cloud` CLI alias; sign in with `ollama signin` first.",
-      "modelsFrom": { "args": [], "launch": ["run"], "catalog": "ollama-cloud", "requireSelection": true },
+      "modelsFrom": {
+        "args": [],
+        "launch": [
+          "run"
+        ],
+        "catalog": "ollama-cloud",
+        "requireSelection": true
+      },
       "_modelPricing_note": "Ollama does not publish which cloud models its Free plan covers. This list is the set reported working on Free accounts in Sep 2026; edit it if Ollama changes it.",
       "modelPricing": {
         "default": "paid",
-        "free": ["gpt-oss:120b", "gemma4:31b", "nemotron-3-ultra"],
+        "free": [
+          "gpt-oss:120b",
+          "gemma4:31b",
+          "nemotron-3-ultra"
+        ],
         "note": "Free tier: starter credits, reported Sep 2026. Ollama checks your plan when the model starts."
       },
       "imageTransport": "initial_positional",
-      "mcp": "none"
+      "mcp": "none",
+      "headless": {
+        "args": []
+      }
     },
     {
       "id": "freebuff",
@@ -206,11 +695,31 @@
       "_tier_note": "Free and ad-supported; picks its models server-side. The first run downloads a ~46 MB binary.",
       "args": [],
       "modes": [
-        { "id": "default", "label": "Default", "args": [] },
-        { "id": "continue", "label": "Continue", "args": ["--continue"], "resumesSession": true }
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        },
+        {
+          "id": "continue",
+          "label": "Continue",
+          "args": [
+            "--continue"
+          ],
+          "resumesSession": true
+        }
       ],
-      "models": [{ "id": "default", "label": "Default", "args": [] }],
-      "modelPricing": { "default": "free", "note": "Freebuff picks the model server-side. It is free and ad-supported." },
+      "models": [
+        {
+          "id": "default",
+          "label": "Default",
+          "args": []
+        }
+      ],
+      "modelPricing": {
+        "default": "free",
+        "note": "Freebuff picks the model server-side. It is free and ad-supported."
+      },
       "imageTransport": "none",
       "mcp": "none"
     }

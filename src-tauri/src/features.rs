@@ -2,12 +2,12 @@
 //! updates, remote view, windows, web chat, dictation and notifications.
 //! Session plumbing stays in lib.rs; these commands only call into it.
 
-use crate::{git_api, health, remote, transcripts, updater, AppState};
+use crate::{git_api, group, health, remote, transcripts, updater, AppState};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 /* ------------------------------------------------------------ files */
 
@@ -241,6 +241,47 @@ pub async fn open_web_chat(provider: String, app: AppHandle) -> Result<(), Strin
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/* ------------------------------------------------------------ group chat */
+
+/// Run one group-chat turn. Output streams as `group-out:<run_id>` events;
+/// the result is also emitted as `group-done:<run_id>` and returned.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn group_turn(
+    run_id: String,
+    agent_id: String,
+    model_id: String,
+    prompt: String,
+    cwd: String,
+    allow_edits: bool,
+    state: State<'_, AppState>,
+    runs: State<'_, std::sync::Arc<group::GroupRuns>>,
+    app: AppHandle,
+) -> Result<group::TurnDone, String> {
+    let prepared = {
+        let agents_g = state.agents.lock().unwrap();
+        let a = agents_g.iter().find(|x| x.id == agent_id).ok_or("unknown agent")?;
+        let catalogs = state.catalogs.lock().unwrap();
+        group::prepare(a, &run_id, &model_id, allow_edits, catalogs.get(&a.id).map(Vec::as_slice), &prompt)?
+    };
+    if !std::path::Path::new(&cwd).is_dir() {
+        return Err("The chat's folder no longer exists.".into());
+    }
+    let runs = runs.inner().clone();
+    let app2 = app.clone();
+    let id = run_id.clone();
+    let done = tauri::async_runtime::spawn_blocking(move || group::run(app2, &runs, id, prepared, prompt, cwd))
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(&format!("group-done:{run_id}"), done.clone());
+    Ok(done)
+}
+
+#[tauri::command]
+pub fn group_cancel(run_id: String, runs: State<std::sync::Arc<group::GroupRuns>>) -> bool {
+    group::cancel(&runs, &run_id)
 }
 
 /* ------------------------------------------------------------ desktop */

@@ -10,6 +10,7 @@ mod features;
 mod health;
 mod files_api;
 mod git_api;
+mod group;
 mod import;
 mod mcp_server;
 mod media;
@@ -618,6 +619,7 @@ pub fn run() {
         })
         .manage(remote::Remote::default())
         .manage(features::Handoffs::default())
+        .manage(Arc::new(group::GroupRuns::default()))
         .setup(|app| {
             // Stale per-session config files from a crashed run hold dead tokens.
             let _ = std::fs::remove_dir_all(mcp_config_dir());
@@ -681,7 +683,9 @@ pub fn run() {
             features::open_web_chat,
             features::notify,
             features::dictate,
-            features::launch_folder
+            features::launch_folder,
+            features::group_turn,
+            features::group_cancel
         ])
         .run(tauri::generate_context!())
         .expect("ezCLI failed to launch");

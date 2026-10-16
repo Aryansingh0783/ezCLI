@@ -65,6 +65,68 @@ pub struct AgentDef {
     /// Free/paid labels for this agent's models, shown in the Model menu.
     #[serde(default, rename = "modelPricing")]
     pub model_pricing: Option<ModelPricing>,
+    /// How to run one non-interactive turn, for group chats.
+    #[serde(default)]
+    pub headless: Option<Headless>,
+}
+
+/// A one-shot, non-interactive run of an agent: the conversation goes in,
+/// one reply comes out, the process exits. Used only by group chats.
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct Headless {
+    /// Placed after the agent's base args, e.g. `["-p"]` or `["exec"]`.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Added when the turn may change files.
+    #[serde(default)]
+    pub edit: Vec<String>,
+    /// Added when the turn must not change files.
+    #[serde(default, rename = "readOnly")]
+    pub read_only: Vec<String>,
+    /// "stdin" (default): the prompt is piped in. "file": the prompt is
+    /// written to a file passed with `fileFlag`, for CLIs whose prompt must
+    /// otherwise go on a command line (too long and too fragile on Windows).
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default, rename = "fileFlag")]
+    pub file_flag: Option<String>,
+}
+
+impl Headless {
+    pub fn uses_file(&self) -> bool {
+        self.input.as_deref() == Some("file") && self.file_flag.is_some()
+    }
+}
+
+/// Arguments for one headless turn: base args, headless args, the model,
+/// edit or read-only args, then the prompt file when the CLI takes one.
+/// Returns None for an agent without a headless recipe.
+pub fn headless_argv(
+    a: &AgentDef,
+    model_id: &str,
+    allow_edits: bool,
+    catalog: Option<&[String]>,
+    prompt_file: Option<&str>,
+) -> Option<Vec<String>> {
+    let h = a.headless.as_ref()?;
+    let mut out = a.args.clone();
+    out.extend(h.args.iter().cloned());
+    if let Some(m) = a.models.iter().find(|v| v.id == model_id) {
+        out.extend(m.args.clone());
+    } else if let (Some(from), Some(cat)) = (&a.models_from, catalog) {
+        if cat.iter().any(|c| c == model_id) {
+            if let Some(launch) = from.launch_args() {
+                out.extend(launch.iter().cloned());
+                out.push(model_id.to_string());
+            }
+        }
+    }
+    out.extend(if allow_edits { h.edit.clone() } else { h.read_only.clone() });
+    if h.uses_file() {
+        out.push(h.file_flag.clone().unwrap_or_default());
+        out.push(prompt_file?.to_string());
+    }
+    Some(out)
 }
 
 /// Display-only price labels. `default` applies to every model not listed in
@@ -191,6 +253,12 @@ pub struct AgentOut {
     pub install: Option<String>,
     #[serde(rename = "modelPricing")]
     pub model_pricing: Option<ModelPricing>,
+    /// Can take part in group chats (has a headless recipe).
+    #[serde(rename = "groupChat")]
+    pub group_chat: bool,
+    /// Its headless turns can be allowed to change files.
+    #[serde(rename = "groupCanEdit")]
+    pub group_can_edit: bool,
 }
 
 #[derive(Deserialize)]
@@ -235,7 +303,7 @@ pub fn load_agents(path: &Path) -> Result<Vec<AgentDef>> {
 /// Append built-in agents whose id the user's file doesn't have. The user's
 /// own entries always win, including deliberately edited built-ins; removing a
 /// built-in is done with an entry whose command is set to something absent.
-fn merge_builtin(user: &mut Vec<AgentDef>) {
+pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
     let Ok(builtin) = serde_json::from_str::<AgentsFile>(BUILTIN) else {
         return;
     };
@@ -305,6 +373,13 @@ fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.models = builtin_agent.models.clone();
                 existing.models_from = builtin_agent.models_from.clone();
+            }
+            // Group-chat recipes are additive; an unchanged stock command gets one.
+            if existing.headless.is_none()
+                && builtin_agent.headless.is_some()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.headless = builtin_agent.headless.clone();
             }
             // Price labels are display-only; add them to older stock configs
             // but keep a list the user has edited.
@@ -701,6 +776,8 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                     .is_some_and(|from| from.require_selection),
                 install: a.install.clone(),
                 model_pricing: a.model_pricing.clone(),
+                group_chat: a.headless.is_some(),
+                group_can_edit: a.headless.as_ref().is_some_and(|h| !h.edit.is_empty()),
             }
         })
         .collect()
@@ -941,6 +1018,7 @@ mod tests {
             models_from: None,
             install: None,
             model_pricing: None,
+            headless: None,
         }
     }
 
