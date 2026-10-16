@@ -161,6 +161,38 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.0.0 — the 18-feature release + liquid glass (2026-10-16, Claude).**
+
+Aryan asked for every proposed feature in one release, then a liquid glass
+look, then release + new screenshots. Architecture: new backend modules
+(`features.rs` commands, `health.rs`, `transcripts.rs`, `updater.rs`,
+`remote.rs` + `remote_page.html`, `tray.rs`; `pty_mgr` keeps a 256 KB output
+`Tail` per PTY). Frontend features are separate scripts in `public/features/`
+that plug into `hooks` in app.js (`boot/output/idle/exit/launched/closing/
+tabs/view/shortcut`) or wrap global function declarations (`selectSpace`,
+`applyTheme`, `renderChanges`, `sendComposer`, `renderHome`, `fitActive` —
+keep these as `function` declarations, not consts). `attachPty()` was split
+out of `launch()` so a second window can adopt a running PTY.
+- Window-creating commands (`open_window`, `open_web_chat`, `notify`) MUST be
+  async: sync versions deadlock the main thread on Windows (verified).
+- Compare = several real sessions with a shared `compareGroup`, grid layout,
+  "Send to all" broadcasts typed text (attachments only to the focused one).
+- Updater installs only when the release has `<installer>.sha256` and the
+  download matches; `release.yml` now produces those, plus macOS DMG, Linux
+  deb/AppImage (Tauri CLI .tgz on Linux) and the `vscode-ezcli` .vsix.
+- Remote view: off by default, 128-bit token path, LAN HTTP, typing is a
+  second confirmed switch and resets when the view stops.
+- Web chat windows (`web-*`) are deliberately outside capabilities.
+- Antigravity desktop app ships no CLI; `%LOCALAPPDATA%\agy\bin` is now a
+  well-known PATH dir. Aryan has not installed the CLI yet.
+- Liquid glass (`features/glass.css|js`, default; Settings has Solid):
+  backdrop blur + `url(#liquid-lens)` SVG displacement on small controls,
+  aurora backdrop, transparent xterm (`allowTransparency` at construction).
+Tests: 70 Rust (10 opt-in ignored), 12 Node, 5 extension. CDP-verified every
+feature live except: real phone connection to remote view (server tested from
+Rust), installing an update (no checksummed release existed before 2.0.0), and
+macOS/Linux runtime (CI builds only).
+
 **v1.4.0 — full bug pass, price labels, live Codex models (2026-10-16, Claude).**
 
 Bug pass: clippy (style lints only), 56 Rust + 12 Node tests, impeccable
@@ -697,6 +729,8 @@ when PR 1 started; latest tag `v1.1.0`.
 - 2026-10-16 — Claude: README refresh + composer/terminal overlap fix (v1.3.1),
   full bug pass, Free/Paid labels, live Codex catalog (v1.4.0, run
   `38849923535`).
+- 2026-10-16 — Claude: v2.0.0: all 18 proposed features, VS Code extension,
+  macOS/Linux builds, liquid glass theme, new README screenshots.
 
 ---
 
