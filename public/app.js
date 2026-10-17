@@ -2939,7 +2939,7 @@ function isAppShortcut(e) {
   if (e.type !== 'keydown' || !(e.ctrlKey && e.altKey) || e.metaKey) return false;
   // AltGr reports as Ctrl+Alt on Windows; it types characters, never shortcuts.
   if (e.getModifierState && e.getModifierState('AltGraph')) return false;
-  return /^(Key[NWBKTPLFEDMH]|Digit[1-9]|ArrowLeft|ArrowRight|Slash|Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code);
+  return /^(Key[NWBKTPLFEDMHG]|Digit[1-9]|ArrowLeft|ArrowRight|Slash|Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code);
 }
 
 function onShortcut(e) {
