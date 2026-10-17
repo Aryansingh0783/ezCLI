@@ -1487,7 +1487,7 @@ function renderHead() {
     ? `PC control isn't available for ${a ? a.label : 'this agent'} yet`
     : s.pcControl
       ? 'Restart this session without PC control'
-      : 'Restart this session with PC control (screenshot)';
+      : 'Restart this session with PC control (screenshot, mouse and keyboard)';
   $('actRestart').hidden = s.status === 'parked';
   $('actRestart').textContent = s.status === 'running' ? 'Restart' : 'Relaunch';
 
@@ -3266,7 +3266,7 @@ function wire() {
     const ok = enabling
       ? await confirmDialog(
           'Turn on PC control?',
-          `${a.label} restarts with ezCLI's screenshot tool attached, so it can see your primary screen when it decides to. Its current conversation in this tab ends. Permission lasts only for this process and ends when it exits or you turn it off.`,
+          `${a.label} restarts with ezCLI's PC-control tools attached: it can see your primary screen and move the mouse, click, scroll and type on it when it decides to. Its current conversation in this tab ends. Permission lasts only for this process and ends when it exits or you turn it off.`,
           'Restart with PC control'
         )
       : await confirmDialog(

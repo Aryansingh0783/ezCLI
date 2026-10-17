@@ -12,6 +12,7 @@ mod files_api;
 mod git_api;
 mod group;
 mod import;
+mod input;
 mod mcp_server;
 mod media;
 mod open_in;
@@ -692,6 +693,7 @@ pub fn run() {
             let server = mcp_server::McpServer::start(mcp_server::Hooks {
                 allowed: Box::new(move |pty_id| pc_control_allowed(&handle.state::<AppState>(), pty_id)),
                 screenshot: Box::new(capture::primary_screen),
+                control: Box::new(input::perform),
             })?;
             app.manage(server);
             Ok(())

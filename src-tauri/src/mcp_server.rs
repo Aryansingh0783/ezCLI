@@ -14,6 +14,7 @@
 //! revocation or process exit takes effect on the very next call.
 
 use crate::capture::Capture;
+use crate::input::{self, Action, Button};
 use anyhow::{anyhow, Result};
 use base64::Engine;
 use dashmap::DashMap;
@@ -33,6 +34,8 @@ const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 pub struct Hooks {
     pub allowed: Box<dyn Fn(&str) -> bool + Send + Sync>,
     pub screenshot: Box<dyn Fn() -> Result<Capture> + Send + Sync>,
+    /// Inject one keyboard/mouse action on the primary screen.
+    pub control: Box<dyn Fn(&Action) -> Result<String> + Send + Sync>,
 }
 
 pub struct McpServer {
@@ -170,38 +173,150 @@ fn handle(msg: &Value, ctx: &Ctx) -> Option<Value> {
 /// Tool schemas ride along on every model turn while attached, so keep the
 /// descriptions short.
 fn tool_list() -> Value {
-    json!([{
-        "name": "screenshot",
-        "description": "Capture the user's primary screen as a PNG, at most 1280 px wide. Read-only.",
-        "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
-    }])
+    // Coordinates are pixels on the user's primary screen, the space the
+    // screenshot tool reports its "screen is WxH" size in.
+    json!([
+        {
+            "name": "screenshot",
+            "description": "Capture the user's primary screen as a PNG, at most 1280 px wide. Read-only.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+            "name": "move_mouse",
+            "description": "Move the mouse cursor to an absolute screen pixel (x, y).",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "x": { "type": "integer" }, "y": { "type": "integer" } },
+                "required": ["x", "y"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "click",
+            "description": "Click the mouse. Give x and y to click at that screen pixel, or omit both to click where the cursor is. button is left/right/middle (default left); set double true for a double-click.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "x": { "type": "integer" },
+                    "y": { "type": "integer" },
+                    "button": { "type": "string", "enum": ["left", "right", "middle"] },
+                    "double": { "type": "boolean" }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "type_text",
+            "description": "Type a string of Unicode text at the current focus, as if typed on the keyboard.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "press_key",
+            "description": "Press a key or key combo, e.g. \"enter\", \"ctrl+c\", \"alt+tab\", \"ctrl+shift+t\". Modifiers: ctrl, alt, shift, win.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "keys": { "type": "string" } },
+                "required": ["keys"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "scroll",
+            "description": "Scroll the mouse wheel. dy is vertical (positive = up, negative = down) in wheel notches; dx is horizontal. Give x and y to scroll at that point first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "x": { "type": "integer" },
+                    "y": { "type": "integer" },
+                    "dx": { "type": "integer" },
+                    "dy": { "type": "integer" }
+                },
+                "additionalProperties": false
+            }
+        }
+    ])
+}
+
+/// Parse a `tools/call` arguments object into a control action. Returns `Ok(None)`
+/// for `screenshot` (handled separately) and an error string for a bad request.
+fn parse_action(name: &str, args: &Value) -> Result<Option<Action>, String> {
+    let int = |k: &str| args.get(k).and_then(Value::as_i64).map(|v| v as i32);
+    let action = match name {
+        "screenshot" => return Ok(None),
+        "move_mouse" => {
+            let x = int("x").ok_or("move_mouse needs integer x")?;
+            let y = int("y").ok_or("move_mouse needs integer y")?;
+            Action::Move { x, y }
+        }
+        "click" => {
+            let button = Button::parse(args.get("button").and_then(Value::as_str).unwrap_or(""))
+                .map_err(|e| e.to_string())?;
+            Action::Click {
+                x: int("x"),
+                y: int("y"),
+                button,
+                double: args.get("double").and_then(Value::as_bool).unwrap_or(false),
+            }
+        }
+        "scroll" => Action::Scroll {
+            x: int("x"),
+            y: int("y"),
+            dx: int("dx").unwrap_or(0),
+            dy: int("dy").unwrap_or(0),
+        },
+        "type_text" => {
+            let text = args.get("text").and_then(Value::as_str).ok_or("type_text needs a text string")?;
+            Action::Type { text: text.to_string() }
+        }
+        "press_key" => {
+            let keys = args.get("keys").and_then(Value::as_str).ok_or("press_key needs a keys string")?;
+            Action::Key { combo: input::parse_combo(keys).map_err(|e| e.to_string())? }
+        }
+        other => return Err(format!("unknown tool: {other}")),
+    };
+    Ok(Some(action))
 }
 
 fn call_tool(id: Value, msg: &Value, ctx: &Ctx) -> Value {
     let name = msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
-    if name != "screenshot" {
-        return rpc_error(id, -32602, &format!("unknown tool: {name}"));
-    }
+    let args = msg.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
+    // Parse the request before the consent check so a malformed call fails the
+    // same way whether or not control is granted.
+    let action = match parse_action(name, &args) {
+        Ok(a) => a,
+        Err(e) => return rpc_error(id, -32602, &e),
+    };
     if !(ctx.server.hooks.allowed)(ctx.pty_id) {
         return tool_result(id, true, vec![text("PC control is off for this session. Ask the user to turn it on in ezCLI.")]);
     }
-    match (ctx.server.hooks.screenshot)() {
-        Ok(cap) => tool_result(
-            id,
-            false,
-            vec![
-                json!({
-                    "type": "image",
-                    "data": base64::engine::general_purpose::STANDARD.encode(&cap.png),
-                    "mimeType": "image/png"
-                }),
-                text(&format!(
-                    "{}x{} screenshot (screen is {}x{}).",
-                    cap.width, cap.height, cap.source_width, cap.source_height
-                )),
-            ],
-        ),
-        Err(e) => tool_result(id, true, vec![text(&format!("Screenshot failed: {e}"))]),
+    match action {
+        None => match (ctx.server.hooks.screenshot)() {
+            Ok(cap) => tool_result(
+                id,
+                false,
+                vec![
+                    json!({
+                        "type": "image",
+                        "data": base64::engine::general_purpose::STANDARD.encode(&cap.png),
+                        "mimeType": "image/png"
+                    }),
+                    text(&format!(
+                        "{}x{} screenshot (screen is {}x{}).",
+                        cap.width, cap.height, cap.source_width, cap.source_height
+                    )),
+                ],
+            ),
+            Err(e) => tool_result(id, true, vec![text(&format!("Screenshot failed: {e}"))]),
+        },
+        Some(action) => match (ctx.server.hooks.control)(&action) {
+            Ok(msg) => tool_result(id, false, vec![text(&msg)]),
+            Err(e) => tool_result(id, true, vec![text(&format!("Action failed: {e}"))]),
+        },
     }
 }
 
@@ -316,6 +431,7 @@ mod tests {
         McpServer::start(Hooks {
             allowed: Box::new(move |pty| pty == "p1" && granted.load(Ordering::SeqCst)),
             screenshot: Box::new(fake_capture),
+            control: Box::new(|action| Ok(format!("stub: {action:?}"))),
         })
         .unwrap()
     }
@@ -356,6 +472,36 @@ mod tests {
         let (_, body) = post(&url, r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#, None);
         let v: Value = serde_json::from_str(&body).unwrap();
         assert_eq!(v["result"]["tools"][0]["name"], "screenshot");
+        let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        for want in ["move_mouse", "click", "type_text", "press_key", "scroll"] {
+            assert!(names.contains(&want), "tool list is missing {want}: {names:?}");
+        }
+    }
+
+    #[test]
+    fn control_tools_dispatch_through_the_hook_behind_the_guard() {
+        let granted = Arc::new(AtomicBool::new(true));
+        let srv = server(Arc::clone(&granted));
+        let url = srv.register("p1").unwrap();
+
+        // A granted call runs the control hook (the stub echoes the action).
+        let call = r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"click","arguments":{"x":10,"y":20,"button":"right"}}}"#;
+        let (_, body) = post(&url, call, None);
+        let v: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["result"]["isError"], false);
+        assert!(v["result"]["content"][0]["text"].as_str().unwrap().contains("Right"));
+
+        // A malformed request is rejected as an RPC error, not run.
+        let bad = r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"move_mouse","arguments":{"x":10}}}"#;
+        let (_, body) = post(&url, bad, None);
+        let v: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["error"]["code"], -32602);
+
+        // The consent guard still gates control tools.
+        granted.store(false, Ordering::SeqCst);
+        let (_, body) = post(&url, call, None);
+        let v: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["result"]["isError"], true);
     }
 
     #[test]
@@ -414,6 +560,7 @@ mod tests {
                 counted.fetch_add(1, Ordering::SeqCst);
                 crate::capture::primary_screen()
             }),
+            control: Box::new(|action| crate::input::perform(action)),
         })
         .unwrap();
         let url = srv.register("e2e").unwrap();
