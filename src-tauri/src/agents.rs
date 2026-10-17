@@ -77,6 +77,10 @@ pub struct AgentDef {
     /// How to start a conversation under a known id and resume it later.
     #[serde(default)]
     pub session: Option<SessionCfg>,
+    /// Model ids of about the same quality, best first. Team chats switch to a
+    /// neighbour of the one that is overloaded or rate limited.
+    #[serde(default, rename = "fallbackModels")]
+    pub fallback_models: Vec<String>,
 }
 
 /// Session handling for CLIs that can resume a conversation by id. `{id}` in
@@ -98,7 +102,7 @@ pub struct SessionCfg {
 pub fn valid_session_id(id: &str) -> bool {
     (8..=64).contains(&id.len())
         && id.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
-        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// The launch arguments that start or resume conversation `id`, empty when the
@@ -321,6 +325,8 @@ pub struct AgentOut {
     pub session_new: bool,
     #[serde(rename = "sessionResume")]
     pub session_resume: bool,
+    #[serde(rename = "fallbackModels")]
+    pub fallback_models: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -442,6 +448,11 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
                 && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
             {
                 existing.headless = builtin_agent.headless.clone();
+            }
+            if existing.fallback_models.is_empty()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.fallback_models = builtin_agent.fallback_models.clone();
             }
             if existing.session.is_none()
                 && builtin_agent.session.is_some()
@@ -954,6 +965,7 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                 group_chat: a.headless.is_some(),
                 group_can_edit: a.headless.as_ref().is_some_and(|h| !h.edit.is_empty()),
                 submit: a.submit.clone(),
+                fallback_models: a.fallback_models.clone(),
                 session_new: a.session.as_ref().is_some_and(|s| !s.new_args.is_empty()),
                 session_resume: a.session.as_ref().is_some_and(|s| !s.resume_args.is_empty()),
             }
@@ -1199,6 +1211,7 @@ mod tests {
             headless: None,
             submit: None,
             session: None,
+            fallback_models: Vec::new(),
         }
     }
 

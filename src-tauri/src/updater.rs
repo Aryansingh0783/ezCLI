@@ -200,7 +200,7 @@ pub fn install(path: &str) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        Command::new("msiexec").args(["/i", path]).spawn().map_err(|e| e.to_string())?;
+        Command::new("msiexec").args(["/i", path, "/passive"]).spawn().map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "macos")]
     {

@@ -16,6 +16,10 @@ videos in the chat, and a compare mode that runs one prompt on several agents at
 
 ![The ezCLI launcher in the liquid glass style](docs/screenshot-launcher.png)
 
+![Team chat: three agents working together in one conversation](docs/screenshot-team.png)
+
+![Sessions: everything saved on this PC, with one-click continue](docs/screenshot-sessions.png)
+
 ![Compare mode: one prompt running on three agents side by side](docs/screenshot-compare.png)
 
 ![A session with an image and a video attached in the composer](docs/screenshot-session.png)
@@ -84,6 +88,43 @@ an Ollama API key. It uses the signed-in local CLI only after you choose a live
 catalog entry.
 
 ## Current features
+
+### New in 2.1
+
+- **Team chat.** `Ctrl+Alt+G`. Pick two to five agents (for example Claude Code, Codex
+  and OpenCode) and they work in **one** conversation: each reads what the others
+  said, builds on it and corrects it. Three ways to work together: Round table,
+  Draft and review, or Compare and merge. Agents may edit files, one at a time. If a
+  model is overloaded or rate limited, ezCLI switches to a comparable one and says so.
+- **Sessions that survive.** Every tab is saved on this PC. Close the app, reopen it,
+  and the tab is back with its text; Resume continues the same Claude Code or Codex
+  conversation by id. `Ctrl+Alt+H` lists everything, including the chats those CLIs
+  already keep, and the home screen offers one-click Continue cards.
+- **Free models only.** Ollama Cloud, OpenCode and DeepSeek list only models that cost
+  nothing, and every PC shows the same list.
+- **Safer sending.** One Enter in the composer submits one message. ezCLI never types
+  into a CLI's update, trust or sign-in question.
+
+### Guide: what each feature does
+
+| Feature | What it does | How to use it |
+| --- | --- | --- |
+| Agent, Model, Effort, Mode pills | Choose which CLI starts and how | Click a pill on the home screen before sending |
+| Team chat | Several agents in one conversation | `Ctrl+Alt+G`, add agents, pick a mode, describe the task |
+| Compare | The same prompt in separate sessions side by side | `Ctrl+Alt+M` |
+| Sessions | Everything saved on this PC, plus Claude Code and Codex history | `Ctrl+Alt+H`, then Resume or Continue |
+| Attach | Images and videos in the chat | Attach button, paste with `Ctrl+V`, or drop files |
+| Changes pane | Review, stage, commit or discard what the agent changed | `Ctrl+Alt+B`, then Changes |
+| Command palette | Search every action | `Ctrl+Alt+P` |
+| Prompt library | Saved prompts with fill-in `{{variables}}` | `Ctrl+Alt+L` |
+| Search and export | Find text in past sessions, save one as Markdown or HTML | `Ctrl+Alt+F`, `Ctrl+Alt+E` |
+| Health check | Which CLIs are installed and signed in, with install commands | Settings, Health check |
+| Updates | Install new releases from inside the app | The Update badge in the title bar, or Settings |
+| Remote view | Watch sessions from a phone on your Wi-Fi | Settings, Remote view |
+| Web chat | Provider websites in their own window (experimental) | Home screen, Web chat |
+| Voice typing | Dictate into the message box (Windows) | `Ctrl+Alt+D` |
+
+More detail for each is in [GUIDE.md](GUIDE.md).
 
 ### New in 2.0
 

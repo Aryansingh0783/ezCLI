@@ -71,7 +71,7 @@ pub fn dir() -> PathBuf {
 }
 
 /// File names come from the session id, so restrict it to a safe charset.
-fn safe_id(id: &str) -> Result<&str, String> {
+pub(crate) fn safe_id(id: &str) -> Result<&str, String> {
     let ok = !id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if ok {
         Ok(id)

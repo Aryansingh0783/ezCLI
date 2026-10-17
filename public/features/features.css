@@ -982,3 +982,289 @@ dialog.palette::backdrop {
 .continue-more:hover {
   color: var(--text);
 }
+/* Status-bar usage */
+.live-usage-item.hot {
+  color: var(--warn);
+}
+.live-usage-item.hot b {
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------- team chat */
+
+.main.team-open > .home,
+.main.team-open > .workspace {
+  visibility: hidden;
+}
+.team-view {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+.team-view[hidden] {
+  display: none;
+}
+:root[data-style='glass'] .team-view {
+  background: color-mix(in srgb, var(--base) 86%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+}
+.team-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px 0;
+}
+.team-title {
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+.team-title:hover,
+.team-title:focus {
+  border-color: var(--border);
+  background: var(--surface-2);
+  outline: none;
+}
+.team-controls {
+  display: grid;
+  gap: 8px;
+  padding: 8px 18px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.team-members,
+.team-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+.team-chip > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(var(--hue) 62% 55%);
+}
+.team-chip button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--faint);
+}
+.team-chip button:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
+}
+.team-rounds {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.team-rounds select {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+.team-options .toggle-row {
+  margin: 0;
+}
+.team-folder {
+  max-width: 320px;
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+.team-mode-hint {
+  margin: 0;
+}
+.team-thread {
+  flex: 1;
+  min-height: 0;
+  padding: 18px max(18px, calc((100% - 860px) / 2));
+  overflow-y: auto;
+}
+.team-empty {
+  margin: 8vh auto 0;
+  max-width: 460px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.team-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 16px;
+}
+.team-msg {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.team-msg.user {
+  justify-content: flex-end;
+}
+.team-msg.user .team-body {
+  max-width: 78%;
+  padding: 9px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.team-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: hsl(var(--hue) 50% 38%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.team-body {
+  min-width: 0;
+  flex: 1;
+}
+.team-msg.agent .team-body > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 3px;
+  font-size: 12.5px;
+}
+.team-msg.agent header span,
+.team-msg.agent header em {
+  color: var(--faint);
+  font-size: 11.5px;
+  font-style: normal;
+}
+.team-msg.agent header em {
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.team-text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.team-text code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.team-code {
+  margin: 8px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--term-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.team-code code {
+  padding: 0;
+  background: none;
+}
+.team-error {
+  margin: 2px 0 0;
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.team-flag {
+  color: var(--warn);
+  font-size: 11.5px;
+}
+.team-composer {
+  display: grid;
+  gap: 6px;
+  margin: 0 max(14px, calc((100% - 860px) / 2)) 14px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.team-composer textarea {
+  width: 100%;
+  min-height: 44px;
+  max-height: 200px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: none;
+}
+.team-composer textarea:focus {
+  outline: none;
+}
+.team-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.team-composer-row .note {
+  font-size: 11.5px;
+}
+.home-team {
+  display: flex;
+  width: fit-content;
+  margin: 8px auto 0;
+}
+.team-text strong {
+  font-weight: 650;
+}
+
+.team-note {
+  margin: 0 0 4px;
+  color: var(--warn);
+  font-size: 12px;
+}

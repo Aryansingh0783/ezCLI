@@ -105,6 +105,11 @@ const Sessions = (() => {
 
   /** Continue `item` in `agentId` (default: the agent that ran it). */
   async function continueItem(item, agentId) {
+    // A team chat reopens as the same team conversation.
+    if (item.agentId === 'team') {
+      if (sheet && sheet.open) sheet.close();
+      return Team.openSaved(item.id);
+    }
     const wanted = agentId || item.agentId;
     let a = agent(wanted);
     if (!a || !a.available) a = agent(prefs.agentId);
@@ -393,7 +398,7 @@ const Sessions = (() => {
    *  so this tab can be resumed with the real conversation. */
   async function findCodexId(s) {
     const a = agent(s.agentId);
-    if (!a || !a.sessionResume || a.sessionNew || s.providerSessionId || !s.ptyId) return;
+    if (!a || !a.sessionResume || a.sessionNew || s.providerSessionId || !s.ptyId) return; // Codex and OpenCode choose their own ids
     try {
       const id = await invoke('find_provider_session', { agentId: s.agentId, cwd: s.cwd, sinceMs: Math.max(0, (s.startedAt || Date.now()) - 5000) });
       if (id && !s.providerSessionId) {

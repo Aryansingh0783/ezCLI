@@ -67,6 +67,47 @@ pub fn clear_transcripts() -> usize {
     transcripts::clear()
 }
 
+/* ------------------------------------------------------------ team chats */
+
+const MAX_TEAM_BYTES: usize = 8 * 1024 * 1024;
+
+fn teams_dir() -> std::path::PathBuf {
+    dirs::home_dir().unwrap_or_else(std::env::temp_dir).join(".ezcli").join("teams")
+}
+
+fn team_path(id: &str) -> Result<std::path::PathBuf, String> {
+    transcripts::safe_id(id)?;
+    Ok(teams_dir().join(format!("{id}.json")))
+}
+
+/// Save a team chat (the whole conversation as JSON) on this PC.
+#[tauri::command]
+pub fn team_save(id: String, json: String) -> Result<(), String> {
+    if json.len() > MAX_TEAM_BYTES {
+        return Err("This team chat is too large to save. Start a new one.".into());
+    }
+    serde_json::from_str::<serde_json::Value>(&json).map_err(|_| "Team chat data was not valid.".to_string())?;
+    let path = team_path(&id)?;
+    std::fs::create_dir_all(teams_dir()).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn team_load(id: String) -> Result<String, String> {
+    std::fs::read_to_string(team_path(&id)?).map_err(|_| "That team chat no longer exists.".to_string())
+}
+
+#[tauri::command]
+pub fn team_delete(id: String) -> Result<(), String> {
+    let p = team_path(&id)?;
+    if p.exists() {
+        std::fs::remove_file(p).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /* ------------------------------------------------------------ health */
 
 #[tauri::command]
@@ -353,6 +394,17 @@ pub fn folder_arg(args: impl Iterator<Item = String>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn team_chats_round_trip_and_reject_bad_ids_or_data() {
+        let id = format!("team-test-{}", std::process::id());
+        team_save(id.clone(), r#"{"messages":[]}"#.into()).unwrap();
+        assert_eq!(team_load(id.clone()).unwrap(), r#"{"messages":[]}"#);
+        assert!(team_save(id.clone(), "not json".into()).is_err());
+        assert!(team_save("../evil".into(), "{}".into()).is_err());
+        team_delete(id.clone()).unwrap();
+        assert!(team_load(id).is_err());
+    }
 
     #[test]
     fn folder_arg_takes_the_first_existing_directory() {

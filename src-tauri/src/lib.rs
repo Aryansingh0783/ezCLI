@@ -20,6 +20,7 @@ mod pty_mgr;
 mod remote;
 mod system_profile;
 mod transcripts;
+mod usage_live;
 mod tray;
 mod updater;
 
@@ -299,7 +300,7 @@ fn git_diff(
 /// Run a fixed model-catalog command with a hidden console and a hard timeout.
 /// The command and every argument come from trusted built-in routing or the
 /// user-owned agents.json, never from the webview.
-fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
+pub(crate) fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
@@ -470,6 +471,12 @@ async fn list_imports(state: State<'_, AppState>) -> Result<import::ImportCatalo
     Ok(discovery.catalog)
 }
 
+/// Real token and plan-limit usage for a session, from the CLI's own files.
+#[tauri::command]
+async fn session_usage(agent_id: String, session_id: String) -> Option<usage_live::LiveUsage> {
+    tauri::async_runtime::spawn_blocking(move || usage_live::read(&agent_id, &session_id)).await.ok().flatten()
+}
+
 /// Does the CLI still have a stored conversation with this id?
 #[tauri::command]
 async fn provider_session_exists(agent_id: String, session_id: String) -> bool {
@@ -481,10 +488,11 @@ async fn provider_session_exists(agent_id: String, session_id: String) -> bool {
 /// Codex chooses its own session id; read it back so the tab can be resumed.
 #[tauri::command]
 async fn find_provider_session(agent_id: String, cwd: String, since_ms: u64) -> Option<String> {
-    if agent_id != "codex" {
-        return None;
-    }
-    tauri::async_runtime::spawn_blocking(move || import::find_codex_session(&cwd, since_ms))
+    tauri::async_runtime::spawn_blocking(move || match agent_id.as_str() {
+        "codex" => import::find_codex_session(&cwd, since_ms),
+        "opencode" | "deepseek" => usage_live::find_opencode_session(&cwd, since_ms),
+        _ => None,
+    })
         .await
         .ok()
         .flatten()
@@ -689,6 +697,7 @@ pub fn run() {
             read_imported_chat,
             find_provider_session,
             provider_session_exists,
+            session_usage,
             set_pc_control,
             open_targets,
             open_in,
@@ -725,6 +734,9 @@ pub fn run() {
             features::dictate,
             features::launch_folder,
             features::group_turn,
+            features::team_save,
+            features::team_load,
+            features::team_delete,
             features::group_cancel
         ])
         .run(tauri::generate_context!())

@@ -10,6 +10,8 @@ How to install ezCLI, launch sessions, and use every part of the window.
 - [Work in a session](#work-in-a-session)
 - [Images and videos](#images-and-videos)
 - [Compare agents](#compare-agents)
+- [Team chat](#team-chat)
+- [Sessions and memory](#sessions-and-memory)
 - [Command palette and prompts](#command-palette-and-prompts)
 - [Past sessions and export](#past-sessions-and-export)
 - [Health check and updates](#health-check-and-updates)
@@ -230,6 +232,24 @@ the Command Palette:
   that is already running.
 
 The first two are also in the Explorer's right-click menu for folders.
+
+## Team chat
+
+`Ctrl+Alt+G`, or **Team chat** on the home screen. One conversation, several agents.
+
+1. Pick the agents under the title (Add agent). Add the same agent twice to use two of its models.
+2. Choose how they work together:
+   - **Round table**: each agent replies in turn and builds on the others, for 1 to 3 rounds. It stops early if every agent says DONE.
+   - **Draft and review**: the first agent does the work, the others review it (read only), then the first agent revises.
+   - **Compare and merge**: everyone answers on their own, then the first agent combines the answers and applies them.
+3. Tick **Agents may edit files** if they should change the folder. They always take turns, so edits never collide.
+4. Describe the task and press Enter. **Stop** ends the current run.
+
+Each turn is a real one-shot run of that agent's CLI, using your own account and limits. If a model is overloaded or rate limited, ezCLI tries a comparable one and notes it on the message. Team chats are saved in Sessions.
+
+## Sessions and memory
+
+`Ctrl+Alt+H` opens Sessions: every tab ezCLI ran, plus the chats Claude Code and Codex keep. Select one to read it. **Resume** reopens a Claude Code or Codex conversation exactly where it stopped; **Continue in** starts any other agent in the same folder with a summary of it. Closing the app never loses a tab: it comes back with its text and Resume continues it. Sessions are stored in `~/.ezcli/transcripts` and are never deleted by age.
 
 ## Files pane
 

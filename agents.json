@@ -142,7 +142,11 @@
           "--resume",
           "{id}"
         ]
-      }
+      },
+      "fallbackModels": [
+        "opus",
+        "sonnet"
+      ]
     },
     {
       "id": "claude-chat",
@@ -551,25 +555,43 @@
       "imageTransport": "interactive_at_reference",
       "mcp": "none",
       "headless": {
-        "fileFlag": "-f",
-        "readOnly": [
-          "--agent",
-          "plan"
-        ],
         "args": [
-          "run",
-          "Read the attached group conversation and write your reply as asked at its end."
+          "run"
         ],
-        "input": "file",
         "edit": [
           "--agent",
           "build"
+        ],
+        "readOnly": [
+          "--agent",
+          "plan"
         ]
       },
       "modelPricing": {
         "default": "free",
         "note": "Only models that cost nothing are listed. Step 5 Preview is paid and stays hidden unless you turn on \"Show paid models that use my own API key\" in Settings."
-      }
+      },
+      "session": {
+        "newArgs": [],
+        "resumeArgs": [
+          "--session",
+          "{id}"
+        ]
+      },
+      "fallbackModels": [
+        "opencode/nemotron-3-ultra-free",
+        "opencode/deepseek-v4.1-flash-free",
+        "opencode/glm-5.3-flash-free",
+        "opencode/big-pickle",
+        "opencode/muse-spark-1.3-contributor-free",
+        "opencode/nemotron-3.5-super-vl-free",
+        "opencode/mimo-v2.6-flash-free",
+        "opencode/beam-free",
+        "opencode/longcat-2.5-preview-free",
+        "opencode/nemotron-3.5-lightning-free",
+        "opencode/ll-alpha-free",
+        "opencode/space-bunny-free"
+      ]
     },
     {
       "id": "deepseek",
@@ -621,19 +643,23 @@
       "imageTransport": "interactive_at_reference",
       "mcp": "none",
       "headless": {
-        "fileFlag": "-f",
-        "readOnly": [
-          "--agent",
-          "plan"
-        ],
         "args": [
-          "run",
-          "Read the attached group conversation and write your reply as asked at its end."
+          "run"
         ],
-        "input": "file",
         "edit": [
           "--agent",
           "build"
+        ],
+        "readOnly": [
+          "--agent",
+          "plan"
+        ]
+      },
+      "session": {
+        "newArgs": [],
+        "resumeArgs": [
+          "--session",
+          "{id}"
         ]
       }
     },
@@ -716,17 +742,17 @@
       "_mcp_note": "Gemini CLI has no per-launch MCP flag; attaching would mean editing the user's settings files, so PC control is off.",
       "mcp": "none",
       "headless": {
-        "readOnly": [
-          "--approval-mode",
-          "plan"
-        ],
         "args": [
           "-p",
-          "Reply as asked at the end of the conversation above."
+          "Follow the instructions on stdin and reply as asked at the end of the conversation."
         ],
         "edit": [
           "--approval-mode",
           "auto_edit"
+        ],
+        "readOnly": [
+          "--approval-mode",
+          "plan"
         ]
       }
     },
@@ -821,7 +847,12 @@
       "mcp": "none",
       "headless": {
         "args": []
-      }
+      },
+      "fallbackModels": [
+        "gpt-oss:120b-cloud",
+        "nemotron-3-ultra:cloud",
+        "gemma4:31b-cloud"
+      ]
     },
     {
       "id": "freebuff",
