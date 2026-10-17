@@ -161,6 +161,34 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1.1 (2026-10-17, Claude).** Repo-wide bug scan after v2.1.0: fixed the
+`Ctrl+Alt+G` team-chat shortcut being silently dropped (`KeyG` was missing
+from `isAppShortcut`'s regex in `public/app.js`), cleaned up a handful of
+clippy lints (`unused_mut`, `bool::then` → `then_some`, `sort_by` →
+`sort_by_key`-style, a manual `is_file().then()` chain) with no behavior
+change. Confirmed `cargo test --lib` crashes with
+`STATUS_ENTRYPOINT_NOT_FOUND` on this box on *both* the new code and clean
+`aacfcdd` — pre-existing local toolchain/test-harness breakage (likely from a
+rustc update), not introduced here; the real binary builds and runs fine, so
+verification relied on a dedicated unit test plus a manual build/run check
+instead of the full suite. Someone with a healthy toolchain should confirm
+`cargo test` is actually green.
+PC control extended to OpenCode (and `deepseek`, which shares the OpenCode
+binary) — the only other free-tier CLI besides Claude Code/Codex that we could
+verify supports MCP: `opencode mcp` is a real subcommand, and the installed
+`opencode.exe` strings contain `OPENCODE_CONFIG_CONTENT`, which OpenCode merges
+over its own config at startup. `AgentDef::mcp_style()` gained `McpStyle::OpenCode`;
+`mcp_attach_args` returns an env var (`OPENCODE_CONFIG_CONTENT={"mcp":{"ezcli":
+{"type":"remote","url":...,"enabled":true}}}`) instead of CLI args; `SpawnArgs`
+now carries a per-session `env: Vec<(String,String)>` that `pty_mgr::session_command`
+applies after the nested-session-var cleanup. `agents.json`'s `opencode` entry
+now ships `"mcp": "opencode"`; `merge_builtin` migrates existing users' stock
+`opencode` entries from `"none"`. No frontend change needed — `pc_control` in
+`AgentOut` already derives from `mcp_style().is_some()`, so the PC-control
+toggle just lights up for OpenCode/DeepSeek. Gemini CLI (`--extensions`/
+settings-based MCP) and Ollama (no CLI tool support at all) were investigated
+but not wired up — left for a follow-up since they need more plumbing (Gemini:
+a generated extension dir; Ollama: no path at all today).
 **v2.1.0 (2026-10-17, Claude).** Done: free-only models (Ollama Cloud filtered in
 Rust, OpenCode zero-cost text models + a fixed 12-model baseline, Step 5 Preview
 is paid so it is an opt-in Settings toggle), first-run dialog fixed, composer
@@ -745,6 +773,15 @@ when PR 1 started; latest tag `v1.1.0`.
   `38849923535`).
 - 2026-10-16 — Claude: v2.0.0: all 18 proposed features, VS Code extension,
   macOS/Linux builds, liquid glass theme, new README screenshots.
+- 2026-10-17 — Claude: v2.1.0: free-only models, composer/CLI-prompt fixes,
+  rewritten importer, Sessions sheet + local memory + native resume, team
+  chat, VS Code extension parser fix.
+- 2026-10-17 — Claude: v2.1.1: repo-wide bug scan (fixed the dropped
+  `Ctrl+Alt+G` team-chat shortcut, a handful of clippy lints), PC control
+  extended to OpenCode/DeepSeek via `OPENCODE_CONFIG_CONTENT`. Flagged that
+  `cargo test --lib` crashes on this box on both old and new code
+  (pre-existing toolchain issue, not from this change) — needs a clean-toolchain
+  confirmation before trusting the suite again.
 
 ---
 
