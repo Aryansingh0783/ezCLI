@@ -189,6 +189,35 @@ toggle just lights up for OpenCode/DeepSeek. Gemini CLI (`--extensions`/
 settings-based MCP) and Ollama (no CLI tool support at all) were investigated
 but not wired up — left for a follow-up since they need more plumbing (Gemini:
 a generated extension dir; Ollama: no path at all today).
+
+Then PC control became *real*: the MCP server used to expose only a read-only
+`screenshot`, so an attached model could see but not act. New `src/input.rs`
+injects input via Win32 `SendInput`/`SetCursorPos` and the server gained
+`move_mouse`, `click`, `scroll`, `type_text`, `press_key` (coordinates share
+the screenshot tool's reported screen size). New `src/browser.rs` adds an
+in-app browser the model drives: a second webview window (label `pc-browser`,
+deliberately **outside** the capabilities manifest so the loaded page has no
+ezCLI command access) plus tools `browser_navigate`, `browser_screenshot`
+(a `PrintWindow` capture of just that window — `PW_RENDERFULLCONTENT` or the
+WebView2 surface comes back black; needs the new `Win32_Storage_Xps` feature),
+`browser_click`/`type`/`key`/`scroll`/`nav`. `mcp_server` now routes three tool
+families (screenshot / control / browser) through three hooks behind the one
+consent guard; the consent dialog and toggle tooltip were updated to say
+mouse/keyboard control is included. `capture.rs` gained `window_client(hwnd)`.
+Scroll direction was unified: positive dy = down, positive dx = right, for both
+`scroll` and `browser_scroll`.
+
+Scan results this session: all JS passes `node --check` and is loaded by
+index.html; every `hooks.*` push target exists and is emitted; every frontend
+`invoke(...)` command is registered in `generate_handler!`; `agents.json` is
+valid; no panics/`unwrap` outside tests or the standard Tauri `.run().expect`.
+NOT runtime-tested this session: the new input injection (a live test would
+hijack the user's real mouse/keyboard) and the in-app browser window creation +
+`PrintWindow` capture (the user's installed app held the single-instance lock
+and I would not close their running app). Both compile into the working binary
+and reuse proven APIs (`WebviewWindowBuilder` is the same call `open_window`/
+`open_web_chat` already use in production); they still want a live pass in the
+packaged build or in CI.
 **v2.1.0 (2026-10-17, Claude).** Done: free-only models (Ollama Cloud filtered in
 Rust, OpenCode zero-cost text models + a fixed 12-model baseline, Step 5 Preview
 is paid so it is an opt-in Settings toggle), first-run dialog fixed, composer
@@ -782,6 +811,13 @@ when PR 1 started; latest tag `v1.1.0`.
   `cargo test --lib` crashes on this box on both old and new code
   (pre-existing toolchain issue, not from this change) — needs a clean-toolchain
   confirmation before trusting the suite again.
+- 2026-10-17 — Claude: v2.1.1 cont.: real PC control (mouse+keyboard input
+  injection, `src/input.rs`) replacing screenshot-only, and an agent-driven
+  in-app browser (`src/browser.rs`, `pc-browser` sandboxed webview) with
+  navigate/screenshot/click/type/key/scroll/nav MCP tools. Unified scroll
+  direction. Full static scan clean (JS/hooks/commands/agents.json/panics).
+  Input injection and browser window not runtime-tested locally (would hijack
+  the real cursor / needed to close the user's running app); want a live pass.
 
 ---
 
