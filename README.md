@@ -57,7 +57,7 @@ provider is free.
 
 | Backend | Free route | PC control | Install / setup |
 | --- | --- | --- | --- |
-| OpenCode | Yes. It includes key-free models and can also use connected providers or local Ollama. Its Model menu is refreshed from `opencode models`. | No | `npm install -g opencode-ai` |
+| OpenCode | Yes. It includes key-free models and can also use connected providers or local Ollama. Its Model menu is refreshed from `opencode models`. | Yes | `npm install -g opencode-ai` |
 | Antigravity CLI | Yes, with a personal Google-account sign-in. It is the supported personal-Google route. The Antigravity desktop app does not include this CLI. | No | `irm https://antigravity.google/cli/install.ps1 \| iex` |
 | Gemini CLI | Not through personal Google login. Use a Gemini API key, Vertex AI, or an enterprise configuration. | No | `npm install -g @google/gemini-cli` |
 | Ollama Local | Yes, after you choose a model that is already downloaded locally. The app detects coarse PC capacity to explain this route, but never pulls a model itself. | No | `irm https://ollama.com/install.ps1 \| iex` |
@@ -68,9 +68,12 @@ provider is free.
 | Claude | No separate free route; this is the `claude` CLI configuration. | No | Installed with Claude Code |
 | ChatGPT | No bundled free route; enabled only when a compatible `chatgpt` executable is already on `PATH`. | No | Provide that executable on `PATH` |
 
-PC control is currently screenshot-only. It is attached at launch and can be
-used only by **Claude Code** and **Codex**; switching it on or off restarts the
-session.
+PC control gives the agent a screenshot tool plus real mouse and keyboard
+control (move, click, scroll, type, key combos) and an agent-driven in-app
+browser, all through a local tool server. It is attached at launch — switching
+it on or off restarts the session — and works with **Claude Code**, **Codex**
+and the free **OpenCode**/**DeepSeek** backends. It is off until you turn it on
+per session, and the grant ends when that session exits.
 
 ### Ollama: local capacity versus cloud capacity
 
@@ -105,6 +108,17 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.1.1
+
+- **Real PC control, for free models too.** PC control is no longer screenshot-only:
+  an agent you grant it to can move the mouse, click, scroll and type, and it now works
+  with the free **OpenCode** and **DeepSeek** backends as well as Claude Code and Codex.
+- **An agent-driven in-app browser.** The agent can open a separate ezCLI browser window
+  and navigate, read (by screenshot), click and type in it — a contained browser it
+  controls, not your whole desktop. The page it loads cannot reach back into ezCLI.
+- **Fixes.** The `Ctrl+Alt+G` team-chat shortcut now works, and scroll direction is
+  consistent (down is positive).
+
 ### Guide: what each feature does
 
 | Feature | What it does | How to use it |
@@ -115,6 +129,7 @@ catalog entry.
 | Sessions | Everything saved on this PC, plus Claude Code and Codex history | `Ctrl+Alt+H`, then Resume or Continue |
 | Attach | Images and videos in the chat | Attach button, paste with `Ctrl+V`, or drop files |
 | Changes pane | Review, stage, commit or discard what the agent changed | `Ctrl+Alt+B`, then Changes |
+| PC control | Let an agent see and operate your screen, or drive the in-app browser | PC control chip in the session header |
 | Command palette | Search every action | `Ctrl+Alt+P` |
 | Prompt library | Saved prompts with fill-in `{{variables}}` | `Ctrl+Alt+L` |
 | Search and export | Find text in past sessions, save one as Markdown or HTML | `Ctrl+Alt+F`, `Ctrl+Alt+E` |
@@ -318,12 +333,22 @@ project, so ezCLI does not probe guessed paths or claim compatibility.
 
 ## PC control and its permission model
 
-PC control lets an agent see your screen through a tool that ezCLI provides. It
-is off for every session until you turn it on, and it costs no tokens while off.
+PC control lets an agent see and operate your computer through tools that ezCLI
+provides. It is off for every session until you turn it on, and it costs no
+tokens while off.
 
-**What the agent can do today:** call one tool, `screenshot`, which returns your
-primary display as a PNG at most 1280 px wide. It cannot click, type, or run
-commands through ezCLI yet.
+**What the agent can do when it is on:**
+
+- `screenshot` — your primary display as a PNG, at most 1280 px wide.
+- `move_mouse`, `click`, `scroll` — move and click the mouse at screen pixels.
+- `type_text`, `press_key` — type text and press keys/combos (e.g. `ctrl+c`).
+- An in-app browser it drives on its own: `browser_navigate` opens a separate
+  ezCLI browser window (not your desktop), and `browser_screenshot` /
+  `browser_click` / `browser_type` / `browser_key` / `browser_scroll` /
+  `browser_nav` read and operate just that window. The page it loads has no
+  access back into ezCLI.
+
+It still cannot run shell commands through ezCLI — only the tools above.
 
 **How you turn it on:** use the **PC control** chip in the session header. The
 agent only learns about tools when it starts, so turning PC control on restarts
