@@ -120,7 +120,7 @@ impl McpServer {
         let reply = match body {
             Value::Array(batch) => {
                 let out: Vec<Value> = batch.iter().filter_map(|m| handle(m, &ctx)).collect();
-                (!out.is_empty()).then(|| Value::Array(out))
+                (!out.is_empty()).then_some(Value::Array(out))
             }
             single => handle(&single, &ctx),
         };

@@ -48,7 +48,7 @@ fn gib_from_bytes(bytes: u64) -> Option<u64> {
 
 fn mib_from_bytes(bytes: usize) -> Option<u64> {
     let bytes = bytes as u64;
-    (bytes != 0).then(|| bytes / MIB)
+    (bytes != 0).then_some(bytes / MIB)
 }
 
 #[cfg(windows)]
