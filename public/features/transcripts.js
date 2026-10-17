@@ -32,7 +32,12 @@ function transcriptMeta(s) {
     model: s.modelId ? modelLabel(a, s.modelId) : 'Default',
     cwd: s.cwd || '',
     startedAt: Math.round(s.startedAt || Date.now()),
-    endedAt: Date.now()
+    endedAt: Date.now(),
+    providerSessionId: s.providerSessionId || '',
+    modelId: s.modelId || '',
+    modeId: s.modeId || '',
+    effortId: s.effortId || '',
+    prompts: (s.prompts || []).slice(-30)
   };
 }
 
@@ -45,14 +50,27 @@ function saveTranscript(s) {
 
 hooks.exit.push((s) => saveTranscript(s));
 hooks.closing.push((s) => saveTranscript(s));
-// Keep long-running tabs searchable too, and survive a crash.
+// A session is saved as soon as it goes quiet after output, and again every
+// 20 seconds while it is busy, so a crash or power loss costs at most a moment.
+hooks.idle.push((s) => saveTranscript(s));
 setInterval(() => {
   for (const s of state.sessions) if (s.status === 'running' && s.lastOutputAt > (s.savedAt || 0)) {
     s.savedAt = Date.now();
     saveTranscript(s);
   }
-}, 120000);
-addEventListener('beforeunload', () => state.sessions.forEach(saveTranscript));
+}, 20000);
+/** Write everything to disk now: each tab's text, the parked-tab list, and the
+ *  preferences (normally saved after a short delay, which an exit would skip). */
+function flushMemory() {
+  state.sessions.forEach(saveTranscript);
+  snapshotParked();
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* storage unavailable */
+  }
+}
+addEventListener('beforeunload', flushMemory);
 
 /* ------------------------------------------------------------ export */
 

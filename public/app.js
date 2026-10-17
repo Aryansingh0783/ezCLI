@@ -994,14 +994,26 @@ async function launch(s) {
   let sessionId = '';
   let resuming = false;
   if (s.resumeNext && s.providerSessionId && la2 && la2.sessionResume) {
-    sessionId = s.providerSessionId;
-    resuming = true;
-  } else if (la2 && la2.sessionNew) {
-    s.providerSessionId = crypto.randomUUID();
-    sessionId = s.providerSessionId;
-  } else {
-    // A fresh launch is a new conversation; Codex's id is found after it starts.
-    s.providerSessionId = '';
+    // Only resume a conversation the CLI actually stored; a tab that ran nothing
+    // but local commands has none, and starting fresh beats an empty screen.
+    const stored = await invoke('provider_session_exists', { agentId: s.agentId, sessionId: s.providerSessionId }).catch(() => true);
+    if (!isCurrentLaunch()) return false;
+    if (stored) {
+      sessionId = s.providerSessionId;
+      resuming = true;
+    } else {
+      s.term.writeln('\x1b[38;2;106;106;112m(That conversation was never stored by the CLI, so this starts a new one.)\x1b[0m');
+      s.providerSessionId = '';
+    }
+  }
+  if (!resuming) {
+    if (la2 && la2.sessionNew) {
+      s.providerSessionId = crypto.randomUUID();
+      sessionId = s.providerSessionId;
+    } else {
+      // A fresh launch is a new conversation; Codex's id is found after it starts.
+      s.providerSessionId = '';
+    }
   }
   s.resumeNext = false;
   try {

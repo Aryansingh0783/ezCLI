@@ -470,6 +470,14 @@ async fn list_imports(state: State<'_, AppState>) -> Result<import::ImportCatalo
     Ok(discovery.catalog)
 }
 
+/// Does the CLI still have a stored conversation with this id?
+#[tauri::command]
+async fn provider_session_exists(agent_id: String, session_id: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || import::provider_session_exists(&agent_id, &session_id))
+        .await
+        .unwrap_or(false)
+}
+
 /// Codex chooses its own session id; read it back so the tab can be resumed.
 #[tauri::command]
 async fn find_provider_session(agent_id: String, cwd: String, since_ms: u64) -> Option<String> {
@@ -680,6 +688,7 @@ pub fn run() {
             list_imports,
             read_imported_chat,
             find_provider_session,
+            provider_session_exists,
             set_pc_control,
             open_targets,
             open_in,

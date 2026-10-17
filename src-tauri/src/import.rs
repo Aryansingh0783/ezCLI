@@ -547,7 +547,34 @@ pub fn find_codex_session(cwd: &str, since_ms: u64) -> Option<String> {
     None
 }
 
+/// The Codex rollout file for a session id (the id ends the file name).
+pub fn find_codex_file(session_id: &str) -> Option<PathBuf> {
+    let root = codex_sessions_dir()?;
+    let suffix = format!("-{session_id}.jsonl");
+    let (files, _) = collect_files(&root, Source::Codex);
+    files.into_iter().map(|(_, _, p)| p).find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&suffix)))
+}
+
+/// Whether the CLI still has a stored conversation with this id. A tab that
+/// only ran local commands never created one, so there is nothing to resume.
+pub fn provider_session_exists(agent_id: &str, id: &str) -> bool {
+    if !crate::agents::valid_session_id(id) {
+        return false;
+    }
+    match agent_id {
+        "claude-code" | "claude-chat" => claude_projects_dir()
+            .and_then(|root| fs::read_dir(root).ok())
+            .map(|dirs| dirs.flatten().any(|d| d.path().join(format!("{id}.jsonl")).is_file()))
+            .unwrap_or(false),
+        "codex" => codex_sessions_dir()
+            .map(|root| collect_files(&root, Source::Codex).0.iter().any(|(_, _, p)| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(id))))
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
 fn normalize_path(p: &str) -> String {
+
     p.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase()
 }
 
