@@ -1057,11 +1057,65 @@ async function attachPty(s, ptyId, isCurrentLaunch = () => true) {
   return true;
 }
 
-function deliverPending(s) {
-  if (!s.pendingPrompt || s.status !== 'running') return;
-  const text = s.pendingPrompt;
-  s.pendingPrompt = '';
-  sendText(s, text);
+/** What is on a session's visible terminal screen, as plain text. A TUI draws
+ *  a question wherever it likes (Codex puts its prompt at the top of an
+ *  otherwise empty screen), so look at every visible row, not just the bottom. */
+function screenTail(s, count = s.term.rows) {
+  const b = s.term.buffer.active;
+  const lines = [];
+  for (let i = Math.max(0, b.length - count); i < b.length; i++) {
+    const l = b.getLine(i);
+    const t = l ? l.translateToString(true).trim() : '';
+    if (t) lines.push(t);
+  }
+  return lines.join('\n');
+}
+
+/** A CLI can stop on its own question (update, trust this folder, sign in)
+ *  where Enter means "yes". Text sent then would answer it by accident: Codex's
+ *  update prompt defaults to "Update now", which runs `npm install -g`. */
+function cliBlocker(s) {
+  const text = screenTail(s);
+  if (/update available/i.test(text) && /esc skip|skip until next version/i.test(text)) return { kind: 'update' };
+  if (/yes, i trust this folder|do you trust the files in this folder|trust this folder/i.test(text)) return { kind: 'trust', hint: 'confirm whether you trust this folder' };
+  if (/press enter to log ?in|please (log|sign) ?in to continue/i.test(text)) return { kind: 'login', hint: 'sign in' };
+  return null;
+}
+
+/** True when it is safe to send. An update prompt is skipped with Esc (the
+ *  harmless choice); every other question is left for the user to answer. */
+async function prepareToSend(s, { quiet = false } = {}) {
+  for (let i = 0; i < 3; i++) {
+    const block = cliBlocker(s);
+    if (!block) return true;
+    if (block.kind !== 'update') {
+      if (!quiet) toast(`${(agent(s.agentId) || {}).label || 'The CLI'} is waiting for you to ${block.hint}. Answer it in the terminal, then send again.`, 'error');
+      return false;
+    }
+    await invoke('send_input', { id: s.ptyId, data: '\x1b' }).catch(() => {});
+    await sleep(700);
+  }
+  return !cliBlocker(s);
+}
+
+/** Deliver the first message typed on the home screen once the CLI is ready.
+ *  If the CLI is stuck on a question, keep the message and try again. */
+async function deliverPending(s) {
+  if (!s.pendingPrompt || s.status !== 'running' || s.delivering) return;
+  s.delivering = true;
+  try {
+    for (let tries = 0; tries < 60 && s.pendingPrompt && s.status === 'running'; tries++) {
+      if (await prepareToSend(s, { quiet: tries !== 0 })) {
+        const text = s.pendingPrompt;
+        s.pendingPrompt = '';
+        await sendText(s, text);
+        return;
+      }
+      await sleep(2500);
+    }
+  } finally {
+    s.delivering = false;
+  }
 }
 
 /** Stop a process immediately and invalidate any launch that has not finished. */
@@ -1811,6 +1865,7 @@ async function sendComposer() {
   const media = attachmentPrompt(s, agent(s.agentId));
   const ask = v.trim() || (images.length ? 'Look at the attached media.' : '');
   const text = [fileRefs, ...media.lines, ask].filter(Boolean).join('\n').trim();
+  if (!(await prepareToSend(s))) return;
   pushHistory(v);
   // Clear first so a second Enter during the paste can't send twice.
   s.context = [];

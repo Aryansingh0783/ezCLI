@@ -141,6 +141,8 @@ fn start_session(
     cols: u16,
     rows: u16,
     pc_control: Option<bool>,
+    provider_session_id: Option<String>,
+    resume: Option<bool>,
     state: State<AppState>,
     mcp: State<Arc<mcp_server::McpServer>>,
     app: AppHandle,
@@ -190,6 +192,14 @@ fn start_session(
             let at = a.args.len().min(argv.len());
             argv.splice(at..at, attach);
             shown.splice(at..at, attach_shown);
+        }
+
+        // Start under a known conversation id, or resume one. The id is checked
+        // by session_args; a bad id simply adds nothing and the CLI starts fresh.
+        if let Some(sid) = provider_session_id.as_deref() {
+            let extra = agents::session_args(a, sid, resume.unwrap_or(false));
+            argv.extend(extra.iter().cloned());
+            shown.extend(extra);
         }
 
         let launch = agents::launch_command(&resolved, &argv).map_err(|e| e.to_string())?;
@@ -456,18 +466,34 @@ async fn list_imports(state: State<'_, AppState>) -> Result<import::ImportCatalo
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.to_string())?;
-    state.imports.replace(discovery.conversations);
+    state.imports.replace(discovery.entries);
     Ok(discovery.catalog)
+}
+
+/// Codex chooses its own session id; read it back so the tab can be resumed.
+#[tauri::command]
+async fn find_provider_session(agent_id: String, cwd: String, since_ms: u64) -> Option<String> {
+    if agent_id != "codex" {
+        return None;
+    }
+    tauri::async_runtime::spawn_blocking(move || import::find_codex_session(&cwd, since_ms))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// Return only a conversation discovered by the immediately preceding scan;
 /// callers cannot use this command as an arbitrary local-file reader.
 #[tauri::command]
-fn read_imported_chat(id: String, state: State<AppState>) -> Result<import::ImportConversation, String> {
-    state
+async fn read_imported_chat(id: String, state: State<'_, AppState>) -> Result<import::ImportConversation, String> {
+    let entry = state
         .imports
         .get(&id)
-        .ok_or_else(|| "Import is no longer available. Refresh local chats and try again.".into())
+        .ok_or_else(|| "Import is no longer available. Refresh local chats and try again.".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || import::read(&entry))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 /// Revoke PC control for a PTY. Granting happens only through
@@ -653,6 +679,7 @@ pub fn run() {
             agent_models,
             list_imports,
             read_imported_chat,
+            find_provider_session,
             set_pc_control,
             open_targets,
             open_in,
@@ -662,6 +689,7 @@ pub fn run() {
             extract_video_frames,
             features::write_text_file,
             features::save_transcript,
+            features::list_saved_sessions,
             features::search_transcripts,
             features::read_transcript,
             features::delete_transcript,

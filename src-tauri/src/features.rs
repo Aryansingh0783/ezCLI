@@ -32,6 +32,12 @@ pub fn save_transcript(meta: transcripts::Meta, text: String) -> Result<(), Stri
     transcripts::save(meta, &text)
 }
 
+/// Every saved session's metadata, newest first (no text, so it is fast).
+#[tauri::command]
+pub fn list_saved_sessions() -> Vec<transcripts::Meta> {
+    transcripts::list()
+}
+
 #[tauri::command]
 pub async fn search_transcripts(query: String) -> Result<Vec<transcripts::Hit>, String> {
     tauri::async_runtime::spawn_blocking(move || transcripts::search(&query))

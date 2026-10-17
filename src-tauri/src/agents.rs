@@ -74,6 +74,42 @@ pub struct AgentDef {
     /// How the composer hands a message to this CLI's own input box.
     #[serde(default)]
     pub submit: Option<Submit>,
+    /// How to start a conversation under a known id and resume it later.
+    #[serde(default)]
+    pub session: Option<SessionCfg>,
+}
+
+/// Session handling for CLIs that can resume a conversation by id. `{id}` in
+/// either list is replaced with the validated session id.
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct SessionCfg {
+    /// Added to a fresh launch so ezCLI chooses the id (Claude Code
+    /// `--session-id`). Omit when the CLI picks its own id, which ezCLI then
+    /// reads back from the CLI's history files (Codex).
+    #[serde(default, rename = "newArgs")]
+    pub new_args: Vec<String>,
+    /// Added instead to continue that conversation.
+    #[serde(default, rename = "resumeArgs")]
+    pub resume_args: Vec<String>,
+}
+
+/// A conversation id is passed to the CLI as an argument, so it must look like
+/// one: letters, digits and dashes only, and not start with a dash.
+pub fn valid_session_id(id: &str) -> bool {
+    (8..=64).contains(&id.len())
+        && id.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// The launch arguments that start or resume conversation `id`, empty when the
+/// agent has no such support or the id is not valid.
+pub fn session_args(a: &AgentDef, id: &str, resume: bool) -> Vec<String> {
+    let Some(cfg) = a.session.as_ref() else { return Vec::new() };
+    if !valid_session_id(id) {
+        return Vec::new();
+    }
+    let template = if resume { &cfg.resume_args } else { &cfg.new_args };
+    template.iter().map(|t| t.replace("{id}", id)).collect()
 }
 
 /// Timing for sending a composer message into a CLI's terminal UI. TUIs treat
@@ -280,6 +316,11 @@ pub struct AgentOut {
     #[serde(rename = "groupCanEdit")]
     pub group_can_edit: bool,
     pub submit: Option<Submit>,
+    /// Can start under a chosen id ("new") and/or resume by id ("resume").
+    #[serde(rename = "sessionNew")]
+    pub session_new: bool,
+    #[serde(rename = "sessionResume")]
+    pub session_resume: bool,
 }
 
 #[derive(Deserialize)]
@@ -401,6 +442,12 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
                 && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
             {
                 existing.headless = builtin_agent.headless.clone();
+            }
+            if existing.session.is_none()
+                && builtin_agent.session.is_some()
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.session = builtin_agent.session.clone();
             }
             if existing.submit.is_none()
                 && builtin_agent.submit.is_some()
@@ -907,6 +954,8 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                 group_chat: a.headless.is_some(),
                 group_can_edit: a.headless.as_ref().is_some_and(|h| !h.edit.is_empty()),
                 submit: a.submit.clone(),
+                session_new: a.session.as_ref().is_some_and(|s| !s.new_args.is_empty()),
+                session_resume: a.session.as_ref().is_some_and(|s| !s.resume_args.is_empty()),
             }
         })
         .collect()
@@ -1149,6 +1198,7 @@ mod tests {
             model_pricing: None,
             headless: None,
             submit: None,
+            session: None,
         }
     }
 

@@ -225,7 +225,11 @@ const Compare = (() => {
       } finally {
         broadcasting = false;
       }
-      if (typedForBroadcast) for (const o of others) sendText(o, typedForBroadcast);
+      if (typedForBroadcast) {
+        const text = typedForBroadcast;
+        // Each member gets the same message, but never into a question it is stuck on.
+        for (const o of others) prepareToSend(o, { quiet: true }).then((ok) => ok && sendText(o, text));
+      }
       if (hadAttachments) toast('Attachments went to the focused session only; the others got your text.');
       typedForBroadcast = '';
     };

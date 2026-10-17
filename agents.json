@@ -132,6 +132,16 @@
           "--permission-mode",
           "acceptEdits"
         ]
+      },
+      "session": {
+        "newArgs": [
+          "--session-id",
+          "{id}"
+        ],
+        "resumeArgs": [
+          "--resume",
+          "{id}"
+        ]
       }
     },
     {
@@ -227,7 +237,17 @@
             "max"
           ]
         }
-      ]
+      ],
+      "session": {
+        "newArgs": [
+          "--session-id",
+          "{id}"
+        ],
+        "resumeArgs": [
+          "--resume",
+          "{id}"
+        ]
+      }
     },
     {
       "id": "codex",
@@ -341,6 +361,13 @@
         ],
         "edit": [
           "--full-auto"
+        ]
+      },
+      "session": {
+        "newArgs": [],
+        "resumeArgs": [
+          "resume",
+          "{id}"
         ]
       }
     },
