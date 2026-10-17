@@ -217,7 +217,9 @@ mod imp {
                     move_to(*x, *y)?;
                 }
                 if *dy != 0 {
-                    send(&[mouse_event(MOUSEEVENTF_WHEEL, dy * WHEEL_DELTA)])?;
+                    // Positive dy means scroll down; the wheel's own convention
+                    // is the opposite (forward = up), so negate.
+                    send(&[mouse_event(MOUSEEVENTF_WHEEL, -dy * WHEEL_DELTA)])?;
                 }
                 if *dx != 0 {
                     use windows::Win32::UI::Input::KeyboardAndMouse::MOUSEEVENTF_HWHEEL;

@@ -83,7 +83,8 @@ pub fn run(app: &AppHandle, cmd: Cmd) -> Result<Reply> {
             let (_, win) = require_window(app)?;
             // A wheel notch is ~100 px; scroll the document directly so it works
             // without moving the user's real cursor into the window.
-            win.eval(format!("window.scrollBy({{left:{},top:{},behavior:'instant'}});", dx * 100, dy * -100))
+            // Positive dy scrolls down, matching browser_scroll's description.
+            win.eval(format!("window.scrollBy({{left:{},top:{},behavior:'instant'}});", dx * 100, dy * 100))
                 .map_err(|e| anyhow!("could not scroll: {e}"))?;
             Ok(Reply::Text(format!("Scrolled (dx={dx}, dy={dy}).")))
         }

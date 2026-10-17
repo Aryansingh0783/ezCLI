@@ -235,7 +235,7 @@ fn tool_list() -> Value {
         },
         {
             "name": "scroll",
-            "description": "Scroll the mouse wheel. dy is vertical (positive = up, negative = down) in wheel notches; dx is horizontal. Give x and y to scroll at that point first.",
+            "description": "Scroll the mouse wheel. dy is vertical (positive = down, negative = up) in wheel notches; dx is horizontal (positive = right). Give x and y to scroll at that point first.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
