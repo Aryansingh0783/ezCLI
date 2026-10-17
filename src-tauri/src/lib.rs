@@ -106,10 +106,19 @@ fn detach_pc_control(state: &AppState, mcp: &mcp_server::McpServer, pty_id: &str
     let _ = std::fs::remove_file(mcp_config_file(pty_id));
 }
 
-/// Build the CLI arguments that attach ezCLI's MCP server, plus a redacted
-/// form for display. Only the backend calls this, only with a URL it minted.
-fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, url: &str) -> Result<(Vec<String>, Vec<String>), String> {
-    match style {
+type McpAttach = (Vec<String>, Vec<String>, Vec<(String, String)>);
+
+/// Build the CLI arguments (and environment) that attach ezCLI's MCP server,
+/// plus a redacted form for display. Only the backend calls this, only with a
+/// URL it minted.
+fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, url: &str) -> Result<McpAttach, String> {
+    if style == agents::McpStyle::OpenCode {
+        let config = serde_json::json!({
+            "mcp": { "ezcli": { "type": "remote", "url": url, "enabled": true } }
+        });
+        return Ok((Vec::new(), Vec::new(), vec![("OPENCODE_CONFIG_CONTENT".into(), config.to_string())]));
+    }
+    let (args, shown) = match style {
         agents::McpStyle::Claude => {
             let dir = mcp_config_dir();
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -118,16 +127,18 @@ fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, url: &str) -> Result<(
                 "mcpServers": { "ezcli": { "type": "http", "url": url } }
             });
             std::fs::write(&path, config.to_string()).map_err(|e| e.to_string())?;
-            Ok((
+            (
                 vec!["--mcp-config".into(), path.to_string_lossy().into_owned()],
                 vec!["--mcp-config".into(), "<ezcli PC control>".into()],
-            ))
+            )
         }
-        agents::McpStyle::Codex => Ok((
+        agents::McpStyle::Codex => (
             vec!["-c".into(), format!("mcp_servers.ezcli.url={url}")],
             vec!["-c".into(), "mcp_servers.ezcli.url=<ezcli PC control>".into()],
-        )),
-    }
+        ),
+        agents::McpStyle::OpenCode => unreachable!("handled above"),
+    };
+    Ok((args, shown, Vec::new()))
 }
 
 #[tauri::command]
@@ -149,7 +160,7 @@ fn start_session(
     app: AppHandle,
 ) -> Result<StartResult, String> {
     let want_pc = pc_control.unwrap_or(false);
-    let (launch, argv_for_log, resolved_cwd) = {
+    let (launch, argv_for_log, resolved_cwd, extra_env) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
             .iter()
@@ -175,13 +186,14 @@ fn start_session(
         );
         drop(catalogs);
         let mut shown = argv.clone();
+        let mut extra_env = Vec::new();
 
         if want_pc {
             let style = a
                 .mcp_style()
                 .ok_or_else(|| format!("PC control isn't supported for {} yet.", a.label))?;
             let url = mcp.register(&id).map_err(|e| e.to_string())?;
-            let (attach, attach_shown) = match mcp_attach_args(style, &id, &url) {
+            let (attach, attach_shown, env) = match mcp_attach_args(style, &id, &url) {
                 Ok(v) => v,
                 Err(e) => {
                     detach_pc_control(&state, &mcp, &id);
@@ -193,6 +205,10 @@ fn start_session(
             let at = a.args.len().min(argv.len());
             argv.splice(at..at, attach);
             shown.splice(at..at, attach_shown);
+            if !env.is_empty() {
+                shown.push("(PC control via OPENCODE_CONFIG_CONTENT)".into());
+            }
+            extra_env = env;
         }
 
         // Start under a known conversation id, or resume one. The id is checked
@@ -210,7 +226,7 @@ fn start_session(
             .unwrap_or_else(default_start_dir);
 
         let argv_for_log = format!("{} {}", a.command, shown.join(" "));
-        (launch, argv_for_log, resolved_cwd)
+        (launch, argv_for_log, resolved_cwd, extra_env)
     };
 
     let spawned = state.sessions.spawn(
@@ -220,6 +236,7 @@ fn start_session(
             cmd: launch.program,
             args: launch.args,
             cwd: Some(resolved_cwd.clone()),
+            env: extra_env,
             cols,
             rows,
         },

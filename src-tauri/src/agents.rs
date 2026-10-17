@@ -253,6 +253,10 @@ pub enum McpStyle {
     Claude,
     /// `codex -c mcp_servers.<name>.url=<url>`
     Codex,
+    /// OpenCode reads extra config from `OPENCODE_CONFIG_CONTENT`, merged
+    /// over the user's own config, so any model it runs (free ones too)
+    /// gets the tools.
+    OpenCode,
 }
 
 impl AgentDef {
@@ -267,6 +271,7 @@ impl AgentDef {
         let named = match self.mcp.as_deref().map(str::to_ascii_lowercase).as_deref() {
             Some("claude") => return Some(McpStyle::Claude),
             Some("codex") => return Some(McpStyle::Codex),
+            Some("opencode") => return Some(McpStyle::OpenCode),
             Some(_) => return None, // "none" or anything unrecognised
             None => Path::new(&self.command)
                 .file_stem()
@@ -276,6 +281,7 @@ impl AgentDef {
         match named.as_deref() {
             Some("claude") => Some(McpStyle::Claude),
             Some("codex") => Some(McpStyle::Codex),
+            Some("opencode") => Some(McpStyle::OpenCode),
             _ => None,
         }
     }
@@ -418,6 +424,14 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             // runtime config too; mcp_style() enforces it independently.
             if existing.id == "claude-chat" {
                 existing.mcp = Some("none".into());
+            }
+            // Stock OpenCode entries shipped with "none" before 2.1.1 added
+            // PC control through OPENCODE_CONFIG_CONTENT.
+            if existing.mcp.as_deref() == Some("none")
+                && builtin_agent.mcp.as_deref() == Some("opencode")
+                && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
+            {
+                existing.mcp = builtin_agent.mcp.clone();
             }
             // Install hints are display-only text, added to older stock
             // configs so the "not installed" state can say what to run.
@@ -665,7 +679,7 @@ fn parse_opencode_free(stdout: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current: Option<String> = None;
     let mut body = String::new();
-    let mut flush = |id: Option<String>, body: &mut String, out: &mut Vec<String>| {
+    let flush = |id: Option<String>, body: &mut String, out: &mut Vec<String>| {
         if let Some(id) = id {
             let free = serde_json::from_str::<serde_json::Value>(body)
                 .ok()
@@ -1044,10 +1058,11 @@ pub struct LaunchCommand {
 fn system_executable(relative: &str, fallback: &str) -> String {
     let root = std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from(r"C:\Windows"));
     let candidate = PathBuf::from(root).join("System32").join(relative);
-    candidate
-        .is_file()
-        .then(|| candidate.to_string_lossy().into_owned())
-        .unwrap_or_else(|| fallback.to_string())
+    if candidate.is_file() {
+        candidate.to_string_lossy().into_owned()
+    } else {
+        fallback.to_string()
+    }
 }
 
 #[cfg(not(windows))]
@@ -1429,6 +1444,18 @@ mod tests {
         assert_eq!(def(r"C:\npm\claude.cmd", None).mcp_style(), Some(McpStyle::Claude));
         assert_eq!(def("codex", None).mcp_style(), Some(McpStyle::Codex));
         assert_eq!(def("chatgpt", None).mcp_style(), None);
+    }
+
+    #[test]
+    fn opencode_gets_pc_control_and_old_stock_configs_migrate() {
+        assert_eq!(def("opencode", None).mcp_style(), Some(McpStyle::OpenCode));
+        assert_eq!(def("opencode", Some("opencode")).mcp_style(), Some(McpStyle::OpenCode));
+        let builtin = serde_json::from_str::<AgentsFile>(BUILTIN).unwrap().agents;
+        let mut old = builtin.into_iter().find(|a| a.id == "opencode").unwrap();
+        old.mcp = Some("none".into());
+        let mut user = vec![old];
+        merge_builtin(&mut user);
+        assert_eq!(user.iter().find(|a| a.id == "opencode").unwrap().mcp.as_deref(), Some("opencode"));
     }
 
     #[test]

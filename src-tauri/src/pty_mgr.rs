@@ -62,6 +62,8 @@ pub struct SpawnArgs {
     pub cmd: String,
     pub args: Vec<String>,
     pub cwd: Option<String>,
+    /// Extra environment for this session only (e.g. OpenCode's MCP config).
+    pub env: Vec<(String, String)>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -96,6 +98,9 @@ fn session_command(args: &SpawnArgs, child_path: OsString) -> CommandBuilder {
     // configuration such as CLAUDE_CODE_USE_BEDROCK is left alone.
     for var in NESTED_SESSION_VARS {
         cmd.env_remove(var);
+    }
+    for (k, v) in &args.env {
+        cmd.env(k, v);
     }
     cmd
 }
@@ -354,6 +359,7 @@ mod tests {
             cmd: launch.program,
             args: launch.args,
             cwd: None,
+            env: Vec::new(),
             cols: 120,
             rows: 24,
         };

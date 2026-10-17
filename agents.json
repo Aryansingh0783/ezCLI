@@ -553,7 +553,7 @@
         "catalog": "opencode-free"
       },
       "imageTransport": "interactive_at_reference",
-      "mcp": "none",
+      "mcp": "opencode",
       "headless": {
         "args": [
           "run"
@@ -641,7 +641,7 @@
         "note": "DeepSeek V4.1 Flash through OpenCode Zen. No DeepSeek account or API key needed."
       },
       "imageTransport": "interactive_at_reference",
-      "mcp": "none",
+      "mcp": "opencode",
       "headless": {
         "args": [
           "run"
