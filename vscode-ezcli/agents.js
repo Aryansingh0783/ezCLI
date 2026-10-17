@@ -74,10 +74,18 @@ function parseCatalog(kind, out) {
       .map((c) => c[0])
       .filter((s) => SAFE_MODEL.test(s));
   }
+  if (kind === 'opencode-free') {
+    // `opencode models --verbose` output: "ID  PROVIDER  CONTEXT  ..." table; keep free models only.
+    return out
+      .split(/\r?\n/)
+      .map((l) => l.trim().split(/\s+/)[0])
+      .filter((id) => id && /-free$/i.test(id) && SAFE_MODEL.test(id));
+  }
+  // Generic: first token of each line, must look like provider/model.
   return out
     .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => /^[A-Za-z0-9][\w.-]*\/[\w.:/@-]+$/.test(l));
+    .map((l) => l.trim().split(/\s+/)[0])
+    .filter((l) => l && /^[A-Za-z0-9][\w.-]*\/[\w.:/@-]+$/.test(l));
 }
 
 const variant = (list, id) => (list || []).find((v) => v.id === id);
