@@ -22,6 +22,12 @@ pub struct Capture {
 /// Capture the primary monitor and return it as a downscaled PNG.
 pub fn primary_screen() -> Result<Capture> {
     let (rgb, w, h) = grab_primary_rgb()?;
+    finish_rgb(rgb, w, h)
+}
+
+/// Downscale packed RGB to at most `MAX_WIDTH` and PNG-encode it, recording the
+/// original dimensions. Shared by the screen and window capture paths.
+fn finish_rgb(rgb: Vec<u8>, w: u32, h: u32) -> Result<Capture> {
     let (rgb, tw, th) = downscale(&rgb, w, h, MAX_WIDTH);
     Ok(Capture {
         png: encode_png(&rgb, tw, th)?,
@@ -30,6 +36,89 @@ pub fn primary_screen() -> Result<Capture> {
         source_width: w,
         source_height: h,
     })
+}
+
+/// Capture one window's client area by HWND, even when it is partly off-screen
+/// or behind others (PrintWindow renders it directly). `hwnd` is the raw handle
+/// value from Tauri's `WebviewWindow::hwnd()`.
+#[cfg(windows)]
+pub fn window_client(hwnd: isize) -> Result<Capture> {
+    let (rgb, w, h) = grab_window_rgb(hwnd)?;
+    finish_rgb(rgb, w, h)
+}
+
+#[cfg(not(windows))]
+pub fn window_client(_hwnd: isize) -> Result<Capture> {
+    Err(anyhow!("window capture is only implemented on Windows so far"))
+}
+
+#[cfg(windows)]
+fn grab_window_rgb(hwnd: isize) -> Result<(Vec<u8>, u32, u32)> {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
+        ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    };
+    use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+
+    let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+    // PW_CLIENTONLY (1) | PW_RENDERFULLCONTENT (2): the second is required or a
+    // WebView2/Chromium surface prints as a black rectangle.
+    const PW_FLAGS: PRINT_WINDOW_FLAGS = PRINT_WINDOW_FLAGS(1 | 2);
+
+    // SAFETY: GDI calls on handles created and released within this scope.
+    unsafe {
+        let mut rect = RECT::default();
+        GetClientRect(hwnd, &mut rect).map_err(|e| anyhow!("window is not measurable: {e}"))?;
+        let w = rect.right - rect.left;
+        let h = rect.bottom - rect.top;
+        if w <= 0 || h <= 0 {
+            return Err(anyhow!("the browser window has no visible area yet"));
+        }
+
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return Err(anyhow!("could not open a device context"));
+        }
+        let mem = CreateCompatibleDC(Some(screen));
+        let bitmap = CreateCompatibleBitmap(screen, w, h);
+        ReleaseDC(None, screen);
+        let previous = SelectObject(mem, bitmap.into());
+
+        let ok = PrintWindow(hwnd, mem, PW_FLAGS);
+
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bgra = vec![0u8; (w as usize) * (h as usize) * 4];
+        let lines = GetDIBits(mem, bitmap, 0, h as u32, Some(bgra.as_mut_ptr().cast()), &mut info, DIB_RGB_COLORS);
+
+        SelectObject(mem, previous);
+        let _ = DeleteObject(bitmap.into());
+        let _ = DeleteDC(mem);
+
+        if !ok.as_bool() {
+            return Err(anyhow!("the window refused to render"));
+        }
+        if lines != h {
+            return Err(anyhow!("window read returned {lines} of {h} rows"));
+        }
+        let mut rgb = Vec::with_capacity((w as usize) * (h as usize) * 3);
+        for px in bgra.chunks_exact(4) {
+            rgb.extend_from_slice(&[px[2], px[1], px[0]]);
+        }
+        Ok((rgb, w as u32, h as u32))
+    }
 }
 
 #[cfg(windows)]

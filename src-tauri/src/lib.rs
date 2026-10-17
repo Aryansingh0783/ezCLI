@@ -11,6 +11,7 @@ mod health;
 mod files_api;
 mod git_api;
 mod group;
+mod browser;
 mod import;
 mod input;
 mod mcp_server;
@@ -694,6 +695,10 @@ pub fn run() {
                 allowed: Box::new(move |pty_id| pc_control_allowed(&handle.state::<AppState>(), pty_id)),
                 screenshot: Box::new(capture::primary_screen),
                 control: Box::new(input::perform),
+                browser: {
+                    let handle = app.handle().clone();
+                    Box::new(move |cmd| browser::run(&handle, cmd))
+                },
             })?;
             app.manage(server);
             Ok(())

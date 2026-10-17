@@ -13,6 +13,7 @@
 //! Every tool call re-checks `allowed(pty_id)` (grant AND live process), so
 //! revocation or process exit takes effect on the very next call.
 
+use crate::browser;
 use crate::capture::Capture;
 use crate::input::{self, Action, Button};
 use anyhow::{anyhow, Result};
@@ -31,11 +32,18 @@ const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// What the server may ask the app. Tests supply stubs; the app supplies the
 /// real consent guard and screen capture.
+type AllowedFn = Box<dyn Fn(&str) -> bool + Send + Sync>;
+type ScreenshotFn = Box<dyn Fn() -> Result<Capture> + Send + Sync>;
+type ControlFn = Box<dyn Fn(&Action) -> Result<String> + Send + Sync>;
+type BrowserFn = Box<dyn Fn(browser::Cmd) -> Result<browser::Reply> + Send + Sync>;
+
 pub struct Hooks {
-    pub allowed: Box<dyn Fn(&str) -> bool + Send + Sync>,
-    pub screenshot: Box<dyn Fn() -> Result<Capture> + Send + Sync>,
+    pub allowed: AllowedFn,
+    pub screenshot: ScreenshotFn,
     /// Inject one keyboard/mouse action on the primary screen.
-    pub control: Box<dyn Fn(&Action) -> Result<String> + Send + Sync>,
+    pub control: ControlFn,
+    /// Drive the in-app browser window.
+    pub browser: BrowserFn,
 }
 
 pub struct McpServer {
@@ -238,48 +246,150 @@ fn tool_list() -> Value {
                 },
                 "additionalProperties": false
             }
+        },
+        {
+            "name": "browser_navigate",
+            "description": "Open ezCLI's built-in browser window (a real browser, separate from the user's desktop) at an http/https URL. Use browser_screenshot next to see the page.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "url": { "type": "string" } },
+                "required": ["url"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "browser_screenshot",
+            "description": "Capture the in-app browser's current page as a PNG. Coordinates in it are the page pixels for browser_click.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+            "name": "browser_click",
+            "description": "Click inside the in-app browser page at page pixel (x, y), as seen in browser_screenshot. button left/right/middle; double for double-click.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "x": { "type": "integer" },
+                    "y": { "type": "integer" },
+                    "button": { "type": "string", "enum": ["left", "right", "middle"] },
+                    "double": { "type": "boolean" }
+                },
+                "required": ["x", "y"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "browser_type",
+            "description": "Type text into the in-app browser's focused field. Click the field first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "text": { "type": "string" } },
+                "required": ["text"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "browser_key",
+            "description": "Press a key or combo in the in-app browser, e.g. \"enter\" to submit, \"ctrl+l\" for the address bar.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "keys": { "type": "string" } },
+                "required": ["keys"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "browser_scroll",
+            "description": "Scroll the in-app browser page. dy positive = down, negative = up (in notches of ~100 px); dx horizontal.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "dx": { "type": "integer" }, "dy": { "type": "integer" } },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "browser_nav",
+            "description": "History/reload for the in-app browser. action is \"back\", \"forward\" or \"reload\".",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "action": { "type": "string", "enum": ["back", "forward", "reload"] } },
+                "required": ["action"],
+                "additionalProperties": false
+            }
         }
     ])
 }
 
-/// Parse a `tools/call` arguments object into a control action. Returns `Ok(None)`
-/// for `screenshot` (handled separately) and an error string for a bad request.
-fn parse_action(name: &str, args: &Value) -> Result<Option<Action>, String> {
+/// A parsed tool call, ready to route to the matching hook.
+enum Tool {
+    Screenshot,
+    Control(Action),
+    Browser(browser::Cmd),
+}
+
+/// Parse a `tools/call` into a `Tool`, or an error string for a bad request.
+fn parse_tool(name: &str, args: &Value) -> Result<Tool, String> {
     let int = |k: &str| args.get(k).and_then(Value::as_i64).map(|v| v as i32);
-    let action = match name {
-        "screenshot" => return Ok(None),
-        "move_mouse" => {
-            let x = int("x").ok_or("move_mouse needs integer x")?;
-            let y = int("y").ok_or("move_mouse needs integer y")?;
-            Action::Move { x, y }
-        }
-        "click" => {
-            let button = Button::parse(args.get("button").and_then(Value::as_str).unwrap_or(""))
-                .map_err(|e| e.to_string())?;
-            Action::Click {
-                x: int("x"),
-                y: int("y"),
-                button,
-                double: args.get("double").and_then(Value::as_bool).unwrap_or(false),
-            }
-        }
-        "scroll" => Action::Scroll {
+    let button = |args: &Value| Button::parse(args.get("button").and_then(Value::as_str).unwrap_or("")).map_err(|e| e.to_string());
+    let str_arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+    let tool = match name {
+        "screenshot" => Tool::Screenshot,
+        "move_mouse" => Tool::Control(Action::Move {
+            x: int("x").ok_or("move_mouse needs integer x")?,
+            y: int("y").ok_or("move_mouse needs integer y")?,
+        }),
+        "click" => Tool::Control(Action::Click {
+            x: int("x"),
+            y: int("y"),
+            button: button(args)?,
+            double: args.get("double").and_then(Value::as_bool).unwrap_or(false),
+        }),
+        "scroll" => Tool::Control(Action::Scroll {
             x: int("x"),
             y: int("y"),
             dx: int("dx").unwrap_or(0),
             dy: int("dy").unwrap_or(0),
-        },
-        "type_text" => {
-            let text = args.get("text").and_then(Value::as_str).ok_or("type_text needs a text string")?;
-            Action::Type { text: text.to_string() }
-        }
-        "press_key" => {
-            let keys = args.get("keys").and_then(Value::as_str).ok_or("press_key needs a keys string")?;
-            Action::Key { combo: input::parse_combo(keys).map_err(|e| e.to_string())? }
-        }
+        }),
+        "type_text" => Tool::Control(Action::Type { text: str_arg("text").ok_or("type_text needs a text string")? }),
+        "press_key" => Tool::Control(Action::Key {
+            combo: input::parse_combo(&str_arg("keys").ok_or("press_key needs a keys string")?).map_err(|e| e.to_string())?,
+        }),
+        "browser_navigate" => Tool::Browser(browser::Cmd::Navigate(str_arg("url").ok_or("browser_navigate needs a url")?)),
+        "browser_screenshot" => Tool::Browser(browser::Cmd::Screenshot),
+        "browser_click" => Tool::Browser(browser::Cmd::Click {
+            x: int("x").ok_or("browser_click needs integer x")?,
+            y: int("y").ok_or("browser_click needs integer y")?,
+            button: button(args)?,
+            double: args.get("double").and_then(Value::as_bool).unwrap_or(false),
+        }),
+        "browser_type" => Tool::Browser(browser::Cmd::Type(str_arg("text").ok_or("browser_type needs a text string")?)),
+        "browser_key" => Tool::Browser(browser::Cmd::Key(
+            input::parse_combo(&str_arg("keys").ok_or("browser_key needs a keys string")?).map_err(|e| e.to_string())?,
+        )),
+        "browser_scroll" => Tool::Browser(browser::Cmd::Scroll { dx: int("dx").unwrap_or(0), dy: int("dy").unwrap_or(0) }),
+        "browser_nav" => Tool::Browser(match str_arg("action").as_deref() {
+            Some("back") => browser::Cmd::Back,
+            Some("forward") => browser::Cmd::Forward,
+            Some("reload") => browser::Cmd::Reload,
+            _ => return Err("browser_nav action must be back, forward or reload".into()),
+        }),
         other => return Err(format!("unknown tool: {other}")),
     };
-    Ok(Some(action))
+    Ok(tool)
+}
+
+fn image_result(id: Value, cap: &Capture, caption: String) -> Value {
+    tool_result(
+        id,
+        false,
+        vec![
+            json!({
+                "type": "image",
+                "data": base64::engine::general_purpose::STANDARD.encode(&cap.png),
+                "mimeType": "image/png"
+            }),
+            text(&caption),
+        ],
+    )
 }
 
 fn call_tool(id: Value, msg: &Value, ctx: &Ctx) -> Value {
@@ -287,35 +397,32 @@ fn call_tool(id: Value, msg: &Value, ctx: &Ctx) -> Value {
     let args = msg.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
     // Parse the request before the consent check so a malformed call fails the
     // same way whether or not control is granted.
-    let action = match parse_action(name, &args) {
-        Ok(a) => a,
+    let tool = match parse_tool(name, &args) {
+        Ok(t) => t,
         Err(e) => return rpc_error(id, -32602, &e),
     };
     if !(ctx.server.hooks.allowed)(ctx.pty_id) {
         return tool_result(id, true, vec![text("PC control is off for this session. Ask the user to turn it on in ezCLI.")]);
     }
-    match action {
-        None => match (ctx.server.hooks.screenshot)() {
-            Ok(cap) => tool_result(
-                id,
-                false,
-                vec![
-                    json!({
-                        "type": "image",
-                        "data": base64::engine::general_purpose::STANDARD.encode(&cap.png),
-                        "mimeType": "image/png"
-                    }),
-                    text(&format!(
-                        "{}x{} screenshot (screen is {}x{}).",
-                        cap.width, cap.height, cap.source_width, cap.source_height
-                    )),
-                ],
-            ),
+    match tool {
+        Tool::Screenshot => match (ctx.server.hooks.screenshot)() {
+            Ok(cap) => {
+                let caption = format!("{}x{} screenshot (screen is {}x{}).", cap.width, cap.height, cap.source_width, cap.source_height);
+                image_result(id, &cap, caption)
+            }
             Err(e) => tool_result(id, true, vec![text(&format!("Screenshot failed: {e}"))]),
         },
-        Some(action) => match (ctx.server.hooks.control)(&action) {
+        Tool::Control(action) => match (ctx.server.hooks.control)(&action) {
             Ok(msg) => tool_result(id, false, vec![text(&msg)]),
             Err(e) => tool_result(id, true, vec![text(&format!("Action failed: {e}"))]),
+        },
+        Tool::Browser(cmd) => match (ctx.server.hooks.browser)(cmd) {
+            Ok(browser::Reply::Text(msg)) => tool_result(id, false, vec![text(&msg)]),
+            Ok(browser::Reply::Image(cap)) => {
+                let caption = format!("{}x{} page (full page is {}x{}).", cap.width, cap.height, cap.source_width, cap.source_height);
+                image_result(id, &cap, caption)
+            }
+            Err(e) => tool_result(id, true, vec![text(&format!("Browser action failed: {e}"))]),
         },
     }
 }
@@ -432,6 +539,7 @@ mod tests {
             allowed: Box::new(move |pty| pty == "p1" && granted.load(Ordering::SeqCst)),
             screenshot: Box::new(fake_capture),
             control: Box::new(|action| Ok(format!("stub: {action:?}"))),
+            browser: Box::new(|cmd| Ok(browser::Reply::Text(format!("stub: {cmd:?}")))),
         })
         .unwrap()
     }
@@ -505,6 +613,32 @@ mod tests {
     }
 
     #[test]
+    fn browser_tools_are_listed_and_route_to_the_browser_hook() {
+        let srv = server(Arc::new(AtomicBool::new(true)));
+        let url = srv.register("p1").unwrap();
+
+        let (_, body) = post(&url, r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, None);
+        let v: Value = serde_json::from_str(&body).unwrap();
+        let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        for want in ["browser_navigate", "browser_screenshot", "browser_click", "browser_type", "browser_key", "browser_scroll", "browser_nav"] {
+            assert!(names.contains(&want), "missing {want}: {names:?}");
+        }
+
+        // The stub browser hook echoes the parsed command.
+        let call = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"browser_navigate","arguments":{"url":"https://example.com"}}}"#;
+        let (_, body) = post(&url, call, None);
+        let v: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["result"]["isError"], false);
+        assert!(v["result"]["content"][0]["text"].as_str().unwrap().contains("Navigate"));
+
+        // browser_nav validates its action argument.
+        let bad = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"browser_nav","arguments":{"action":"sideways"}}}"#;
+        let (_, body) = post(&url, bad, None);
+        let v: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(v["error"]["code"], -32602);
+    }
+
+    #[test]
     fn tool_call_obeys_the_consent_guard() {
         let granted = Arc::new(AtomicBool::new(false));
         let srv = server(Arc::clone(&granted));
@@ -560,7 +694,8 @@ mod tests {
                 counted.fetch_add(1, Ordering::SeqCst);
                 crate::capture::primary_screen()
             }),
-            control: Box::new(|action| crate::input::perform(action)),
+            control: Box::new(crate::input::perform),
+            browser: Box::new(|_| Err(anyhow!("no app in this test"))),
         })
         .unwrap();
         let url = srv.register("e2e").unwrap();
