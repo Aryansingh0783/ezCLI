@@ -250,6 +250,9 @@ function snapshotParked() {
       cwd: s.cwd,
       title: s.title,
       exitCode: s.exitCode,
+      providerSessionId: s.providerSessionId || '',
+      transcriptId: s.transcriptId || '',
+      prompts: (s.prompts || []).slice(-30),
       wasRunning: s.status === 'running',
       durationMs: Math.max(0, (s.lastOutputAt || Date.now()) - s.startedAt)
     }));
@@ -732,6 +735,29 @@ function renameTab(s) {
 
 /* --------------------------------------------------------------- sessions */
 
+/** Put a parked tab's saved terminal text back on screen, so closing the app
+ *  does not lose what the conversation looked like. */
+async function restoreSavedText(s) {
+  const dim = (t) => `\x1b[38;2;106;106;112m${t}\x1b[0m`;
+  const hint = s.providerSessionId
+    ? 'Resume continues the same conversation.'
+    : 'Resume starts the CLI again in this folder.';
+  let saved = '';
+  if (s.transcriptId) {
+    try {
+      saved = (await invoke('read_transcript', { id: s.transcriptId })).text || '';
+    } catch {
+      /* no saved copy yet: the tab was never run, or the file was deleted */
+    }
+  }
+  if (saved.trim()) {
+    s.term.write(saved.replace(/\r?\n/g, '\r\n'));
+    s.term.write(`\r\n${dim('── restored from your last session ──')}\r\n`);
+  }
+  s.term.writeln(dim(`Session from your last run. ${hint}`));
+  s.term.scrollToBottom();
+}
+
 /** Materialize a parked snapshot as a session shell. No PTY, no listeners,
  *  until the user clicks Resume. Visuals and tab metadata work from the
  *  snapshot so the workspace reads the same as it did at shutdown. */
@@ -758,7 +784,7 @@ function buildParked(sn) {
   term.loadAddon(fit);
   term.open(host);
   term.attachCustomKeyEventHandler((e) => !isAppShortcut(e));
-  term.writeln('\x1b[38;2;106;106;112mSession from your last run.  Press Resume to launch it again.\x1b[0m');
+
 
   const s = {
     id: sn.id || `t${++state.seq}`,
@@ -784,6 +810,12 @@ function buildParked(sn) {
     // Image paths are deliberately transient: unlike prompt history or parked
     // session metadata, a selected local image is never written to localStorage.
     imageRefs: [],
+    // The CLI's own conversation id and ezCLI's saved copy of this tab, so the
+    // conversation survives the app closing.
+    providerSessionId: sn.providerSessionId || '',
+    resumeNext: Boolean(sn.providerSessionId),
+    transcriptId: sn.transcriptId || '',
+    prompts: Array.isArray(sn.prompts) ? sn.prompts : [],
     usage: Usage.createUsageState(),
     pcControl: false,
     term,
@@ -791,6 +823,7 @@ function buildParked(sn) {
     host,
     unlisten: []
   };
+  restoreSavedText(s);
   // Keep the id generator ahead of any imported id so future tabs don't collide.
   const n = Number(String(s.id).replace(/[^0-9]/g, '')) || 0;
   if (n > state.seq) state.seq = n;
@@ -870,6 +903,11 @@ async function createSession(agentId, opts = {}) {
     // Image paths are deliberately transient: unlike prompt history or parked
     // session metadata, a selected local image is never written to localStorage.
     imageRefs: [],
+    // Set when continuing a conversation the CLI already knows by id.
+    providerSessionId: opts.resumeId || '',
+    resumeNext: Boolean(opts.resumeId),
+    transcriptId: '',
+    prompts: opts.prompt ? [opts.prompt] : [],
     usage: Usage.createUsageState(),
     pcControl: false,
     term,
@@ -949,6 +987,23 @@ async function launch(s) {
   } catch {
     /* geometry races are retried on resize */
   }
+  // Conversation memory: resume the CLI's own conversation when we know its id,
+  // otherwise start under an id we choose (Claude Code) so it can be resumed
+  // later. Codex picks its own id; sessions.js reads it back after launch.
+  const la2 = agent(s.agentId);
+  let sessionId = '';
+  let resuming = false;
+  if (s.resumeNext && s.providerSessionId && la2 && la2.sessionResume) {
+    sessionId = s.providerSessionId;
+    resuming = true;
+  } else if (la2 && la2.sessionNew) {
+    s.providerSessionId = crypto.randomUUID();
+    sessionId = s.providerSessionId;
+  } else {
+    // A fresh launch is a new conversation; Codex's id is found after it starts.
+    s.providerSessionId = '';
+  }
+  s.resumeNext = false;
   try {
     const r = await invoke('start_session', {
       id: ptyId,
@@ -959,7 +1014,9 @@ async function launch(s) {
       cwd: s.cwd,
       cols: s.term.cols,
       rows: s.term.rows,
-      pcControl: Boolean(s.wantPcControl)
+      pcControl: Boolean(s.wantPcControl),
+      providerSessionId: sessionId || null,
+      resume: resuming
     });
     if (!isCurrentLaunch() || s.ptyId !== ptyId) {
       invoke('kill_session', { id: ptyId }).catch(() => {});
@@ -1464,17 +1521,17 @@ function renderLiveUsage(s) {
     return;
   }
 
-  strip.hidden = false;
   const usage = s.usage;
   if (!usage.observed) {
-    strip.classList.add('unavailable');
-    strip.removeAttribute('title');
-    strip.setAttribute('aria-label', 'Usage not reported by this CLI');
-    metrics.textContent = 'Not reported by CLI';
+    // Most CLIs print no usage. A permanent "not reported" label is noise, so
+    // the strip appears only once a CLI actually reports something.
+    strip.hidden = true;
+    metrics.textContent = '';
     announcer.textContent = '';
     return;
   }
 
+  strip.hidden = false;
   strip.classList.remove('unavailable');
   const hasTokens = (values) => ['input', 'output', 'cached'].some((key) => values[key] != null);
   const turn = hasTokens(usage.turn) ? Usage.formatTokens(Usage.tokenTotal(usage.turn)) : '—';
@@ -2624,90 +2681,10 @@ function renderUsage() {
       .join('')}`;
 }
 
-/* ---------------------------------------------------------- local imports */
-
+/* ------------------------------------------------- sessions and history
+ * The sheet that lists saved and imported chats lives in features/sessions.js. */
 function showImportSheet() {
-  const sheet = $('importSheet');
-  if (!sheet.open) sheet.showModal();
-  refreshImports();
-}
-
-async function refreshImports() {
-  const refresh = $('refreshImports');
-  refresh.disabled = true;
-  refresh.textContent = 'Scanning local chats…';
-  try {
-    state.imports.catalog = await invoke('list_imports');
-    state.imports.selected = null;
-    renderImportCatalog();
-    renderImportPreview();
-  } catch (err) {
-    $('importList').innerHTML = `<p class="note import-empty">${esc(String(err))}</p>`;
-    $('importSources').textContent = '';
-  } finally {
-    refresh.disabled = false;
-    refresh.textContent = 'Refresh local chats';
-  }
-}
-
-function renderImportCatalog() {
-  const catalog = state.imports.catalog;
-  if (!catalog) return;
-  $('importSources').innerHTML = catalog.sources
-    .map(
-      (source) => `<div class="import-source ${source.available ? 'available' : ''}">
-        <b>${esc(source.label)}</b><span>${esc(source.detail)}</span>
-      </div>`
-    )
-    .join('');
-  if (!catalog.conversations.length) {
-    $('importList').innerHTML = '<p class="note import-empty">No recognized local conversations were found. Unsupported or malformed files are left untouched.</p>';
-    return;
-  }
-  $('importList').innerHTML = catalog.conversations
-    .map(
-      (chat) => `<button type="button" class="import-row" role="option" aria-selected="false" data-import-chat="${esc(chat.id)}">
-        <b>${esc(chat.title)}</b>
-        <span>${esc(chat.source)} · ${esc(chat.project)} · ${chat.messageCount} message${chat.messageCount === 1 ? '' : 's'}${chat.truncated ? ' · partial' : ''}</span>
-      </button>`
-    )
-    .join('');
-}
-
-async function openImportedChat(id) {
-  try {
-    state.imports.selected = await invoke('read_imported_chat', { id });
-    $('importList').querySelectorAll('[data-import-chat]').forEach((row) => {
-      row.classList.toggle('selected', row.dataset.importChat === id);
-      row.setAttribute('aria-selected', String(row.dataset.importChat === id));
-    });
-    renderImportPreview();
-  } catch (err) {
-    toast(String(err), 'error');
-  }
-}
-
-function renderImportPreview() {
-  const chat = state.imports.selected;
-  const preview = $('importPreview');
-  if (!chat) {
-    preview.innerHTML = '<p class="note">Choose a conversation to preview it here.</p>';
-    return;
-  }
-  const visible = chat.messages.slice(0, 120);
-  preview.innerHTML = `
-    <header class="import-preview-head">
-      <h3>${esc(chat.title)}</h3>
-      <p>${esc(chat.source)} · ${esc(chat.project)} · ${chat.messages.length} message${chat.messages.length === 1 ? '' : 's'}${chat.truncated ? ' · partial import' : ''}</p>
-    </header>
-    <p class="note import-readonly">Read-only preview. Starting a fresh session does not attach this transcript as context.</p>
-    <div class="import-messages">${visible
-      .map(
-        (message) => `<article class="import-message ${message.role === 'user' ? 'user' : 'assistant'}">
-          <h4>${message.role === 'user' ? 'You' : 'Assistant'}</h4><pre>${esc(message.content)}</pre>
-        </article>`
-      )
-      .join('')}${chat.messages.length > visible.length ? '<p class="note import-more">Preview limited to the first 120 imported messages.</p>' : ''}</div>`;
+  Sessions.open();
 }
 
 function systemProfileSummary(profile = state.systemProfile) {
@@ -2919,6 +2896,12 @@ async function guardClose(event) {
       return;
     }
   }
+  // Closing the window ends every process; write the sessions down first so
+  // they are there, with their conversation ids, the next time ezCLI opens.
+  if (typeof flushMemory === 'function') {
+    flushMemory();
+    await sleep(300); // let the save commands reach the backend before it exits
+  }
   closing = true;
   for (const s of state.sessions) {
     invalidateLaunch(s);
@@ -2944,7 +2927,7 @@ function isAppShortcut(e) {
   if (e.type !== 'keydown' || !(e.ctrlKey && e.altKey) || e.metaKey) return false;
   // AltGr reports as Ctrl+Alt on Windows; it types characters, never shortcuts.
   if (e.getModifierState && e.getModifierState('AltGraph')) return false;
-  return /^(Key[NWBKTPLFEDM]|Digit[1-9]|ArrowLeft|ArrowRight|Slash|Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code);
+  return /^(Key[NWBKTPLFEDMH]|Digit[1-9]|ArrowLeft|ArrowRight|Slash|Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code);
 }
 
 function onShortcut(e) {
@@ -3212,15 +3195,6 @@ function wire() {
     renderUsage();
   });
   $('openImports').addEventListener('click', showImportSheet);
-  $('refreshImports').addEventListener('click', refreshImports);
-  $('importList').addEventListener('click', (e) => {
-    const row = e.target.closest('[data-import-chat]');
-    if (row) openImportedChat(row.dataset.importChat);
-  });
-  $('importNewSession').addEventListener('click', () => {
-    if ($('importSheet').open) $('importSheet').close();
-    newSession();
-  });
 
   // home
   $('homeProject').addEventListener('click', (e) => projectMenu(e.currentTarget));
