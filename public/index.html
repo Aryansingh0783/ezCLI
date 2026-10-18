@@ -134,7 +134,7 @@
               <button class="head-chip head-agent" id="headAgent" title="Change backend (relaunches this session)" hidden></button>
               <button class="head-chip" id="headModel" title="Start a fresh session with another model" hidden></button>
               <button class="head-chip head-control" id="headControl" title="Grant or revoke local PC control for this live session"></button>
-              <button class="head-chip head-strata" id="headStrata" title="Offer this session the Strata MCP server configured in Settings" hidden></button>
+              <button class="head-chip head-strata" id="headStrata" title="Strata is attached automatically once configured in Settings; click to turn it off for just this tab" hidden></button>
               <span class="head-branch" id="headBranch" hidden></span>
               <span class="grow"></span>
               <button class="btn primary" id="actResume" title="Launch this session again" hidden>Resume</button>
@@ -327,8 +327,8 @@
         </div>
       </div>
       <div class="settings-section">
-        <h3>Strata (optional)</h3>
-        <p class="note">Strata is a third-party tool server from <a href="https://klavis.ai" target="_blank" rel="noopener">Klavis AI</a>, not part of ezCLI. ezCLI never creates an account or connects anything on its own — paste a Strata MCP server URL you already set up (self-hosted, or from your own Klavis dashboard) and ezCLI will offer it to agents as an extra set of tools, the same way PC control works. Leave this blank to ignore Strata entirely.</p>
+        <h3>Strata</h3>
+        <p class="note">Strata is a third-party tool server from <a href="https://klavis.ai" target="_blank" rel="noopener">Klavis AI</a>, not part of ezCLI. ezCLI never creates an account or connects anything on its own — paste a Strata MCP server URL you already set up (self-hosted, or from your own Klavis dashboard). Once set, Strata attaches automatically to every session that can receive it — no per-session toggle. Turn it off for one tab with the Strata chip in that session's header, or clear this field to turn it off everywhere. Leave it blank and Strata stays completely inert.</p>
         <label class="field"><span>Strata MCP server URL</span><input type="text" id="prefStrataUrl" placeholder="https://strata.klavis.ai/mcp/&hellip; or http://127.0.0.1:8080" autocomplete="off" spellcheck="false" /></label>
       </div>
       <div class="settings-section">

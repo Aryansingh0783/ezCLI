@@ -1031,7 +1031,9 @@ async function launch(s) {
       cols: s.term.cols,
       rows: s.term.rows,
       pcControl: Boolean(s.wantPcControl),
-      strataUrl: s.wantStrata && prefs.strataUrl ? prefs.strataUrl : null,
+      // On by default whenever a Strata URL is configured in Settings — no
+      // per-session opt-in. s.strataOff is an explicit opt-OUT for one tab.
+      strataUrl: prefs.strataUrl && !s.strataOff ? prefs.strataUrl : null,
       providerSessionId: sessionId || null,
       resume: resuming
     });
@@ -1057,7 +1059,7 @@ async function launch(s) {
     s.status = 'error';
     // A failed launch must not leave a pending PC-control request behind.
     s.wantPcControl = false;
-    s.wantStrata = false;
+    s.strataOff = false;
     s.term.write(`\r\n\x1b[38;2;231;163;163m${String(err).replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
   }
   updateTabMeta(s);
@@ -1107,7 +1109,7 @@ async function attachPty(s, ptyId, isCurrentLaunch = () => true) {
     s.strataActive = false;
     // Consent covers one process. Relaunching after an exit asks again.
     s.wantPcControl = false;
-    s.wantStrata = false;
+    s.strataOff = false;
     Usage.ingest(s.usage, '', true);
     s.status = 'exited';
     s.exitCode = e.payload;
@@ -1208,7 +1210,7 @@ function stopSession(s) {
   s.working = false;
   s.wantPcControl = false;
   s.pcControl = false;
-  s.wantStrata = false;
+  s.strataOff = false;
   s.strataActive = false;
   for (const un of s.unlisten.splice(0)) safe(un);
   s.term.write('\r\n\x1b[38;2;106;106;112m── stopped by user ──\x1b[0m\r\n');
@@ -1227,10 +1229,12 @@ async function restartSession(s, { keepPcControl = false, keepStrata = false } =
   const selectedModel = await resolveRequiredModel(a, s.modelId);
   if (a && a.requiresModelSelection && !selectedModel) return false;
   if (selectedModel) s.modelId = selectedModel;
-  // PC-control and Strata consent cover one process each; only their own
-  // chips may carry a fresh grant into the next launch.
+  // PC-control consent covers one process; only its own chip may carry a
+  // fresh grant into the next launch. Strata is the opposite: on by default,
+  // so a restart not triggered by the Strata chip itself drops any opt-out
+  // and reattaches it.
   if (!keepPcControl) s.wantPcControl = false;
-  if (!keepStrata) s.wantStrata = false;
+  if (!keepStrata) s.strataOff = false;
   invalidateLaunch(s);
   if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
   s.term.write('\r\n\x1b[38;2;106;106;112m── restarting ──\x1b[0m\r\n');
@@ -1500,9 +1504,10 @@ function renderHead() {
     : s.pcControl
       ? 'Restart this session without PC control'
       : 'Restart this session with PC control (screenshot, mouse and keyboard)';
-  // Strata is a third-party tool server (Settings → Strata); the chip only
-  // exists at all once a URL is configured there, same gate as PC control
-  // (the agent must be able to receive an MCP server in the first place).
+  // Strata is a third-party tool server (Settings → Strata): on by default
+  // for every compatible session once a URL is configured there — no
+  // per-session opt-in. The chip only exists once a URL is configured, and
+  // lets you opt OUT for just this one tab if you don't want it attached.
   const strata = $('headStrata');
   const strataConfigured = Boolean(prefs.strataUrl && prefs.strataUrl.trim());
   strata.hidden = !strataConfigured;
@@ -1513,8 +1518,8 @@ function renderHead() {
     strata.title = !supportsPc
       ? `Strata isn't available for ${a ? a.label : 'this agent'} yet`
       : s.strataActive
-        ? 'Restart this session without Strata'
-        : 'Restart this session with the Strata tools configured in Settings';
+        ? 'Restart this session without Strata for this tab only'
+        : 'Restart this session with Strata (the tools configured in Settings)';
   }
   $('actRestart').hidden = s.status === 'parked';
   $('actRestart').textContent = s.status === 'running' ? 'Restart' : 'Relaunch';
@@ -2646,7 +2651,7 @@ async function switchSessionModel(s, modelId) {
   s.command = '';
   s.working = false;
   s.wantPcControl = false;
-  s.wantStrata = false;
+  s.strataOff = false;
   s.term.writeln(`\r\n\x1b[38;2;124;255;63m── new ${name} session (previous CLI conversation ended) ──\x1b[0m\r\n`);
   const started = await launch(s);
   if (started) toast(`Started a fresh ${name} session.`);
@@ -3316,22 +3321,21 @@ function wire() {
     if (!s || !s.ptyId || s.status !== 'running') return;
     const a = agent(s.agentId);
     if (!a || !a.pc_control || !prefs.strataUrl) return;
+    // Strata is on by default for every compatible session once configured
+    // in Settings; this chip is an opt-OUT for just this one tab, not an
+    // opt-in. s.strataOff carries the opt-out through a restart.
     const enabling = !s.strataActive;
     const ok = enabling
-      ? await confirmDialog(
-          'Turn on Strata?',
-          `${a.label} restarts with the Strata MCP server you configured in Settings attached, alongside anything else it has. Strata is a third-party tool server (Klavis AI), not ezCLI's own — review what you connected there. Its current conversation in this tab ends.`,
-          'Restart with Strata'
-        )
+      ? await confirmDialog('Turn Strata back on for this tab?', `${a.label} restarts with the Strata tools configured in Settings attached again. Its current conversation in this tab ends.`, 'Restart with Strata')
       : await confirmDialog(
-          'Turn off Strata?',
-          `${a.label} restarts without Strata's tools. Its current conversation in this tab ends.`,
+          'Turn off Strata for this tab?',
+          `${a.label} restarts without Strata's tools, just in this tab. Strata is a third-party tool server (Klavis AI); turn it off for every session instead by clearing the URL in Settings. Its current conversation in this tab ends.`,
           'Restart without it'
         );
     if (!ok) return;
-    s.wantStrata = enabling;
+    s.strataOff = !enabling;
     await restartSession(s, { keepStrata: true, keepPcControl: Boolean(s.wantPcControl) });
-    toast(enabling ? 'Strata is on for this session.' : 'Strata is off.');
+    toast(enabling ? 'Strata is on for this session.' : 'Strata is off for this tab.');
   });
   $('headAgent').addEventListener('click', (e) => {
     const s = active();
