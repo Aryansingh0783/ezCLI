@@ -433,6 +433,15 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.mcp = builtin_agent.mcp.clone();
             }
+            // OpenCode dropped the --verbose flag the catalog fetch used to
+            // rely on (it now exits 1 on that flag); an unedited stock args
+            // list moves to the plain "models" call.
+            if existing.id == "opencode"
+                && existing.models_from.as_ref().is_some_and(|m| m.args == ["models", "--verbose"])
+                && builtin_agent.models_from.is_some()
+            {
+                existing.models_from = builtin_agent.models_from.clone();
+            }
             // Install hints are display-only text, added to older stock
             // configs so the "not installed" state can say what to run.
             if existing.install.is_none()
@@ -658,12 +667,16 @@ fn parse_ollama_catalog(stdout: &str) -> Vec<String> {
     out
 }
 
-/// `opencode models --verbose` prints one `provider/model` header line per
-/// model followed by a JSON object with its metadata, including `cost`. Keep
-/// only models that cost nothing, on every provider, so a paid model the user
-/// happens to have a key for (for example Google's) is never listed.
+/// `opencode models` prints one `provider/model` id per line. OpenCode
+/// dropped the `--verbose` flag this parser used to rely on for per-model
+/// JSON metadata (`cost`, `capabilities.output.text`) — a live run now
+/// exits 1 on an unrecognised flag, so there is no structured cost data to
+/// read at all any more. OpenCode's own naming convention is the only signal
+/// left: every model it prices at zero ends its id in `-free` (verified
+/// against a live catalog: 9 of 49 ids, all plain text models, all under the
+/// `opencode/` provider — no image/video/embedding model carried the suffix).
 fn parse_opencode_free(stdout: &str) -> Vec<String> {
-    fn is_header(line: &str) -> bool {
+    fn is_model_line(line: &str) -> bool {
         let mut parts = line.splitn(2, '/');
         match (parts.next(), parts.next()) {
             (Some(p), Some(m)) => {
@@ -676,42 +689,13 @@ fn parse_opencode_free(stdout: &str) -> Vec<String> {
             _ => false,
         }
     }
-    let mut out = Vec::new();
-    let mut current: Option<String> = None;
-    let mut body = String::new();
-    let flush = |id: Option<String>, body: &mut String, out: &mut Vec<String>| {
-        if let Some(id) = id {
-            let free = serde_json::from_str::<serde_json::Value>(body)
-                .ok()
-                .and_then(|v| {
-                    let cost = v.get("cost")?;
-                    let zero = |k: &str| cost.get(k).and_then(|x| x.as_f64()).map(|x| x == 0.0);
-                    // Image, music and video generators can cost nothing yet
-                    // cannot work as a coding agent: require text output.
-                    let text_out = v
-                        .pointer("/capabilities/output/text")
-                        .and_then(|x| x.as_bool())
-                        .unwrap_or(true);
-                    Some(zero("input")? && zero("output")? && text_out)
-                })
-                .unwrap_or(false);
-            if free {
-                out.push(id);
-            }
-        }
-        body.clear();
-    };
-    for line in stdout.lines() {
-        let t = line.trim();
-        if is_header(t) {
-            flush(current.take(), &mut body, &mut out);
-            current = Some(t.to_string());
-        } else if current.is_some() {
-            body.push_str(line);
-            body.push('\n');
-        }
-    }
-    flush(current.take(), &mut body, &mut out);
+    let mut out: Vec<String> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|l| is_model_line(l))
+        .filter(|l| l.rsplit('/').next().is_some_and(|m| m.to_ascii_lowercase().ends_with("-free")))
+        .map(str::to_string)
+        .collect();
     out.sort();
     out.dedup();
     out.truncate(1000);
@@ -1500,14 +1484,29 @@ mod tests {
     }
 
     #[test]
-    fn opencode_catalog_keeps_only_zero_cost_models() {
-        let raw = "opencode/beam-free\n{\n  \"id\": \"beam-free\",\n  \"cost\": { \"input\": 0, \"output\": 0 }\n}\n\
-                   google/gemini-2.5-pro\n{\n  \"cost\": { \"input\": 1.25, \"output\": 10 }\n}\n\
-                   opencode/paid-one\n{\n  \"cost\": { \"input\": 0, \"output\": 3 }\n}\n\
-                   openrouter/nvidia/nemotron:free\n{\n  \"cost\": { \"input\": 0, \"output\": 0 }\n}\n\
-                   opencode/no-cost-field\n{\n  \"id\": \"x\"\n}\n\
-                   google/veo-free\n{\n  \"cost\": { \"input\": 0, \"output\": 0 },\n  \"capabilities\": { \"output\": { \"text\": false, \"video\": true } }\n}\n";
-        assert_eq!(parse_opencode_free(raw), vec!["opencode/beam-free", "openrouter/nvidia/nemotron:free"]);
+    fn opencode_catalog_keeps_only_dash_free_suffixed_ids() {
+        // `opencode models` (plain — OpenCode dropped --verbose, which used to
+        // carry per-model cost JSON this parser read) prints one id per line.
+        let raw = "opencode/beam-free\n\
+                   google/gemini-2.5-pro\n\
+                   opencode/paid-one\n\
+                   openrouter/nvidia/nemotron:free\n\
+                   not a model line\n\
+                   google/veo-free\n";
+        assert_eq!(
+            parse_opencode_free(raw),
+            vec!["google/veo-free", "opencode/beam-free", "openrouter/nvidia/nemotron:free"]
+        );
+        // Unedited stock configs migrate off the now-rejected --verbose flag.
+        let mut stale = {
+            let builtin = serde_json::from_str::<AgentsFile>(BUILTIN).unwrap().agents;
+            let mut oc = builtin.into_iter().find(|a| a.id == "opencode").unwrap();
+            oc.models_from.as_mut().unwrap().args = vec!["models".into(), "--verbose".into()];
+            vec![oc]
+        };
+        merge_builtin(&mut stale);
+        let oc = stale.into_iter().find(|a| a.id == "opencode").unwrap();
+        assert_eq!(oc.models_from.unwrap().args, vec!["models"]);
     }
 
     #[test]

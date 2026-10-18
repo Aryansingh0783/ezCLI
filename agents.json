@@ -546,8 +546,7 @@
       "_modelsFrom_note": "The Model menu always shows the free OpenCode Zen models below, so every machine sees the same list. `opencode models --verbose` adds any other model that costs nothing (for example OpenRouter ':free' models once you add a free OpenRouter key). Anything with a price is dropped.",
       "modelsFrom": {
         "args": [
-          "models",
-          "--verbose"
+          "models"
         ],
         "flag": "-m",
         "catalog": "opencode-free"
