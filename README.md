@@ -118,6 +118,10 @@ catalog entry.
   controls, not your whole desktop. The page it loads cannot reach back into ezCLI.
 - **Fixes.** The `Ctrl+Alt+G` team-chat shortcut now works, and scroll direction is
   consistent (down is positive).
+- **Optional Strata support.** Paste your own [Strata](https://klavis.ai) MCP server
+  URL in Settings and a per-session chip offers it to agents, off by default. ezCLI
+  never creates an account or connects anything on its own — see
+  [PC control and its permission model](#pc-control-and-its-permission-model).
 
 ### Guide: what each feature does
 
@@ -130,6 +134,7 @@ catalog entry.
 | Attach | Images and videos in the chat | Attach button, paste with `Ctrl+V`, or drop files |
 | Changes pane | Review, stage, commit or discard what the agent changed | `Ctrl+Alt+B`, then Changes |
 | PC control | Let an agent see and operate your screen, or drive the in-app browser | PC control chip in the session header |
+| Strata (optional) | Offer a third-party MCP tool server you set up yourself | Settings → Strata, then the Strata chip in the session header |
 | Command palette | Search every action | `Ctrl+Alt+P` |
 | Prompt library | Saved prompts with fill-in `{{variables}}` | `Ctrl+Alt+L` |
 | Search and export | Find text in past sessions, save one as Markdown or HTML | `Ctrl+Alt+F`, `Ctrl+Alt+E` |
@@ -370,16 +375,34 @@ tool server.
   again.
 - Nothing an agent prints can grant permission. Only the chip can.
 
-**Supported agents:** Claude Code (attached with `--mcp-config`) and Codex
-(attached with `-c mcp_servers.ezcli.url=…`). Other built-in agents, including
-the Claude chat preset, keep the chip disabled.
+**Supported agents:** Claude Code (attached with `--mcp-config`), Codex
+(attached with `-c mcp_servers.ezcli.url=…`), and the free **OpenCode** and
+**DeepSeek** backends (attached via `OPENCODE_CONFIG_CONTENT`). Other built-in
+agents, including the Claude chat preset, keep the chip disabled.
 
 **Verified so far:** screen capture on Windows (1920x1080 to 1280x720 in about
-0.2 s); the tool server's protocol, grant, and revoke behaviour over real
-loopback HTTP in unit tests; and an end-to-end run where a live Claude Code
-session called `screenshot` through the server and reported `1280x720`. The
-test counts real tool invocations, so a model claiming a screenshot cannot
-pass it. Codex attaches the same way but has not been run end to end yet.
+0.2 s); real input injection (`move_mouse`, `click`, `scroll`, `type_text`,
+`press_key`); the in-app browser's `browser_navigate`/`screenshot`/`click`/
+`scroll`/`nav` chain, including its own `PrintWindow`-based capture; the tool
+server's protocol, grant, and revoke behaviour over real loopback HTTP in unit
+tests; and end-to-end runs where a live Claude Code session drove every tool
+above directly through the server. The tests count real tool invocations, so
+a model claiming an action cannot pass it. Codex and OpenCode/DeepSeek attach
+the same way but have not been run end to end yet.
+
+### Strata (optional, third-party)
+
+Settings → **Strata** lets you paste the URL of a [Strata](https://klavis.ai)
+MCP server — a separate product from Klavis AI, not part of ezCLI — and offer
+it to a session the same way PC control works: a chip in the header, off by
+default, one process at a time. **ezCLI never creates a Klavis account, calls
+Klavis's API, or installs anything on your behalf** — you set up Strata
+entirely yourself (their hosted dashboard, or the open-source `strata-mcp` CLI
+run locally) and hand ezCLI only the resulting URL. Leave the field blank and
+Strata is completely inert: no chip appears, nothing is attached, nothing is
+sent anywhere. The URL is only ever passed to the CLI you're already running,
+the same loopback-only trust boundary as ezCLI's own MCP server; it is never
+uploaded anywhere by ezCLI itself.
 Screen capture is Windows-only for now.
 
 ## How it works

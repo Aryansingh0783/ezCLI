@@ -161,6 +161,43 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1.1 cont. (2026-10-18, Claude).** Aryan reported "the agents are also
+broken and none of the models are working." Investigated live (debug build
+run as an independent instance via a throwaway `identifier`, never touching
+his running app): launched claude-code, opencode, codex, gemini and deepseek
+— all reached `running` with populated model lists and correctly-built
+commands. Sent a real prompt to a live Claude Code session; it landed on
+Claude Code's own first-run "do you trust this folder" prompt (new session,
+untrusted cwd), and `cliBlocker`/`prepareToSend` (unchanged since before
+v2.1.0) correctly refused to type the message into it rather than silently
+accepting. **Could not reproduce a broken state** — nothing in the v2.1.1
+diffs touches model listing, catalog fetching, or session launch. The most
+likely explanation for the report is this same trust/login-prompt stall
+reading as "not working"; asked Aryan for repro specifics (which agent, what
+the screen shows) since this remains open. If it recurs, check `cliBlocker`'s
+regexes (`app.js` ~line 1146) against whatever the CLI's current prompt
+wording actually is — that's the one place a silent mismatch would look
+exactly like "nothing happens when I send a message."
+
+Also added **Strata** (`public/features/strata.js`, Settings → Strata +
+a header chip) — explicitly **opt-in only**, per Aryan's choice when asked,
+not auto-installed or offered on download. Strata is a third-party MCP
+tool-aggregator from Klavis AI (`https://klavis.ai`) that requires either a
+Klavis account + per-app OAuth (hosted) or a locally self-run `strata-mcp`
+CLI (`pipx install strata-mcp`) — there is no account-less public endpoint.
+ezCLI does **not** create an account, call Klavis's API, or install anything;
+it only persists a URL the user pastes (`prefs.strataUrl`, blank by default)
+and, when a session's Strata chip is on, merges it into the same MCP-attach
+mechanism PC control uses (`McpEntry`/`mcp_attach_args` in `lib.rs`, now
+multi-server: Claude writes both `ezcli` and `strata` into one
+`--mcp-config` file; Codex gets two `-c mcp_servers.<name>.url=` pairs;
+OpenCode gets both in one `OPENCODE_CONFIG_CONTENT`). Rust-side
+`validate_mcp_url` rejects anything but http/https even if the client-side
+check in `strata.js` is bypassed (verified live: a `file://` URL is refused
+before any process spawns). Live-verified end-to-end: a session launched
+with both PC control and Strata attached got both entries in its written
+MCP config, the header chip renders/hides correctly, and the Settings field
+persists.
 **v2.1.1 (2026-10-17, Claude).** Repo-wide bug scan after v2.1.0: fixed the
 `Ctrl+Alt+G` team-chat shortcut being silently dropped (`KeyG` was missing
 from `isAppShortcut`'s regex in `public/app.js`), cleaned up a handful of
@@ -833,6 +870,12 @@ when PR 1 started; latest tag `v1.1.0`.
   app (throwaway `identifier` so the debug build ran as an independent
   instance) — screenshot, move_mouse, scroll, malformed-input rejection,
   browser_navigate/screenshot/scroll/nav all confirmed working.
+- 2026-10-18 — Claude: investigated Aryan's "agents broken, no models
+  working" report; could not reproduce (all tested agents launch fine with
+  populated models) — most likely a CLI trust/login prompt being mistaken
+  for a hang, still open pending repro details. Added opt-in Strata support
+  (third-party MCP server, user-supplied URL only, never auto-installed —
+  Aryan explicitly chose the opt-in-only design when asked). Live-verified.
 
 ---
 
