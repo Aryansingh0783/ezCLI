@@ -10,7 +10,7 @@ const byId = (id) => agents.find((a) => a.id === id);
 test('launch order matches the app: base, effort, model, mode', () => {
   const codex = byId('codex');
   assert.deepStrictEqual(A.buildArgs(codex, { effortId: 'high', modelId: 'gpt-6-luna', modeId: 'auto' }), [
-    '--no-daemon', '-c', 'model_reasoning_effort="high"', '-m', 'gpt-6-luna', '--full-auto'
+    '--no-daemon', '-c', 'model_reasoning_effort="high"', '-m', 'gpt-6-luna', '--approve-for-me'
   ]);
 });
 

@@ -58,7 +58,7 @@ The home screen has three labeled pills under the message box:
 | --- | --- |
 | **Agent** | Which CLI to launch (Claude Code, Claude, Codex, ChatGPT). |
 | **Model** | Which model that agent should use. Hidden when the agent only has one. |
-| **Mode** | Launch flags such as `--permission-mode plan` or `--full-auto`. |
+| **Mode** | Launch flags such as `--permission-mode plan` or `--approve-for-me`. |
 
 Click any pill to open its menu — the current value is shown right under the caption, so
 you always see what will launch. Mode is tucked away for power users; Model is right next
@@ -325,7 +325,7 @@ Every launchable CLI lives in `~/.ezcli/agents.json`. An entry looks like this:
   "args": ["--no-daemon"],
   "modes": [
     { "id": "default", "label": "Default", "args": [] },
-    { "id": "auto", "label": "Full auto", "args": ["--full-auto"] }
+    { "id": "auto", "label": "Full auto", "args": ["--approve-for-me"] }
   ],
   "models": [
     { "id": "gpt-5-codex", "label": "gpt-5-codex", "args": ["-m", "gpt-5-codex"] }

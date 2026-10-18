@@ -228,12 +228,12 @@ mod tests {
         let codex = agent(
             r#"{"id":"codex","command":"codex","args":["--no-daemon"],"models":[{"id":"default","label":"Default","args":[]}],
                 "modelsFrom":{"args":["debug","models"],"flag":"-m","catalog":"codex"},
-                "headless":{"args":["exec","--skip-git-repo-check"],"edit":["--full-auto"],"readOnly":["-s","read-only"]}}"#,
+                "headless":{"args":["exec","--skip-git-repo-check"],"edit":["--approve-for-me"],"readOnly":["-s","read-only"]}}"#,
         );
         let cat = vec!["gpt-6-luna".to_string()];
         assert_eq!(
             agents::headless_argv(&codex, "gpt-6-luna", true, Some(&cat), None).unwrap(),
-            ["--no-daemon", "exec", "--skip-git-repo-check", "-m", "gpt-6-luna", "--full-auto"]
+            ["--no-daemon", "exec", "--skip-git-repo-check", "-m", "gpt-6-luna", "--approve-for-me"]
         );
         assert_eq!(
             agents::headless_argv(&codex, "default", false, Some(&cat), None).unwrap(),
@@ -242,7 +242,7 @@ mod tests {
         // A model the catalog never listed is dropped, never passed through.
         assert_eq!(
             agents::headless_argv(&codex, "--yolo", true, Some(&cat), None).unwrap(),
-            ["--no-daemon", "exec", "--skip-git-repo-check", "--full-auto"]
+            ["--no-daemon", "exec", "--skip-git-repo-check", "--approve-for-me"]
         );
 
         let opencode = agent(

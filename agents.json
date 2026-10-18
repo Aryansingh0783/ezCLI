@@ -276,7 +276,7 @@
           "id": "auto",
           "label": "Full auto",
           "args": [
-            "--full-auto"
+            "--approve-for-me"
           ]
         },
         {
@@ -364,7 +364,7 @@
           "never"
         ],
         "edit": [
-          "--full-auto"
+          "--approve-for-me"
         ]
       },
       "session": {

@@ -442,6 +442,21 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.models_from = builtin_agent.models_from.clone();
             }
+            // Codex dropped --full-auto entirely ("unrecognized flag"); its
+            // modern equivalent is --approve-for-me. Migrate an unedited
+            // stock "Full auto" mode and the matching headless.edit flag.
+            if existing.id == "codex" {
+                for m in existing.modes.iter_mut() {
+                    if m.id == "auto" && m.args == ["--full-auto"] {
+                        m.args = vec!["--approve-for-me".into()];
+                    }
+                }
+                if let (Some(h), Some(bh)) = (existing.headless.as_mut(), builtin_agent.headless.as_ref()) {
+                    if h.edit == ["--full-auto"] {
+                        h.edit = bh.edit.clone();
+                    }
+                }
+            }
             // Install hints are display-only text, added to older stock
             // configs so the "not installed" state can say what to run.
             if existing.install.is_none()
@@ -1031,6 +1046,29 @@ pub fn build_argv(
     out
 }
 
+/// OpenCode's interactive launch has no CLI flag for selecting a model —
+/// `-m`/`--model` only exists on `opencode run` (headless). Every static
+/// model entry and the live catalog still describe a model the conventional
+/// way (`["-m", "<id>"]`), the same as every other agent, so this pulls that
+/// pair back out of an already-built argv and hands back the model id,
+/// leaving the rest of argv untouched. The caller carries the id through
+/// `OPENCODE_CONFIG_CONTENT`'s `model` key instead (the documented top-level
+/// config key: "Default model to use when no session or agent model is
+/// selected" — confirmed against `https://opencode.ai/config.json`).
+pub fn extract_opencode_model_flag(command: &str, argv: &mut Vec<String>) -> Option<String> {
+    let is_opencode = Path::new(command).file_stem().and_then(OsStr::to_str).is_some_and(|s| s.eq_ignore_ascii_case("opencode"));
+    if !is_opencode {
+        return None;
+    }
+    let pos = argv.iter().position(|a| a == "-m")?;
+    if pos + 1 >= argv.len() {
+        return None;
+    }
+    let model = argv.remove(pos + 1);
+    argv.remove(pos);
+    Some(model)
+}
+
 /// A command ready for either a PTY session or a short-lived catalog process.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LaunchCommand {
@@ -1580,6 +1618,77 @@ mod tests {
         merge_builtin(&mut custom);
         assert!(custom[0].models_from.is_none());
         assert_eq!(custom[0].models.len(), 2);
+    }
+
+    #[test]
+    fn opencode_model_flag_is_extracted_for_the_real_binary_only() {
+        // OpenCode's interactive launch has no -m flag; the conventional
+        // "-m <model>" pair agents.json and the live catalog both build must
+        // come back out, wherever it landed among mode/effort args.
+        let mut argv = vec!["-m".to_string(), "opencode/beam-free".to_string(), "--agent".to_string(), "plan".to_string()];
+        let model = extract_opencode_model_flag("opencode", &mut argv);
+        assert_eq!(model.as_deref(), Some("opencode/beam-free"));
+        assert_eq!(argv, vec!["--agent", "plan"]);
+
+        // DeepSeek shares the same opencode.CMD binary, matched by file stem.
+        let mut argv2 = vec!["-m".to_string(), "opencode/deepseek-v4.1-flash-free".to_string()];
+        assert_eq!(extract_opencode_model_flag(r"C:\npm\opencode.CMD", &mut argv2).as_deref(), Some("opencode/deepseek-v4.1-flash-free"));
+
+        // "default" (no -m at all) is untouched; no false match.
+        let mut argv3: Vec<String> = vec![];
+        assert_eq!(extract_opencode_model_flag("opencode", &mut argv3), None);
+        assert!(argv3.is_empty());
+
+        // A different agent's "-m" is never touched, even if its argv
+        // happens to use the same flag spelling (e.g. Claude's --model).
+        let mut argv4 = vec!["-m".to_string(), "gpt-6-luna".to_string()];
+        assert_eq!(extract_opencode_model_flag("codex", &mut argv4), None);
+        assert_eq!(argv4, vec!["-m", "gpt-6-luna"]);
+    }
+
+    #[test]
+    fn opencode_model_merges_into_existing_mcp_config_without_clobbering_it() {
+        // start_session's merge logic, exercised directly on the same JSON
+        // shape it builds: an existing OPENCODE_CONFIG_CONTENT (from PC
+        // control/Strata) must keep its "mcp" key once "model" is added.
+        let existing = serde_json::json!({ "mcp": { "ezcli": { "type": "remote", "url": "http://x" } } });
+        let mut config = existing;
+        config["model"] = serde_json::Value::String("opencode/beam-free".into());
+        assert_eq!(config["mcp"]["ezcli"]["url"], "http://x");
+        assert_eq!(config["model"], "opencode/beam-free");
+    }
+
+    #[test]
+    fn old_stock_codex_full_auto_migrates_but_a_custom_flag_stays() {
+        let variant = |id: &str, args: &[&str]| Variant {
+            id: id.into(),
+            label: id.into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            resumes_session: false,
+            paid: false,
+        };
+        let mut stock = vec![def("codex", Some("codex"))];
+        stock[0].id = "codex".into();
+        stock[0].modes = vec![variant("default", &[]), variant("auto", &["--full-auto"])];
+        stock[0].headless = Some(Headless {
+            args: vec!["exec".into()],
+            edit: vec!["--full-auto".into()],
+            read_only: vec!["-s".into(), "read-only".into()],
+            input: None,
+            file_flag: None,
+        });
+        merge_builtin(&mut stock);
+        let auto = stock[0].modes.iter().find(|m| m.id == "auto").unwrap();
+        assert_eq!(auto.args, vec!["--approve-for-me"]);
+        assert_eq!(stock[0].headless.as_ref().unwrap().edit, vec!["--approve-for-me"]);
+
+        // A user who deliberately picked a different flag keeps it.
+        let mut custom = vec![def("codex", Some("codex"))];
+        custom[0].id = "codex".into();
+        custom[0].modes = vec![variant("default", &[]), variant("auto", &["--dangerously-bypass-approvals-and-sandbox"])];
+        merge_builtin(&mut custom);
+        let auto = custom[0].modes.iter().find(|m| m.id == "auto").unwrap();
+        assert_eq!(auto.args, vec!["--dangerously-bypass-approvals-and-sandbox"]);
     }
 
     #[test]

@@ -75,7 +75,8 @@ function parseCatalog(kind, out) {
       .filter((s) => SAFE_MODEL.test(s));
   }
   if (kind === 'opencode-free') {
-    // `opencode models --verbose` output: "ID  PROVIDER  CONTEXT  ..." table; keep free models only.
+    // `opencode models` prints one id per line (OpenCode dropped --verbose,
+    // which used to carry per-model metadata here); keep ids ending -free.
     return out
       .split(/\r?\n/)
       .map((l) => l.trim().split(/\s+/)[0])

@@ -270,6 +270,25 @@ fn start_session(
             extra_env = env;
         }
 
+        // OpenCode has no CLI flag for selecting a model interactively; carry
+        // it through the same env var as any MCP config already attached
+        // above, merging rather than clobbering either one.
+        if let Some(model) = agents::extract_opencode_model_flag(&a.command, &mut argv) {
+            agents::extract_opencode_model_flag(&a.command, &mut shown); // keep the redacted copy in sync
+            let existing = extra_env.iter().position(|(k, _)| k == "OPENCODE_CONFIG_CONTENT");
+            let mut config: serde_json::Value = match &existing {
+                Some(i) => serde_json::from_str(&extra_env[*i].1).unwrap_or_else(|_| serde_json::json!({})),
+                None => serde_json::json!({}),
+            };
+            config["model"] = serde_json::Value::String(model.clone());
+            let serialized = config.to_string();
+            match existing {
+                Some(i) => extra_env[i].1 = serialized,
+                None => extra_env.push(("OPENCODE_CONFIG_CONTENT".into(), serialized)),
+            }
+            shown.push(format!("(model {model} via OPENCODE_CONFIG_CONTENT)"));
+        }
+
         // Start under a known conversation id, or resume one. The id is checked
         // by session_args; a bad id simply adds nothing and the CLI starts fresh.
         if let Some(sid) = provider_session_id.as_deref() {
