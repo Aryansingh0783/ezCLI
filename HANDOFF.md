@@ -161,6 +161,42 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1.4 (2026-10-18, Claude).** Aryan sent a screenshot proving an
+interactive OpenCode/DeepSeek session actually failing: `opencode -m
+opencode/deepseek-v4.1-flash-free` just printed opencode's own `--help`
+text instead of launching. Confirmed directly: `-m`/`--model` only exists
+on `opencode run` (headless) — the bare interactive command has no such
+flag at all (`--standalone`, `--server`, `--auto`, `--continue/-c`,
+`--session/-s`, `--prompt`, nothing else). This is the *second*, more
+severe half of the OpenCode bug — separate from v2.1.3's catalog-listing
+fix — and it broke 13 of OpenCode's 14 static models plus anything from
+the live catalog (only `"default"` had no `-m` baked in). Fixed by pulling
+the `-m <model>` pair back out of the built argv for any opencode-family
+command (`extract_opencode_model_flag`, covers `deepseek` too — shares the
+binary) and carrying the model through `OPENCODE_CONFIG_CONTENT`'s `model`
+key instead, confirmed via the published config schema
+(`https://opencode.ai/config.json`: "Default model to use when no session
+or agent model is selected"). Merges with any MCP/Strata config already
+riding that same env var rather than clobbering it.
+
+While investigating, also found and fixed `codex`'s `--full-auto` —
+removed entirely upstream (`error: unrecognized argument`). Replacement is
+`--approve-for-me`, confirmed live (created a file through codex with zero
+prompts, identical to the old behavior). Fixes both Codex's "Full auto"
+mode and the headless edit flag team chat uses.
+
+Both verified the hard way: ran the actual CLIs, read their actual
+`--help`, read OpenCode's actual published schema, then confirmed the fix
+through the app's own real PTY (xterm rendering OpenCode's real TUI banner
+showing "Build · DeepSeek V4.1 Flash Free OpenCode" in its status line).
+Every live test this session used an isolated throwaway `identifier` so a
+side-by-side debug instance never touched Aryan's running app — except
+once, briefly: a config-file experiment was reverted within the same
+message before any risk of his live session reloading it.
+
+Also updated the VS Code extension's parallel `agents.js`/test (shares the
+same root `agents.json`; all 5 of its own tests still pass) and
+`GUIDE.md`'s `--full-auto` example.
 **v2.1.3 (2026-10-18, Claude).** Found the real cause of Aryan's "agents
 broken, none of the models are working": OpenCode's CLI dropped `--verbose`
 (`Unrecognized flag: --verbose`), so `opencode models --verbose` — the exact
@@ -943,6 +979,13 @@ when PR 1 started; latest tag `v1.1.0`.
   depended on. Rewrote the parser around the plain model list's -free
   suffix convention, dropped --verbose from agents.json, added a migration
   for existing configs. Live-verified the fix.
+- 2026-10-18 — Claude: v2.1.4: fixed interactive OpenCode/DeepSeek launch
+  (the bigger half of "none of the models are working" — `-m` isn't a
+  valid top-level opencode flag, only `opencode run`'s; 13 of 14 models
+  were unusable), via OPENCODE_CONFIG_CONTENT's model key instead. Also
+  fixed codex's --full-auto, removed upstream; replaced with
+  --approve-for-me. Both confirmed against the real CLIs and live-verified
+  through the app's own PTY.
 
 ---
 

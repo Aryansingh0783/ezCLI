@@ -108,6 +108,17 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.1.4
+
+- **Fixed: OpenCode and DeepSeek sessions wouldn't actually start.** Picking
+  any model other than the default just printed OpenCode's own `--help`
+  text instead of launching — `-m` isn't a flag its interactive mode
+  recognizes. Fixed by passing the model through OpenCode's own config
+  mechanism instead.
+- **Fixed: Codex's "Full auto" mode and team chat's edit turns.** Codex
+  removed the `--full-auto` flag; replaced with its modern equivalent,
+  `--approve-for-me`.
+
 ### New in 2.1.3
 
 - **Fixed: OpenCode and DeepSeek model picker was empty.** OpenCode's CLI
