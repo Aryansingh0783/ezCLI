@@ -161,6 +161,36 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**2026-10-19, Claude, docs-only (no version bump — nothing in the app
+itself changed, so no release build was needed).** Added `AGENTS.md` at
+the repo root — Aryan
+asked for instructions a user can hand to their own AI coding agent, repo
+link and all, to install ezCLI on Arch Linux, CachyOS, SteamOS, or another
+Arch-based system. Branches into two cases: a normal writable Arch system
+(straightforward `makepkg -si` from `packaging/arch/PKGBUILD`) versus
+SteamOS specifically, which needed real research — its root filesystem is
+read-only by design and `steamos-readonly disable` reverts on the next
+update, so the durable path there is Distrobox (pre-installed on SteamOS,
+survives updates since it's a container layered on top, not the root
+itself) plus `distrobox-export --app` to put a working launcher in the
+host's app menu. Sourced from Valve/Igalia's own documented SteamOS
+software-install guidance, not assumed.
+
+Validated the actual command block for both cases in a real
+`archlinux:latest` container (same Docker setup from the v2.1.6 PKGBUILD
+work): a non-root user with passwordless `sudo` pre-configured — matching
+exactly how Distrobox sets up its containers — running the literal
+`sudo pacman -Syu && git clone && cd && makepkg -si --noconfirm` block from
+Case B succeeded end to end: real clone from the real GitHub URL, real
+build, real install via `pacman -U`. The one piece not directly testable
+from this Windows box is the `distrobox create`/`distrobox enter`/
+`distrobox-export` container-lifecycle wrapper itself, since distrobox is a
+Linux-only tool — that part rests on its documented behavior rather than a
+hands-on run, and AGENTS.md says so explicitly rather than overclaiming.
+
+Left `src-tauri/src/agents.rs`'s Codex Windows-launcher fix (from the
+previous task, explicit "do not commit or push") untouched and uncommitted
+— this commit includes only `AGENTS.md` and the `README.md` pointer to it.
 **v2.1.6 (2026-10-19, Claude).** Aryan asked for Arch Linux / CachyOS
 install support. Docker Desktop was installed but not running on this
 Windows box (found its real path via `wsl -d Ubuntu -- which docker`,
@@ -1072,6 +1102,13 @@ when PR 1 started; latest tag `v1.1.0`.
   package in a real archlinux container — real download, real checksum,
   real `pacman -U`, real GTK/WebKit init under Xvfb+D-Bus, `namcap`-clean
   after fixing the one real finding (missing LICENSE file).
+- 2026-10-19 — Claude: added AGENTS.md (docs-only, no release) so a user
+  can hand an AI agent this repo link to install ezCLI on Arch-based
+  systems, including SteamOS's distrobox-based path (researched against
+  Valve/Igalia's own docs, since its read-only root rules out a plain
+  pacman install). Validated the SteamOS command block for real in a
+  distrobox-equivalent (passwordless sudo) Arch container; the
+  distrobox CLI itself isn't testable from this Windows box.
 
 ---
 

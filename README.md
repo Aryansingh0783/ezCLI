@@ -58,7 +58,11 @@ makepkg -si
 Verified in a clean Arch Linux container: real `makepkg` build, real download and
 checksum, install via `pacman -U`, and the installed binary actually starting GTK and
 WebKit under a virtual display with no missing libraries. CachyOS uses the same
-package format and official repos as Arch, so this works there unchanged. To use it on
+package format and official repos as Arch, so this works there unchanged. **On
+SteamOS** (Steam Deck or another Steam Machine), use Distrobox instead of installing
+directly — the root filesystem is read-only there — see [`AGENTS.md`](AGENTS.md) for
+the exact steps. That file is also written so you can just point an AI coding agent at
+this repo and ask it to install ezCLI for you on an Arch-based system. To use it on
 a newer ezCLI release, bump `pkgver` in the `PKGBUILD` and replace the first
 `sha256sums` entry with the value from that release's `ezCLI_<version>_amd64.deb.sha256`
 asset, then run `makepkg -si` again.
