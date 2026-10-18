@@ -33,6 +33,7 @@ Download from the [Releases page](https://github.com/Aryansingh0783/ezCLI/releas
 | Windows | `ezCLI_x.y.z_x64_en-US.msi` |
 | macOS (Apple silicon) | `ezCLI_x.y.z_aarch64.dmg` |
 | Linux | `ezCLI_x.y.z_amd64.deb` or `ezCLI_x.y.z_amd64.AppImage` |
+| Arch Linux / CachyOS | [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD) — see below |
 | VS Code | `ezcli-x.y.z.vsix`, then Extensions › … › Install from VSIX |
 
 The app writes its editable config to `~/.ezcli/agents.json` on first run. After that,
@@ -41,6 +42,26 @@ installed only when its download matches the SHA-256 published with the release.
 
 The macOS and Linux builds are new and less tested than Windows. PC control and voice
 typing are Windows-only for now.
+
+### Arch Linux / CachyOS
+
+There's no AUR package yet, but [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD)
+builds one locally — it downloads the official `.deb` from this repo's releases and
+repackages it for pacman, so there's no Rust/Node toolchain to install:
+
+```bash
+git clone --depth 1 https://github.com/Aryansingh0783/ezCLI.git
+cd ezCLI/packaging/arch
+makepkg -si
+```
+
+Verified in a clean Arch Linux container: real `makepkg` build, real download and
+checksum, install via `pacman -U`, and the installed binary actually starting GTK and
+WebKit under a virtual display with no missing libraries. CachyOS uses the same
+package format and official repos as Arch, so this works there unchanged. To use it on
+a newer ezCLI release, bump `pkgver` in the `PKGBUILD` and replace the first
+`sha256sums` entry with the value from that release's `ezCLI_<version>_amd64.deb.sha256`
+asset, then run `makepkg -si` again.
 
 ## Free users and backend support
 
@@ -107,6 +128,16 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 2.1.6
+
+- **Arch Linux / CachyOS install support.** A verified `PKGBUILD` — see
+  [Install](#arch-linux--cachyos) above.
+
+### New in 2.1.5
+
+- **Strata is on by default once configured**, not opt-in per session — see
+  [PC control and its permission model](#pc-control-and-its-permission-model).
 
 ### New in 2.1.4
 

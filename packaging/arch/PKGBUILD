@@ -1,0 +1,44 @@
+# Maintainer: Aryan Singh <aryansingh0783@github>
+#
+# Binary package: downloads the official .deb from this repo's GitHub
+# Releases and repackages it for pacman. Works on Arch Linux and
+# Arch-based distros (CachyOS included — same package format and repos).
+#
+# To bump for a new release: update pkgver, reset pkgrel to 1, and replace
+# sha256sums with the value from the matching
+# ezCLI_<version>_amd64.deb.sha256 asset on the release page. Then run
+# `makepkg --printsrcinfo > .SRCINFO` again before publishing.
+pkgname=ezcli-bin
+pkgver=2.1.5
+pkgrel=1
+pkgdesc="A desktop window for coding CLIs: Claude Code, Codex, OpenCode, Gemini, Ollama and more"
+arch=('x86_64')
+url="https://github.com/Aryansingh0783/ezCLI"
+license=('MIT')
+# Verified against the real upstream .deb's own dependency list (dpkg-deb
+# -f control Depends), then confirmed by actually running the extracted
+# binary under Xvfb in a clean Arch container with only these three
+# packages installed — it initialized GTK/WebKit fully.
+depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator')
+provides=('ezcli')
+conflicts=('ezcli')
+options=('!strip' '!debug')  # the upstream binary is already stripped
+source=(
+  "https://github.com/Aryansingh0783/ezCLI/releases/download/v${pkgver}/ezCLI_${pkgver}_amd64.deb"
+  "LICENSE::https://raw.githubusercontent.com/Aryansingh0783/ezCLI/v${pkgver}/LICENSE"
+)
+sha256sums=(
+  'f3391ae081f699a7a61ae732bffe71c26400dabe421d18c24f93d7fca3c86fdb'
+  '5e5d3e0401dec4d090df4e2e337f3c4c353786298d2b32e5ec1d8d210935c4d9'
+)
+# .deb is an ar archive of nested tarballs; makepkg has no built-in
+# extraction for that shape, and this says so explicitly rather than rely
+# on that absence.
+noextract=("ezCLI_${pkgver}_amd64.deb")
+
+package() {
+  cd "$srcdir"
+  ar x "ezCLI_${pkgver}_amd64.deb" control.tar.gz data.tar.gz debian-binary
+  tar -xf data.tar.gz -C "$pkgdir"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
