@@ -108,6 +108,14 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.1.2
+
+- **Install an agent without leaving ezCLI.** The Health check panel and
+  onboarding's "What ezCLI found" box now have an **Install** button next to
+  each missing free agent's command, not just Copy. It shows the exact
+  command first, runs it only after you confirm, and streams the real
+  output live — the same thing you'd see running it yourself in a terminal.
+
 ### New in 2.1.1
 
 - **Real PC control, for free models too.** PC control is no longer screenshot-only:

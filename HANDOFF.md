@@ -161,6 +161,45 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1.2 (2026-10-18, Claude).** Two more asks: "Antigravity still doesn't
+work" and an in-app installer for agents nobody has yet. Antigravity:
+confirmed on this machine the desktop GUI app is installed
+(`%LOCALAPPDATA%\Programs\antigravity`) but the standalone `agy` CLI is not
+— `%LOCALAPPDATA%\agy\bin` doesn't exist. Fetched and read the official
+installer script (`https://antigravity.google/cli/install.ps1`) before
+doing anything with it: it targets exactly `%LOCALAPPDATA%\agy\bin\agy.exe`,
+matching ezCLI's own PATH-search code already, so detection isn't the bug —
+the CLI itself was simply never installed here. Didn't run the installer
+without asking first.
+
+Built the actual fix/feature requested: an in-app installer. New
+`src-tauri/src/install.rs` (mirrors `group.rs`'s proven spawn/stream/
+timeout/cancel pattern almost exactly) runs an agent's documented
+`install` string through PowerShell (Windows) or `/bin/sh` (elsewhere),
+streaming output as `install-out:<agent_id>` events; `features::install_agent`
+/`cancel_install` are the Tauri commands, `InstallRuns` the registry
+(one install per agent, `Arc<Mutex<Child>>` so Cancel can kill it from
+another thread). Frontend: `public/features/installer.js` adds a
+confirm-first dialog (shows the literal command, same transparency as PC
+control's consent dialog) with a live log, wired to a new Install button
+next to Copy in `renderFreeInstalls` (shared by both the Health-check sheet
+and onboarding's "What ezCLI found" box) via one delegated click listener.
+On success it calls the existing `reloadAgents()`.
+
+**Mistake made and disclosed to Aryan during testing:** while verifying
+`install_agent` rejects an agent with no install command, assumed
+`claude-chat` had none — it actually shares Claude Code's, so the test
+call ran a real `npm install -g @anthropic-ai/claude-code` against
+Aryan's global npm packages, bypassing the confirm dialog (called the
+backend directly via CDP, not through the UI). Checked immediately:
+`claude --version` unchanged (2.1.302), so no actual damage, but npm left
+a locked temp staging folder (`...@anthropic-ai\.claude-code-PNGIXC4I`)
+it couldn't clean up (EPERM on `claude.exe`, still locked by something
+on a later retry too — left it rather than fighting a lock). Lesson: test
+the "no install command configured" path against a fabricated agent id
+that doesn't exist at all, never against a real one assumed to lack the
+field.
+
 **v2.1.1 cont. (2026-10-18, Claude).** Aryan reported "the agents are also
 broken and none of the models are working." Investigated live (debug build
 run as an independent instance via a throwaway `identifier`, never touching
@@ -876,6 +915,12 @@ when PR 1 started; latest tag `v1.1.0`.
   for a hang, still open pending repro details. Added opt-in Strata support
   (third-party MCP server, user-supplied URL only, never auto-installed —
   Aryan explicitly chose the opt-in-only design when asked). Live-verified.
+- 2026-10-18 — Claude: v2.1.2: in-app agent installer (confirm-first dialog,
+  live streamed log, Install button next to Copy). Confirmed Antigravity's
+  desktop app is installed here but its standalone CLI never was — not an
+  ezCLI detection bug. Disclosed a testing mistake that ran a real
+  `npm install -g` against Aryan's global packages (harmless outcome,
+  verified immediately) while checking an error path.
 
 ---
 
