@@ -144,9 +144,10 @@ catalog entry.
   controls, not your whole desktop. The page it loads cannot reach back into ezCLI.
 - **Fixes.** The `Ctrl+Alt+G` team-chat shortcut now works, and scroll direction is
   consistent (down is positive).
-- **Optional Strata support.** Paste your own [Strata](https://klavis.ai) MCP server
-  URL in Settings and a per-session chip offers it to agents, off by default. ezCLI
-  never creates an account or connects anything on its own — see
+- **Strata support.** Paste your own [Strata](https://klavis.ai) MCP server URL in
+  Settings and it's attached to every compatible session automatically — no
+  per-session toggle to remember. ezCLI never creates an account or connects
+  anything on its own — see
   [PC control and its permission model](#pc-control-and-its-permission-model).
 
 ### Guide: what each feature does
@@ -160,7 +161,7 @@ catalog entry.
 | Attach | Images and videos in the chat | Attach button, paste with `Ctrl+V`, or drop files |
 | Changes pane | Review, stage, commit or discard what the agent changed | `Ctrl+Alt+B`, then Changes |
 | PC control | Let an agent see and operate your screen, or drive the in-app browser | PC control chip in the session header |
-| Strata (optional) | Offer a third-party MCP tool server you set up yourself | Settings → Strata, then the Strata chip in the session header |
+| Strata | A third-party MCP tool server you set up yourself, attached automatically once configured | Settings → Strata (opt out per tab with the Strata chip) |
 | Command palette | Search every action | `Ctrl+Alt+P` |
 | Prompt library | Saved prompts with fill-in `{{variables}}` | `Ctrl+Alt+L` |
 | Search and export | Find text in past sessions, save one as Markdown or HTML | `Ctrl+Alt+F`, `Ctrl+Alt+E` |
@@ -416,19 +417,21 @@ above directly through the server. The tests count real tool invocations, so
 a model claiming an action cannot pass it. Codex and OpenCode/DeepSeek attach
 the same way but have not been run end to end yet.
 
-### Strata (optional, third-party)
+### Strata (third-party)
 
 Settings → **Strata** lets you paste the URL of a [Strata](https://klavis.ai)
-MCP server — a separate product from Klavis AI, not part of ezCLI — and offer
-it to a session the same way PC control works: a chip in the header, off by
-default, one process at a time. **ezCLI never creates a Klavis account, calls
-Klavis's API, or installs anything on your behalf** — you set up Strata
-entirely yourself (their hosted dashboard, or the open-source `strata-mcp` CLI
-run locally) and hand ezCLI only the resulting URL. Leave the field blank and
-Strata is completely inert: no chip appears, nothing is attached, nothing is
-sent anywhere. The URL is only ever passed to the CLI you're already running,
-the same loopback-only trust boundary as ezCLI's own MCP server; it is never
-uploaded anywhere by ezCLI itself.
+MCP server — a separate product from Klavis AI, not part of ezCLI. **ezCLI
+never creates a Klavis account, calls Klavis's API, or installs anything on
+your behalf** — you set up Strata entirely yourself (their hosted dashboard,
+or the open-source `strata-mcp` CLI run locally) and hand ezCLI only the
+resulting URL. Once that URL is set, it is **not** opt-in per session: every
+new session for an agent that can receive an MCP server attaches it
+automatically. A chip in the header lets you turn it off for one tab without
+touching the setting; clear the URL in Settings to turn it off everywhere.
+Leave the field blank and Strata is completely inert: no chip appears,
+nothing is attached, nothing is sent anywhere. The URL is only ever passed to
+the CLI you're already running, the same loopback-only trust boundary as
+ezCLI's own MCP server; it is never uploaded anywhere by ezCLI itself.
 Screen capture is Windows-only for now.
 
 ## How it works
