@@ -108,6 +108,13 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.1.3
+
+- **Fixed: OpenCode and DeepSeek model picker was empty.** OpenCode's CLI
+  dropped a flag ezCLI's free-model catalog fetch depended on, so it was
+  silently failing. Fixed by reading OpenCode's own `-free` naming
+  convention from its plain model list instead.
+
 ### New in 2.1.2
 
 - **Install an agent without leaving ezCLI.** The Health check panel and

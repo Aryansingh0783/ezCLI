@@ -161,6 +161,23 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1.3 (2026-10-18, Claude).** Found the real cause of Aryan's "agents
+broken, none of the models are working": OpenCode's CLI dropped `--verbose`
+(`Unrecognized flag: --verbose`), so `opencode models --verbose` — the exact
+command the OpenCode/DeepSeek catalog fetch depends on — has been exiting 1
+on every call, silently leaving the model picker empty for both. Confirmed
+live (not guessed): ran the command directly, read the real error, then
+confirmed plain `opencode models` still works and that OpenCode's own
+zero-cost models all still carry a `-free` suffix in their id (9 of 49 on a
+live catalog, all plain text models). Rewrote `parse_opencode_free` to read
+that plain list by suffix instead of the `--verbose` JSON metadata that no
+longer exists; dropped `--verbose` from `agents.json`; `merge_builtin`
+migrates existing users off the stale flag automatically. Live-verified:
+`fetchCatalog('opencode')` now returns the correct 9 models instead of
+erroring. Also checked codex's and ollama-cloud's dynamic catalogs while at
+it — both still working correctly; "Ollama Local" returning empty is
+correct too (every locally-listed model on this box is a `-cloud` alias,
+not a genuine local pull).
 **v2.1.2 (2026-10-18, Claude).** Two more asks: "Antigravity still doesn't
 work" and an in-app installer for agents nobody has yet. Antigravity:
 confirmed on this machine the desktop GUI app is installed
@@ -921,6 +938,11 @@ when PR 1 started; latest tag `v1.1.0`.
   ezCLI detection bug. Disclosed a testing mistake that ran a real
   `npm install -g` against Aryan's global packages (harmless outcome,
   verified immediately) while checking an error path.
+- 2026-10-18 — Claude: v2.1.3: root-caused "agents broken, no models
+  working" to OpenCode dropping the --verbose flag the catalog fetch
+  depended on. Rewrote the parser around the plain model list's -free
+  suffix convention, dropped --verbose from agents.json, added a migration
+  for existing configs. Live-verified the fix.
 
 ---
 
