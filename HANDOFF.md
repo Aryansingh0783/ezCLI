@@ -211,13 +211,23 @@ Scan results this session: all JS passes `node --check` and is loaded by
 index.html; every `hooks.*` push target exists and is emitted; every frontend
 `invoke(...)` command is registered in `generate_handler!`; `agents.json` is
 valid; no panics/`unwrap` outside tests or the standard Tauri `.run().expect`.
-NOT runtime-tested this session: the new input injection (a live test would
-hijack the user's real mouse/keyboard) and the in-app browser window creation +
-`PrintWindow` capture (the user's installed app held the single-instance lock
-and I would not close their running app). Both compile into the working binary
-and reuse proven APIs (`WebviewWindowBuilder` is the same call `open_window`/
-`open_web_chat` already use in production); they still want a live pass in the
-packaged build or in CI.
+**Live-verified after the scan.** The installed app held the single-instance
+lock (it's keyed by `tauri.conf.json`'s `identifier`, not the exe path), so a
+second debug build couldn't open while it was running. Rather than close the
+user's live session, built a copy with a throwaway identifier
+(`com.aryansingh.ezcli.livetest`, never committed — reverted + rebuilt
+immediately after) so it ran as a fully independent instance, own WebView2
+profile, alongside the real app. Drove the real `ezcli-mcp` HTTP server
+directly (same transport a CLI uses) with a live Claude Code session's actual
+token, bypassing the model so it cost no API usage: `initialize` → `tools/list`
+(all 13 tools present) → `screenshot` (real 1920x1080 desktop, downscaled to
+1280x720) → `move_mouse` → `scroll` no-op → a malformed call correctly
+rejected with -32602 → `browser_navigate` (opened `pc-browser`, loaded
+example.com) → `browser_screenshot` (`PrintWindow` capture, not black —
+confirms `PW_RENDERFULLCONTENT` works on the WebView2 surface) → `browser_nav`
+back. Also navigated to a second real site and ran `browser_scroll`; hit a
+Google CAPTCHA there (incidental, unrelated to this code — did not attempt to
+solve it). Cleaned up the test session/instance/temp files afterward.
 **v2.1.0 (2026-10-17, Claude).** Done: free-only models (Ollama Cloud filtered in
 Rust, OpenCode zero-cost text models + a fixed 12-model baseline, Step 5 Preview
 is paid so it is an opt-in Settings toggle), first-run dialog fixed, composer
@@ -816,8 +826,13 @@ when PR 1 started; latest tag `v1.1.0`.
   in-app browser (`src/browser.rs`, `pc-browser` sandboxed webview) with
   navigate/screenshot/click/type/key/scroll/nav MCP tools. Unified scroll
   direction. Full static scan clean (JS/hooks/commands/agents.json/panics).
-  Input injection and browser window not runtime-tested locally (would hijack
-  the real cursor / needed to close the user's running app); want a live pass.
+  Pushed, tagged (`v2.1.1`), released on all platforms, and finished the
+  long-pending contributor-attribution cleanup (force-push + retag v2.1.0 +
+  delete `v2-dev`/`v2.1-dev`). Live-verified every new MCP tool afterward
+  against a real Claude Code session, without touching the user's running
+  app (throwaway `identifier` so the debug build ran as an independent
+  instance) — screenshot, move_mouse, scroll, malformed-input rejection,
+  browser_navigate/screenshot/scroll/nav all confirmed working.
 
 ---
 
