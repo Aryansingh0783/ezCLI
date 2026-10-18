@@ -1041,6 +1041,13 @@ kbd {
   border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
   color: var(--text);
 }
+.head-strata::before {
+  content: 'Strata';
+}
+.head-strata.granted {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
+  color: var(--text);
+}
 .head-agent::before {
   content: 'Backend';
 }

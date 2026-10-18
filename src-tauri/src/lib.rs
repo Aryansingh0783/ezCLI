@@ -88,6 +88,9 @@ struct StartResult {
     command: String,
     /// True only when the session was launched with PC control attached.
     pc_control: bool,
+    /// True only when the session was launched with the configured Strata
+    /// MCP server attached.
+    strata_active: bool,
 }
 
 /// Where per-session Claude Code MCP config files live. They contain the
@@ -110,14 +113,39 @@ fn detach_pc_control(state: &AppState, mcp: &mcp_server::McpServer, pty_id: &str
 
 type McpAttach = (Vec<String>, Vec<String>, Vec<(String, String)>);
 
-/// Build the CLI arguments (and environment) that attach ezCLI's MCP server,
-/// plus a redacted form for display. Only the backend calls this, only with a
-/// URL it minted.
-fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, url: &str) -> Result<McpAttach, String> {
+/// One remote MCP server to attach at launch: its config name, URL, and the
+/// text shown in place of the URL in the visible command line (URLs can carry
+/// a secret token, ezCLI's own or a third party's).
+struct McpEntry<'a> {
+    name: &'a str,
+    url: &'a str,
+    shown_as: &'a str,
+}
+
+/// Only plain http/https endpoints are attached as an MCP server. This is the
+/// one check standing between a pasted string (the Strata URL field) and a
+/// CLI argument / env var, so it is deliberately strict.
+fn validate_mcp_url(url: &str) -> Result<(), String> {
+    let parsed = tauri::Url::parse(url.trim()).map_err(|_| "not a valid URL".to_string())?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(()),
+        other => Err(format!("only http and https MCP URLs are allowed, not {other}:")),
+    }
+}
+
+/// Build the CLI arguments (and environment) that attach one or more remote
+/// MCP servers, plus a redacted form for display. Every URL here is either
+/// one ezCLI minted itself or one the user explicitly configured (Strata).
+fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, entries: &[McpEntry]) -> Result<McpAttach, String> {
+    if entries.is_empty() {
+        return Ok((Vec::new(), Vec::new(), Vec::new()));
+    }
     if style == agents::McpStyle::OpenCode {
-        let config = serde_json::json!({
-            "mcp": { "ezcli": { "type": "remote", "url": url, "enabled": true } }
-        });
+        let servers: serde_json::Map<String, serde_json::Value> = entries
+            .iter()
+            .map(|e| (e.name.to_string(), serde_json::json!({ "type": "remote", "url": e.url, "enabled": true })))
+            .collect();
+        let config = serde_json::json!({ "mcp": serde_json::Value::Object(servers) });
         return Ok((Vec::new(), Vec::new(), vec![("OPENCODE_CONFIG_CONTENT".into(), config.to_string())]));
     }
     let (args, shown) = match style {
@@ -125,19 +153,26 @@ fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, url: &str) -> Result<M
             let dir = mcp_config_dir();
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let path = mcp_config_file(pty_id);
-            let config = serde_json::json!({
-                "mcpServers": { "ezcli": { "type": "http", "url": url } }
-            });
+            let servers: serde_json::Map<String, serde_json::Value> =
+                entries.iter().map(|e| (e.name.to_string(), serde_json::json!({ "type": "http", "url": e.url }))).collect();
+            let config = serde_json::json!({ "mcpServers": serde_json::Value::Object(servers) });
             std::fs::write(&path, config.to_string()).map_err(|e| e.to_string())?;
             (
                 vec!["--mcp-config".into(), path.to_string_lossy().into_owned()],
-                vec!["--mcp-config".into(), "<ezcli PC control>".into()],
+                vec!["--mcp-config".into(), format!("<{}>", entries.iter().map(|e| e.shown_as).collect::<Vec<_>>().join(", "))],
             )
         }
-        agents::McpStyle::Codex => (
-            vec!["-c".into(), format!("mcp_servers.ezcli.url={url}")],
-            vec!["-c".into(), "mcp_servers.ezcli.url=<ezcli PC control>".into()],
-        ),
+        agents::McpStyle::Codex => {
+            let mut args = Vec::with_capacity(entries.len() * 2);
+            let mut shown = Vec::with_capacity(entries.len() * 2);
+            for e in entries {
+                args.push("-c".into());
+                args.push(format!("mcp_servers.{}.url={}", e.name, e.url));
+                shown.push("-c".into());
+                shown.push(format!("mcp_servers.{}.url=<{}>", e.name, e.shown_as));
+            }
+            (args, shown)
+        }
         agents::McpStyle::OpenCode => unreachable!("handled above"),
     };
     Ok((args, shown, Vec::new()))
@@ -155,6 +190,7 @@ fn start_session(
     cols: u16,
     rows: u16,
     pc_control: Option<bool>,
+    strata_url: Option<String>,
     provider_session_id: Option<String>,
     resume: Option<bool>,
     state: State<AppState>,
@@ -162,6 +198,10 @@ fn start_session(
     app: AppHandle,
 ) -> Result<StartResult, String> {
     let want_pc = pc_control.unwrap_or(false);
+    let strata_url = strata_url.filter(|u| !u.trim().is_empty());
+    if let Some(u) = &strata_url {
+        validate_mcp_url(u)?;
+    }
     let (launch, argv_for_log, resolved_cwd, extra_env) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
@@ -190,15 +230,30 @@ fn start_session(
         let mut shown = argv.clone();
         let mut extra_env = Vec::new();
 
-        if want_pc {
-            let style = a
-                .mcp_style()
-                .ok_or_else(|| format!("PC control isn't supported for {} yet.", a.label))?;
-            let url = mcp.register(&id).map_err(|e| e.to_string())?;
-            let (attach, attach_shown, env) = match mcp_attach_args(style, &id, &url) {
+        if want_pc || strata_url.is_some() {
+            let style = a.mcp_style().ok_or_else(|| {
+                format!(
+                    "{} isn't supported for {} yet.",
+                    if want_pc { "PC control" } else { "Strata" },
+                    a.label
+                )
+            })?;
+            // ezCLI's own URL is minted and registered per launch; a Strata URL
+            // is whatever the user configured in Settings, used as-is.
+            let pc_url = if want_pc { Some(mcp.register(&id).map_err(|e| e.to_string())?) } else { None };
+            let mut entries = Vec::new();
+            if let Some(u) = &pc_url {
+                entries.push(McpEntry { name: "ezcli", url: u, shown_as: "ezcli PC control" });
+            }
+            if let Some(u) = &strata_url {
+                entries.push(McpEntry { name: "strata", url: u, shown_as: "Strata" });
+            }
+            let (attach, attach_shown, env) = match mcp_attach_args(style, &id, &entries) {
                 Ok(v) => v,
                 Err(e) => {
-                    detach_pc_control(&state, &mcp, &id);
+                    if want_pc {
+                        detach_pc_control(&state, &mcp, &id);
+                    }
                     return Err(e);
                 }
             };
@@ -208,7 +263,8 @@ fn start_session(
             argv.splice(at..at, attach);
             shown.splice(at..at, attach_shown);
             if !env.is_empty() {
-                shown.push("(PC control via OPENCODE_CONFIG_CONTENT)".into());
+                let names: Vec<&str> = entries.iter().map(|e| e.shown_as).collect();
+                shown.push(format!("({} via OPENCODE_CONFIG_CONTENT)", names.join(", ")));
             }
             extra_env = env;
         }
@@ -262,6 +318,7 @@ fn start_session(
         cwd: resolved_cwd,
         command: argv_for_log.trim().to_string(),
         pc_control: want_pc,
+        strata_active: strata_url.is_some(),
     })
 }
 
@@ -770,6 +827,44 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_urls_must_be_http_or_https() {
+        assert!(validate_mcp_url("https://strata.klavis.ai/mcp/abc").is_ok());
+        assert!(validate_mcp_url("http://127.0.0.1:8080").is_ok());
+        assert!(validate_mcp_url("file:///etc/passwd").is_err());
+        assert!(validate_mcp_url("javascript:alert(1)").is_err());
+        assert!(validate_mcp_url("not a url").is_err());
+    }
+
+    #[test]
+    fn mcp_attach_args_merges_several_entries_per_style() {
+        let entries = vec![
+            McpEntry { name: "ezcli", url: "http://127.0.0.1:1/mcp/tok", shown_as: "ezcli PC control" },
+            McpEntry { name: "strata", url: "https://strata.klavis.ai/mcp/xyz", shown_as: "Strata" },
+        ];
+
+        // Codex: one -c pair per entry, both present, URLs redacted in `shown`.
+        let (args, shown, env) = mcp_attach_args(agents::McpStyle::Codex, "p1", &entries).unwrap();
+        assert!(env.is_empty());
+        assert_eq!(args, vec!["-c", "mcp_servers.ezcli.url=http://127.0.0.1:1/mcp/tok", "-c", "mcp_servers.strata.url=https://strata.klavis.ai/mcp/xyz"]);
+        assert!(shown.iter().any(|s| s.contains("<ezcli PC control>")));
+        assert!(shown.iter().any(|s| s.contains("<Strata>")));
+        assert!(!shown.iter().any(|s| s.contains("127.0.0.1") || s.contains("klavis")));
+
+        // OpenCode: one env var holding both servers.
+        let (args, shown, env) = mcp_attach_args(agents::McpStyle::OpenCode, "p1", &entries).unwrap();
+        assert!(args.is_empty() && shown.is_empty());
+        assert_eq!(env.len(), 1);
+        assert_eq!(env[0].0, "OPENCODE_CONFIG_CONTENT");
+        let v: serde_json::Value = serde_json::from_str(&env[0].1).unwrap();
+        assert_eq!(v["mcp"]["ezcli"]["url"], "http://127.0.0.1:1/mcp/tok");
+        assert_eq!(v["mcp"]["strata"]["url"], "https://strata.klavis.ai/mcp/xyz");
+
+        // No entries at all -> nothing attached, no file written.
+        let (args, shown, env) = mcp_attach_args(agents::McpStyle::Codex, "p1", &[]).unwrap();
+        assert!(args.is_empty() && shown.is_empty() && env.is_empty());
+    }
 
     /// Opt-in: asks the installed OpenCode for its live model list. Free (no
     /// model is called), but needs opencode on PATH and network access.
