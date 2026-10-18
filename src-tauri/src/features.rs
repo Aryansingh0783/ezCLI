@@ -2,7 +2,7 @@
 //! updates, remote view, windows, web chat, dictation and notifications.
 //! Session plumbing stays in lib.rs; these commands only call into it.
 
-use crate::{git_api, group, health, remote, transcripts, updater, AppState};
+use crate::{git_api, group, health, install, remote, transcripts, updater, AppState};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -329,6 +329,41 @@ pub async fn group_turn(
 #[tauri::command]
 pub fn group_cancel(run_id: String, runs: State<std::sync::Arc<group::GroupRuns>>) -> bool {
     group::cancel(&runs, &run_id)
+}
+
+/// Run an agent's documented install command (exactly the string already
+/// shown in the UI) and stream its output as `install-out:<agent_id>`
+/// events. The frontend must have shown that literal command and gotten an
+/// explicit click before calling this — this function does not ask again.
+#[tauri::command]
+pub async fn install_agent(
+    agent_id: String,
+    state: State<'_, AppState>,
+    runs: State<'_, std::sync::Arc<install::InstallRuns>>,
+    app: AppHandle,
+) -> Result<install::InstallDone, String> {
+    let (command_line, target_command, label) = {
+        let agents_g = state.agents.lock().unwrap();
+        let a = agents_g.iter().find(|x| x.id == agent_id).ok_or("unknown agent")?;
+        let install = a.install.clone().ok_or_else(|| format!("No install command is configured for {}.", a.label))?;
+        (install, a.command.clone(), a.label.clone())
+    };
+    if runs.contains_running(&agent_id) {
+        return Err(format!("An install for {label} is already running."));
+    }
+    let runs = runs.inner().clone();
+    let app2 = app.clone();
+    let id = agent_id.clone();
+    let done = tauri::async_runtime::spawn_blocking(move || install::run(app2, &runs, id, command_line, target_command))
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(&format!("install-done:{agent_id}"), done.clone());
+    Ok(done)
+}
+
+#[tauri::command]
+pub fn cancel_install(agent_id: String, runs: State<std::sync::Arc<install::InstallRuns>>) -> bool {
+    install::cancel(&runs, &agent_id)
 }
 
 /* ------------------------------------------------------------ desktop */

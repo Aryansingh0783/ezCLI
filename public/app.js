@@ -2777,11 +2777,12 @@ function renderFreeInstalls(report) {
   const missing = ((report && report.freeMissing) || []).map(agent).filter((a) => a && a.install);
   box.hidden = !missing.length;
   box.innerHTML = missing.length
-    ? `<p class="note">Free agents you can add. Install one, then reopen ezCLI:</p>${missing
+    ? `<p class="note">Free agents you can add, right from here, or copy the command for your own terminal:</p>${missing
         .map(
           (a) => `<div class="install-row"><span class="install-name">${esc(a.label)}</span>
           <code>${esc(a.install)}</code>
-          <button class="btn quiet" data-copy-install="${esc(a.install)}">Copy</button></div>`
+          <button class="btn quiet" data-copy-install="${esc(a.install)}">Copy</button>
+          <button class="btn primary" data-install-agent="${esc(a.id)}">Install</button></div>`
         )
         .join('')}`
     : '';
