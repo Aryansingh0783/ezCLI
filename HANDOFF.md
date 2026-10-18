@@ -161,6 +161,54 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1.6 (2026-10-19, Claude).** Aryan asked for Arch Linux / CachyOS
+install support. Docker Desktop was installed but not running on this
+Windows box (found its real path via `wsl -d Ubuntu -- which docker`,
+which pointed at `AppData\Local\Programs\DockerDesktop`, then started it
+and waited for the daemon); used that to actually build and test the
+package in a real `archlinux:latest` container rather than writing a
+PKGBUILD blind.
+
+New `packaging/arch/PKGBUILD` (+ `.SRCINFO`, both committed): a `-bin`
+package that downloads the official `.deb` from this repo's GitHub
+Releases and repackages it for pacman — no Rust/Node toolchain needed to
+install. CachyOS uses the same package format and official repos as Arch,
+so it works there unchanged; there is no AUR package published (that
+would need Aryan's own AUR account, which I won't create on his behalf),
+so for now it's `git clone` + `makepkg -si` from the repo.
+
+Everything here was actually run, not guessed:
+- Extracted the real `.deb` (`ar` + nested `tar`), read its own declared
+  `Depends` (`libayatana-appindicator3-1`, `libwebkit2gtk-4.1-0`,
+  `libgtk-3-0`), confirmed the exact current Arch repo package names
+  (`gtk3`, `webkit2gtk-4.1`, `libayatana-appindicator` — all in `extra`,
+  no AUR dependency), and verified with `ldd` that installing only those
+  three resolves every missing library.
+- Ran the actual extracted binary under Xvfb with a real D-Bus session in
+  the container: it initialized GTK and WebKit fully and exited 0 — as
+  close to a real desktop check as a container allows.
+- Ran `makepkg -s` for real (not just manual steps): genuine download from
+  the tagged GitHub release URL, sha256 validated, packaged, then
+  installed via `pacman -U` with full dependency resolution; post-install
+  hooks (icon cache, desktop MIME cache) ran correctly.
+- Ran `namcap` against both the `PKGBUILD` and the built package. Fixed
+  the one real finding (missing `/usr/share/licenses/ezcli-bin/LICENSE` —
+  added a second `source` entry pulling the tagged `LICENSE` file from
+  GitHub, with its own sha256, installed via `install -Dm644` in
+  `package()`). The remaining `namcap` warnings are expected noise
+  (transitively-satisfied deps like `glib2`/`cairo`/`glibc` already
+  pulled in by `gtk3`/`webkit2gtk-4.1`, and a false positive on
+  `libayatana-appindicator` since the tray feature loads it dynamically
+  rather than through a direct ELF reference `namcap` can trace — kept
+  since the upstream `.deb` itself hard-declares it).
+- Regenerated `.SRCINFO` with `makepkg --printsrcinfo` after every
+  PKGBUILD change, matching Arch's own publishing convention.
+
+To bump the PKGBUILD for a future release: update `pkgver`, reset
+`pkgrel=1`, replace the first `sha256sums` entry with the value from that
+release's `ezCLI_<version>_amd64.deb.sha256` asset (the LICENSE source's
+checksum only needs updating if LICENSE itself changed), then regenerate
+`.SRCINFO`.
 **v2.1.5 (2026-10-18, Claude).** Did a full live QA pass across all 8
 agents through the real app (throwaway-identifier side instance, never
 touched Aryan's running copy): every one launches cleanly and reaches its
@@ -1018,6 +1066,12 @@ when PR 1 started; latest tag `v1.1.0`.
   Per Aryan's explicit request, made Strata opt-out instead of opt-in: on
   by default for every compatible session once a URL is configured, chip
   is now a per-tab opt-out. Live-verified with zero toggle interaction.
+- 2026-10-19 — Claude: v2.1.6: Arch Linux / CachyOS install support
+  (`packaging/arch/PKGBUILD` + `.SRCINFO`). Started Docker Desktop (was
+  installed but not running) and actually built/installed/ran the
+  package in a real archlinux container — real download, real checksum,
+  real `pacman -U`, real GTK/WebKit init under Xvfb+D-Bus, `namcap`-clean
+  after fixing the one real finding (missing LICENSE file).
 
 ---
 
