@@ -257,6 +257,9 @@ pub enum McpStyle {
     /// over the user's own config, so any model it runs (free ones too)
     /// gets the tools.
     OpenCode,
+    /// Gemini CLI reads a per-process system settings file from
+    /// `GEMINI_CLI_SYSTEM_SETTINGS_PATH`, so the user's own files are untouched.
+    Gemini,
 }
 
 impl AgentDef {
@@ -272,6 +275,7 @@ impl AgentDef {
             Some("claude") => return Some(McpStyle::Claude),
             Some("codex") => return Some(McpStyle::Codex),
             Some("opencode") => return Some(McpStyle::OpenCode),
+            Some("gemini") => return Some(McpStyle::Gemini),
             Some(_) => return None, // "none" or anything unrecognised
             None => Path::new(&self.command)
                 .file_stem()
@@ -282,6 +286,7 @@ impl AgentDef {
             Some("claude") => Some(McpStyle::Claude),
             Some("codex") => Some(McpStyle::Codex),
             Some("opencode") => Some(McpStyle::OpenCode),
+            Some("gemini") => Some(McpStyle::Gemini),
             _ => None,
         }
     }
@@ -425,10 +430,10 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             if existing.id == "claude-chat" {
                 existing.mcp = Some("none".into());
             }
-            // Stock OpenCode entries shipped with "none" before 2.1.1 added
-            // PC control through OPENCODE_CONFIG_CONTENT.
+            // Stock OpenCode (2.1.1) and Gemini (2.1.8) entries shipped with
+            // "none" before PC control was wired up for them.
             if existing.mcp.as_deref() == Some("none")
-                && builtin_agent.mcp.as_deref() == Some("opencode")
+                && matches!(builtin_agent.mcp.as_deref(), Some("opencode" | "gemini"))
                 && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
             {
                 existing.mcp = builtin_agent.mcp.clone();

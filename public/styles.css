@@ -1044,6 +1044,9 @@ kbd {
 .head-connectors::before {
   content: 'Connectors';
 }
+#confirmBody {
+  white-space: pre-wrap;
+}
 .head-connectors.granted {
   border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
   color: var(--text);

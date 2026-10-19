@@ -133,6 +133,25 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.1.8
+
+- **Agent browser you can see.** A globe button in the left rail opens the
+  same browser window agents drive with PC control, so you can watch what
+  they do there or browse in it yourself.
+- **PC control for Gemini CLI.** Attached per session through
+  `GEMINI_CLI_SYSTEM_SETTINGS_PATH`; your own Gemini settings files are never
+  edited. Configured connectors attach to Gemini the same way.
+- **Graphify.** Settings → Graphify installs
+  [Graphify](https://github.com/safishamsi/graphify) (a third-party
+  knowledge-graph tool), adds it to every installed agent that supports it
+  (Claude Code, Codex, Gemini, OpenCode/DeepSeek, Antigravity), builds a
+  project's graph offline (code only, no API key), and opens it. Each exact
+  command is shown before it runs.
+- Still without PC control: Antigravity (no per-session MCP config — a global
+  entry would expose one session's PC-control access to another), Freebuff
+  (only reads MCP from a file inside your project), and Ollama (`ollama run`
+  has no tool calling).
+
 ### New in 2.1.7
 
 - **Connectors: configure any number of remote MCP servers, not just one.**

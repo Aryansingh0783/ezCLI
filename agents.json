@@ -738,8 +738,8 @@
         }
       ],
       "imageTransport": "interactive_at_reference",
-      "_mcp_note": "Gemini CLI has no per-launch MCP flag; attaching would mean editing the user's settings files, so PC control is off.",
-      "mcp": "none",
+      "_mcp_note": "Attached per launch through GEMINI_CLI_SYSTEM_SETTINGS_PATH (a temp copy of the real system settings plus ezCLI's servers); the user's own settings files are never edited.",
+      "mcp": "gemini",
       "headless": {
         "args": [
           "-p",

@@ -12,6 +12,7 @@ mod files_api;
 mod git_api;
 mod group;
 mod browser;
+mod graphify;
 mod import;
 mod input;
 mod install;
@@ -156,6 +157,20 @@ fn mcp_config_file(pty_id: &str) -> PathBuf {
     mcp_config_dir().join(format!("{pty_id}.json"))
 }
 
+/// Where Gemini CLI looks for its system settings when not overridden.
+fn gemini_system_settings_path() -> PathBuf {
+    if let Ok(p) = std::env::var("GEMINI_CLI_SYSTEM_SETTINGS_PATH") {
+        return PathBuf::from(p);
+    }
+    if cfg!(windows) {
+        PathBuf::from(r"C:\ProgramData\gemini-cli\settings.json")
+    } else if cfg!(target_os = "macos") {
+        PathBuf::from("/Library/Application Support/GeminiCli/settings.json")
+    } else {
+        PathBuf::from("/etc/gemini-cli/settings.json")
+    }
+}
+
 /// Tear down everything that lets a PTY reach PC control.
 fn detach_pc_control(state: &AppState, mcp: &mcp_server::McpServer, pty_id: &str) {
     state.pc_control.revoke(pty_id);
@@ -200,6 +215,41 @@ fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, entries: &[McpEntry]) 
         let config = serde_json::json!({ "mcp": serde_json::Value::Object(servers) });
         return Ok((Vec::new(), Vec::new(), vec![("OPENCODE_CONFIG_CONTENT".into(), config.to_string())]));
     }
+    if style == agents::McpStyle::Gemini {
+        // Pointing GEMINI_CLI_SYSTEM_SETTINGS_PATH elsewhere would hide a real
+        // system settings file, so start from its contents and only add servers.
+        let real = gemini_system_settings_path();
+        let mut config = std::fs::read_to_string(&real)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .filter(|v| v.is_object())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let servers = config
+            .as_object_mut()
+            .expect("checked above")
+            .entry("mcpServers")
+            .or_insert_with(|| serde_json::json!({}));
+        if !servers.is_object() {
+            *servers = serde_json::json!({});
+        }
+        for e in entries {
+            servers.as_object_mut().expect("checked above").insert(e.name.to_string(), serde_json::json!({ "httpUrl": e.url }));
+        }
+        std::fs::create_dir_all(mcp_config_dir()).map_err(|e| e.to_string())?;
+        let path = mcp_config_file(pty_id);
+        std::fs::write(&path, config.to_string()).map_err(|e| e.to_string())?;
+        // The defaults file is located next to the settings file unless set
+        // explicitly; keep it pointing at the real one.
+        let defaults = real.with_file_name("system-defaults.json");
+        return Ok((
+            Vec::new(),
+            Vec::new(),
+            vec![
+                ("GEMINI_CLI_SYSTEM_SETTINGS_PATH".into(), path.to_string_lossy().into_owned()),
+                ("GEMINI_CLI_SYSTEM_DEFAULTS_PATH".into(), defaults.to_string_lossy().into_owned()),
+            ],
+        ));
+    }
     let (args, shown) = match style {
         agents::McpStyle::Claude => {
             let dir = mcp_config_dir();
@@ -225,9 +275,18 @@ fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, entries: &[McpEntry]) 
             }
             (args, shown)
         }
-        agents::McpStyle::OpenCode => unreachable!("handled above"),
+        agents::McpStyle::OpenCode | agents::McpStyle::Gemini => unreachable!("handled above"),
     };
     Ok((args, shown, Vec::new()))
+}
+
+/// Open (or bring forward) the same browser window agents drive with PC
+/// control, so the user can watch it or browse in it themselves. Async so the
+/// window is built while the main thread stays free to create it.
+#[tauri::command]
+async fn open_agent_browser(app: tauri::AppHandle, url: Option<String>) -> Result<(), String> {
+    let url = url.filter(|u| !u.trim().is_empty()).unwrap_or_else(|| "https://www.google.com".into());
+    browser::run(&app, browser::Cmd::Navigate(url)).map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -323,7 +382,7 @@ fn start_session(
             shown.splice(at..at, attach_shown);
             if !env.is_empty() {
                 let names: Vec<&str> = entries.iter().map(|e| e.shown_as).collect();
-                shown.push(format!("({} via OPENCODE_CONFIG_CONTENT)", names.join(", ")));
+                shown.push(format!("({} via {})", names.join(", "), env[0].0));
             }
             extra_env = env;
             connectors_active = connectors.iter().map(|c| c.name.clone()).collect();
@@ -841,6 +900,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            open_agent_browser,
+            graphify::graphify_status,
+            graphify::graphify_plan,
+            graphify::graphify_run,
+            graphify::graphify_open,
             list_agents,
             reload_agents,
             start_session,

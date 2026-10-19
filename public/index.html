@@ -73,6 +73,9 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" /></svg>
           </button>
           <span class="grow"></span>
+          <button class="rail-btn" id="browserBtn" title="Agent browser — the window agents use with PC control. Watch it or browse yourself." aria-label="Agent browser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" /></svg>
+          </button>
           <button class="rail-btn" id="settingsBtn" title="Settings" aria-label="Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button>
@@ -327,6 +330,18 @@
         </div>
       </div>
       <div class="settings-section">
+        <h3>Graphify</h3>
+        <p class="note"><a href="https://github.com/safishamsi/graphify" target="_blank" rel="noopener">Graphify</a> is a third-party, open-source tool that turns a project into a knowledge graph your agents can query. ezCLI runs only Graphify's own documented commands, and shows you each one before it runs.</p>
+        <p class="note" id="graphifyStatus">Checking…</p>
+        <div class="row-actions">
+          <button class="btn quiet" id="graphifyInstall">Install Graphify</button>
+          <button class="btn quiet" id="graphifySetup">Add to my agents</button>
+          <button class="btn quiet" id="graphifyBuild">Build graph for this project</button>
+          <button class="btn quiet" id="graphifyOpen">Open graph</button>
+        </div>
+        <pre class="install-log" id="graphifyLog" hidden></pre>
+      </div>
+      <div class="settings-section">
         <h3>Connectors</h3>
         <p class="note">Connect a remote MCP server you've already set up yourself — <a href="https://klavis.ai" target="_blank" rel="noopener">Strata</a>, your own tool server, or anything else that speaks MCP over HTTP. These are third-party servers, not part of ezCLI, and ezCLI never creates an account or connects anything on its own: you set each one up and paste in its URL. Once added and enabled, a connector attaches automatically to every session that can receive it — no per-session toggle. Turn one off for one tab with the Connectors chip in that session's header, or disable/remove it here to turn it off everywhere.</p>
         <ul class="connector-list" id="connectorList"></ul>
@@ -388,6 +403,8 @@
     <script src="/features/updates.js"></script>
     <script src="/features/desktop.js"></script>
     <script src="/features/connectors.js"></script>
+    <script src="/features/browser.js"></script>
+    <script src="/features/graphify.js"></script>
     <script src="/features/installer.js"></script>
     <script src="/features/transcripts.js"></script>
     <script src="/features/git-actions.js"></script>

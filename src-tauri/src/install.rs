@@ -71,7 +71,22 @@ fn shell_command(command_line: &str) -> Command {
 /// doubles as the run key (one install per agent at a time) and the event
 /// name suffix (`install-out:<agent_id>`).
 pub fn run(app: AppHandle, runs: &InstallRuns, agent_id: String, command_line: String, target_command: String) -> InstallDone {
+    run_in(app, runs, agent_id, command_line, target_command, None)
+}
+
+/// [`run`], optionally inside a working directory.
+pub fn run_in(
+    app: AppHandle,
+    runs: &InstallRuns,
+    agent_id: String,
+    command_line: String,
+    target_command: String,
+    cwd: Option<&std::path::Path>,
+) -> InstallDone {
     let mut cmd = shell_command(&command_line);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
     cmd.env("PATH", agents::effective_path())
         .env("NO_COLOR", "1")
         .env("CI", "1")
