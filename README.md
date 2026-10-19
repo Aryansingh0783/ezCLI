@@ -133,6 +133,20 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.1.7
+
+- **Connectors: configure any number of remote MCP servers, not just one.**
+  Settings → **Connectors** replaces the single Strata URL field with a list —
+  add as many custom MCP servers as you want, each with its own name and URL,
+  each individually enabled/disabled. All enabled connectors attach to every
+  compatible session automatically (still no per-session opt-in); the header
+  chip now shows how many are active and lets you opt out for just one tab.
+  Existing Strata URLs migrate automatically into the new list. This is still
+  bring-your-own-server only — ezCLI does not add pre-built one-click SaaS
+  connectors (Notion, Drive, Slack, etc.), since that would mean hosting OAuth
+  redirects and holding third-party credentials, which is out of scope; see
+  [Connectors (third-party)](#connectors-third-party).
+
 ### New in 2.1.6
 
 - **Arch Linux / CachyOS install support.** A verified `PKGBUILD` — see
@@ -196,7 +210,7 @@ catalog entry.
 | Attach | Images and videos in the chat | Attach button, paste with `Ctrl+V`, or drop files |
 | Changes pane | Review, stage, commit or discard what the agent changed | `Ctrl+Alt+B`, then Changes |
 | PC control | Let an agent see and operate your screen, or drive the in-app browser | PC control chip in the session header |
-| Strata | A third-party MCP tool server you set up yourself, attached automatically once configured | Settings → Strata (opt out per tab with the Strata chip) |
+| Connectors | Any number of third-party MCP tool servers you set up yourself, attached automatically once configured | Settings → Connectors (opt out per tab with the Connectors chip) |
 | Command palette | Search every action | `Ctrl+Alt+P` |
 | Prompt library | Saved prompts with fill-in `{{variables}}` | `Ctrl+Alt+L` |
 | Search and export | Find text in past sessions, save one as Markdown or HTML | `Ctrl+Alt+F`, `Ctrl+Alt+E` |
@@ -452,22 +466,32 @@ above directly through the server. The tests count real tool invocations, so
 a model claiming an action cannot pass it. Codex and OpenCode/DeepSeek attach
 the same way but have not been run end to end yet.
 
-### Strata (third-party)
+### Connectors (third-party)
 
-Settings → **Strata** lets you paste the URL of a [Strata](https://klavis.ai)
-MCP server — a separate product from Klavis AI, not part of ezCLI. **ezCLI
-never creates a Klavis account, calls Klavis's API, or installs anything on
-your behalf** — you set up Strata entirely yourself (their hosted dashboard,
-or the open-source `strata-mcp` CLI run locally) and hand ezCLI only the
-resulting URL. Once that URL is set, it is **not** opt-in per session: every
-new session for an agent that can receive an MCP server attaches it
-automatically. A chip in the header lets you turn it off for one tab without
-touching the setting; clear the URL in Settings to turn it off everywhere.
-Leave the field blank and Strata is completely inert: no chip appears,
-nothing is attached, nothing is sent anywhere. The URL is only ever passed to
-the CLI you're already running, the same loopback-only trust boundary as
-ezCLI's own MCP server; it is never uploaded anywhere by ezCLI itself.
-Screen capture is Windows-only for now.
+Settings → **Connectors** lets you add any number of remote MCP servers you
+already have — [Strata](https://klavis.ai), a self-hosted tool server, or
+anything else that speaks MCP over HTTP. Each entry is just a name and a URL
+you supply. **ezCLI never creates an account, calls a third-party API, or
+installs anything on your behalf** for any connector — you set each one up
+entirely yourself and hand ezCLI only the URL. This is deliberately the
+bring-your-own-server slice of what a tool like Claude Desktop's Connectors
+page offers, and only that slice: there is no built-in list of pre-wired SaaS
+connectors (Notion, Drive, Slack, …), because wiring those up safely would
+mean ezCLI itself hosting OAuth redirects and holding real third-party
+credentials — out of scope for a desktop app like this.
+
+Once added and enabled, a connector is **not** opt-in per session: every new
+session for an agent that can receive an MCP server attaches all enabled
+connectors automatically, each under its own slugified server name so they
+never collide. A chip in the header shows how many are active and lets you
+turn them off for one tab without touching Settings; disable or remove a
+connector in Settings to turn it off everywhere. With none configured, the
+chip never appears and nothing is attached or sent anywhere. A connector's
+URL is only ever passed to the CLI you're already running, the same
+loopback-only trust boundary as ezCLI's own MCP server; it is never uploaded
+anywhere by ezCLI itself. (If you already had a Strata URL set from an
+earlier version, it was migrated into this list automatically as a single
+connector named "Strata.") Screen capture is Windows-only for now.
 
 ## How it works
 

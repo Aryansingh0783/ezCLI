@@ -1041,10 +1041,10 @@ kbd {
   border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
   color: var(--text);
 }
-.head-strata::before {
-  content: 'Strata';
+.head-connectors::before {
+  content: 'Connectors';
 }
-.head-strata.granted {
+.head-connectors.granted {
   border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
   color: var(--text);
 }
@@ -1955,6 +1955,30 @@ body.resizing-pane .xterm {
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.connector-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.connector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.connector-row .connector-name {
+  flex: none;
+  width: 120px;
+}
+.connector-row .connector-url {
+  flex: 1;
+  min-width: 0;
+}
+.connector-empty {
+  padding: 6px 0;
 }
 .install-cmd {
   margin: 10px 0 0;

@@ -40,9 +40,11 @@ const DEFAULT_PREFS = {
   parked: [],
   // Session counters we can honestly measure (we never call model APIs).
   usage: {},
-  // Optional third-party MCP server (Klavis AI's Strata). Blank by default;
-  // ezCLI never sets this itself. See public/features/strata.js.
-  strataUrl: ''
+  // Custom remote MCP servers the user configured themselves (Settings →
+  // Connectors), e.g. Klavis AI's Strata or any other MCP endpoint. Empty by
+  // default; ezCLI never adds one itself. Each entry is { id, name, url,
+  // enabled }. See public/features/connectors.js.
+  connectors: []
 };
 
 function loadPrefs() {
@@ -63,6 +65,18 @@ function savePrefs() {
       /* storage unavailable; preferences just won't persist */
     }
   }, 150);
+}
+
+// Migrate the old single-Strata-field prefs (pre-connectors-list) into one
+// connector entry, once, and persist immediately so the stale `strataUrl`
+// key in localStorage can't re-trigger this on a later load (e.g. after the
+// user deliberately clears the connectors list down to empty).
+if (typeof prefs.strataUrl === 'string') {
+  if (prefs.strataUrl.trim() && !(prefs.connectors || []).length) {
+    prefs.connectors = [{ id: `c${Date.now().toString(36)}`, name: 'Strata', url: prefs.strataUrl.trim(), enabled: true }];
+  }
+  delete prefs.strataUrl;
+  savePrefs();
 }
 
 /* ----------------------------------------------------------------- themes */
@@ -975,7 +989,7 @@ async function launch(s) {
   // must not leak from the prior process into this one.
   s.usage = Usage.createUsageState();
   s.pcControl = false;
-  s.strataActive = false;
+  s.connectorsActive = [];
   // Window-unique: every window numbers its tabs from 1, and the backend
   // keeps one session table for all windows.
   const ptyId = `p${WINDOW_PARAMS.get('window') || 1}-${++state.seq}`;
@@ -1031,9 +1045,13 @@ async function launch(s) {
       cols: s.term.cols,
       rows: s.term.rows,
       pcControl: Boolean(s.wantPcControl),
-      // On by default whenever a Strata URL is configured in Settings — no
-      // per-session opt-in. s.strataOff is an explicit opt-OUT for one tab.
-      strataUrl: prefs.strataUrl && !s.strataOff ? prefs.strataUrl : null,
+      // Every enabled connector is on by default whenever configured in
+      // Settings — no per-session opt-in. s.connectorsOff is an explicit
+      // opt-OUT for one tab.
+      connectors:
+        !s.connectorsOff && (prefs.connectors || []).some((c) => c.enabled && c.url)
+          ? prefs.connectors.filter((c) => c.enabled && c.url).map((c) => ({ name: c.name || 'Connector', url: c.url }))
+          : null,
       providerSessionId: sessionId || null,
       resume: resuming
     });
@@ -1045,7 +1063,7 @@ async function launch(s) {
     s.command = r.command;
     s.cwd = r.cwd;
     s.pcControl = Boolean(r.pcControl);
-    s.strataActive = Boolean(r.strataActive);
+    s.connectorsActive = r.connectorsActive || [];
     if (s.pendingPrompt) {
       // If the CLI never goes quiet, deliver the first message anyway.
       setTimeout(() => deliverPending(s), 10000);
@@ -1059,7 +1077,7 @@ async function launch(s) {
     s.status = 'error';
     // A failed launch must not leave a pending PC-control request behind.
     s.wantPcControl = false;
-    s.strataOff = false;
+    s.connectorsOff = false;
     s.term.write(`\r\n\x1b[38;2;231;163;163m${String(err).replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
   }
   updateTabMeta(s);
@@ -1106,10 +1124,10 @@ async function attachPty(s, ptyId, isCurrentLaunch = () => true) {
     if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
     invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
     s.pcControl = false;
-    s.strataActive = false;
+    s.connectorsActive = [];
     // Consent covers one process. Relaunching after an exit asks again.
     s.wantPcControl = false;
-    s.strataOff = false;
+    s.connectorsOff = false;
     Usage.ingest(s.usage, '', true);
     s.status = 'exited';
     s.exitCode = e.payload;
@@ -1210,8 +1228,8 @@ function stopSession(s) {
   s.working = false;
   s.wantPcControl = false;
   s.pcControl = false;
-  s.strataOff = false;
-  s.strataActive = false;
+  s.connectorsOff = false;
+  s.connectorsActive = [];
   for (const un of s.unlisten.splice(0)) safe(un);
   s.term.write('\r\n\x1b[38;2;106;106;112m── stopped by user ──\x1b[0m\r\n');
   updateTabMeta(s);
@@ -1224,17 +1242,17 @@ function stopSession(s) {
   return true;
 }
 
-async function restartSession(s, { keepPcControl = false, keepStrata = false } = {}) {
+async function restartSession(s, { keepPcControl = false, keepConnectorsOff = false } = {}) {
   const a = agent(s.agentId);
   const selectedModel = await resolveRequiredModel(a, s.modelId);
   if (a && a.requiresModelSelection && !selectedModel) return false;
   if (selectedModel) s.modelId = selectedModel;
   // PC-control consent covers one process; only its own chip may carry a
-  // fresh grant into the next launch. Strata is the opposite: on by default,
-  // so a restart not triggered by the Strata chip itself drops any opt-out
-  // and reattaches it.
+  // fresh grant into the next launch. Connectors are the opposite: on by
+  // default, so a restart not triggered by the Connectors chip itself drops
+  // any opt-out and reattaches them.
   if (!keepPcControl) s.wantPcControl = false;
-  if (!keepStrata) s.strataOff = false;
+  if (!keepConnectorsOff) s.connectorsOff = false;
   invalidateLaunch(s);
   if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
   s.term.write('\r\n\x1b[38;2;106;106;112m── restarting ──\x1b[0m\r\n');
@@ -1504,22 +1522,25 @@ function renderHead() {
     : s.pcControl
       ? 'Restart this session without PC control'
       : 'Restart this session with PC control (screenshot, mouse and keyboard)';
-  // Strata is a third-party tool server (Settings → Strata): on by default
-  // for every compatible session once a URL is configured there — no
-  // per-session opt-in. The chip only exists once a URL is configured, and
-  // lets you opt OUT for just this one tab if you don't want it attached.
-  const strata = $('headStrata');
-  const strataConfigured = Boolean(prefs.strataUrl && prefs.strataUrl.trim());
-  strata.hidden = !strataConfigured;
-  if (strataConfigured) {
-    strata.disabled = !supportsPc || s.status !== 'running' || !s.ptyId;
-    strata.classList.toggle('granted', Boolean(s.strataActive));
-    strata.textContent = s.strataActive ? 'Strata on' : 'Strata off';
-    strata.title = !supportsPc
-      ? `Strata isn't available for ${a ? a.label : 'this agent'} yet`
-      : s.strataActive
-        ? 'Restart this session without Strata for this tab only'
-        : 'Restart this session with Strata (the tools configured in Settings)';
+  // Connectors (Settings → Connectors) are custom remote MCP servers the
+  // user configured themselves: on by default for every compatible session
+  // once at least one is enabled there — no per-session opt-in. The chip
+  // only exists once one is configured, and lets you opt OUT for just this
+  // one tab if you don't want them attached.
+  const connectorsChip = $('headConnectors');
+  const enabledConnectors = (prefs.connectors || []).filter((c) => c.enabled && c.url);
+  connectorsChip.hidden = !enabledConnectors.length;
+  if (enabledConnectors.length) {
+    const active = s.connectorsActive || [];
+    connectorsChip.disabled = !supportsPc || s.status !== 'running' || !s.ptyId;
+    connectorsChip.classList.toggle('granted', Boolean(active.length));
+    connectorsChip.textContent = active.length ? `Connectors on (${active.length})` : 'Connectors off';
+    const names = enabledConnectors.map((c) => c.name || 'Connector').join(', ');
+    connectorsChip.title = !supportsPc
+      ? `Connectors aren't available for ${a ? a.label : 'this agent'} yet`
+      : active.length
+        ? `Restart this session without ${names} for this tab only`
+        : `Restart this session with ${names} (configured in Settings)`;
   }
   $('actRestart').hidden = s.status === 'parked';
   $('actRestart').textContent = s.status === 'running' ? 'Restart' : 'Relaunch';
@@ -2651,7 +2672,7 @@ async function switchSessionModel(s, modelId) {
   s.command = '';
   s.working = false;
   s.wantPcControl = false;
-  s.strataOff = false;
+  s.connectorsOff = false;
   s.term.writeln(`\r\n\x1b[38;2;124;255;63m── new ${name} session (previous CLI conversation ended) ──\x1b[0m\r\n`);
   const started = await launch(s);
   if (started) toast(`Started a fresh ${name} session.`);
@@ -3316,26 +3337,29 @@ function wire() {
     await restartSession(s, { keepPcControl: true });
     toast(enabling ? 'PC control is on for this session.' : 'PC control is off.');
   });
-  $('headStrata').addEventListener('click', async () => {
+  $('headConnectors').addEventListener('click', async () => {
     const s = active();
     if (!s || !s.ptyId || s.status !== 'running') return;
     const a = agent(s.agentId);
-    if (!a || !a.pc_control || !prefs.strataUrl) return;
-    // Strata is on by default for every compatible session once configured
-    // in Settings; this chip is an opt-OUT for just this one tab, not an
-    // opt-in. s.strataOff carries the opt-out through a restart.
-    const enabling = !s.strataActive;
+    const enabledConnectors = (prefs.connectors || []).filter((c) => c.enabled && c.url);
+    if (!a || !a.pc_control || !enabledConnectors.length) return;
+    // Connectors are on by default for every compatible session once
+    // configured in Settings; this chip is an opt-OUT for just this one
+    // tab, not an opt-in. s.connectorsOff carries the opt-out through a
+    // restart.
+    const names = enabledConnectors.map((c) => c.name || 'Connector').join(', ');
+    const enabling = !(s.connectorsActive || []).length;
     const ok = enabling
-      ? await confirmDialog('Turn Strata back on for this tab?', `${a.label} restarts with the Strata tools configured in Settings attached again. Its current conversation in this tab ends.`, 'Restart with Strata')
+      ? await confirmDialog('Turn connectors back on for this tab?', `${a.label} restarts with ${names} attached again. Its current conversation in this tab ends.`, 'Restart with connectors')
       : await confirmDialog(
-          'Turn off Strata for this tab?',
-          `${a.label} restarts without Strata's tools, just in this tab. Strata is a third-party tool server (Klavis AI); turn it off for every session instead by clearing the URL in Settings. Its current conversation in this tab ends.`,
-          'Restart without it'
+          'Turn off connectors for this tab?',
+          `${a.label} restarts without ${names}, just in this tab. Turn them off for every session instead by disabling or removing them in Settings. Its current conversation in this tab ends.`,
+          'Restart without them'
         );
     if (!ok) return;
-    s.strataOff = !enabling;
-    await restartSession(s, { keepStrata: true, keepPcControl: Boolean(s.wantPcControl) });
-    toast(enabling ? 'Strata is on for this session.' : 'Strata is off for this tab.');
+    s.connectorsOff = !enabling;
+    await restartSession(s, { keepConnectorsOff: true, keepPcControl: Boolean(s.wantPcControl) });
+    toast(enabling ? 'Connectors are on for this session.' : 'Connectors are off for this tab.');
   });
   $('headAgent').addEventListener('click', (e) => {
     const s = active();

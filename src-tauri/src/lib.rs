@@ -29,7 +29,7 @@ mod updater;
 
 use agents::{AgentDef, AgentOut};
 use pty_mgr::{SessionStore, SpawnArgs};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -89,9 +89,60 @@ struct StartResult {
     command: String,
     /// True only when the session was launched with PC control attached.
     pc_control: bool,
-    /// True only when the session was launched with the configured Strata
-    /// MCP server attached.
-    strata_active: bool,
+    /// Display names of the user-configured connectors (Settings →
+    /// Connectors) that actually got attached this launch — empty if none
+    /// were configured, enabled, or the agent can't receive an MCP server.
+    connectors_active: Vec<String>,
+}
+
+/// One user-configured remote MCP server (Settings → Connectors). Strata is
+/// not special-cased — it's just whatever the user names their own entry.
+#[derive(Deserialize, Clone)]
+struct ConnectorIn {
+    name: String,
+    url: String,
+}
+
+/// A connector's display name, made safe to use as an MCP server's config
+/// key (a JSON object key for Claude/OpenCode, a dotted `-c` path segment
+/// for Codex): lowercase, `[a-z0-9_-]` only, never empty, and de-duplicated
+/// against names already chosen so two connectors never collide.
+fn slugify_connector_name(name: &str, index: usize, taken: &mut std::collections::HashSet<String>) -> String {
+    let mapped: String = name
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    // Collapse runs of underscores from consecutive unsafe characters (e.g.
+    // a space before a quote) into one, so "My Notion.Server \"x\"" reads as
+    // my_notion_server_x, not my_notion_server__x.
+    let mut slug = String::with_capacity(mapped.len());
+    let mut last_underscore = false;
+    for c in mapped.chars() {
+        if c == '_' {
+            if !last_underscore {
+                slug.push('_');
+            }
+            last_underscore = true;
+        } else {
+            slug.push(c);
+            last_underscore = false;
+        }
+    }
+    slug = slug.trim_matches('_').to_string();
+    slug.truncate(40);
+    if slug.is_empty() {
+        slug = format!("connector{index}");
+    }
+    let base = slug.clone();
+    let mut n = 2;
+    while taken.contains(&slug) {
+        slug = format!("{base}_{n}");
+        n += 1;
+    }
+    taken.insert(slug.clone());
+    slug
 }
 
 /// Where per-session Claude Code MCP config files live. They contain the
@@ -191,7 +242,7 @@ fn start_session(
     cols: u16,
     rows: u16,
     pc_control: Option<bool>,
-    strata_url: Option<String>,
+    connectors: Option<Vec<ConnectorIn>>,
     provider_session_id: Option<String>,
     resume: Option<bool>,
     state: State<AppState>,
@@ -199,10 +250,11 @@ fn start_session(
     app: AppHandle,
 ) -> Result<StartResult, String> {
     let want_pc = pc_control.unwrap_or(false);
-    let strata_url = strata_url.filter(|u| !u.trim().is_empty());
-    if let Some(u) = &strata_url {
-        validate_mcp_url(u)?;
+    let connectors: Vec<ConnectorIn> = connectors.unwrap_or_default().into_iter().filter(|c| !c.url.trim().is_empty()).collect();
+    for c in &connectors {
+        validate_mcp_url(&c.url).map_err(|e| format!("{} connector: {e}", c.name))?;
     }
+    let mut connectors_active = Vec::new();
     let (launch, argv_for_log, resolved_cwd, extra_env) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
@@ -231,23 +283,29 @@ fn start_session(
         let mut shown = argv.clone();
         let mut extra_env = Vec::new();
 
-        if want_pc || strata_url.is_some() {
+        if want_pc || !connectors.is_empty() {
             let style = a.mcp_style().ok_or_else(|| {
                 format!(
                     "{} isn't supported for {} yet.",
-                    if want_pc { "PC control" } else { "Strata" },
+                    if want_pc { "PC control".to_string() } else { "A connector".to_string() },
                     a.label
                 )
             })?;
-            // ezCLI's own URL is minted and registered per launch; a Strata URL
-            // is whatever the user configured in Settings, used as-is.
+            // ezCLI's own URL is minted and registered per launch; a
+            // connector's URL is whatever the user configured in Settings,
+            // used as-is.
             let pc_url = if want_pc { Some(mcp.register(&id).map_err(|e| e.to_string())?) } else { None };
+            let mut taken = std::collections::HashSet::new();
+            if pc_url.is_some() {
+                taken.insert("ezcli".to_string());
+            }
+            let slugs: Vec<String> = connectors.iter().enumerate().map(|(i, c)| slugify_connector_name(&c.name, i, &mut taken)).collect();
             let mut entries = Vec::new();
             if let Some(u) = &pc_url {
                 entries.push(McpEntry { name: "ezcli", url: u, shown_as: "ezcli PC control" });
             }
-            if let Some(u) = &strata_url {
-                entries.push(McpEntry { name: "strata", url: u, shown_as: "Strata" });
+            for (c, slug) in connectors.iter().zip(slugs.iter()) {
+                entries.push(McpEntry { name: slug, url: &c.url, shown_as: &c.name });
             }
             let (attach, attach_shown, env) = match mcp_attach_args(style, &id, &entries) {
                 Ok(v) => v,
@@ -268,6 +326,7 @@ fn start_session(
                 shown.push(format!("({} via OPENCODE_CONFIG_CONTENT)", names.join(", ")));
             }
             extra_env = env;
+            connectors_active = connectors.iter().map(|c| c.name.clone()).collect();
         }
 
         // OpenCode has no CLI flag for selecting a model interactively; carry
@@ -338,7 +397,7 @@ fn start_session(
         cwd: resolved_cwd,
         command: argv_for_log.trim().to_string(),
         pc_control: want_pc,
-        strata_active: strata_url.is_some(),
+        connectors_active,
     })
 }
 
@@ -858,6 +917,22 @@ mod tests {
         assert!(validate_mcp_url("file:///etc/passwd").is_err());
         assert!(validate_mcp_url("javascript:alert(1)").is_err());
         assert!(validate_mcp_url("not a url").is_err());
+    }
+
+    #[test]
+    fn connector_names_slugify_safely_and_never_collide() {
+        let mut taken = std::collections::HashSet::new();
+        assert_eq!(slugify_connector_name("Strata", 0, &mut taken), "strata");
+        // A second connector that slugifies to the same thing gets a
+        // disambiguating suffix instead of silently overwriting the first.
+        assert_eq!(slugify_connector_name("STRATA!!", 1, &mut taken), "strata_2");
+        // Dots/quotes/spaces (JSON-key and `-c mcp_servers.<name>.url=`
+        // unsafe) are replaced, not passed through.
+        assert_eq!(slugify_connector_name("My Notion.Server \"x\"", 2, &mut taken), "my_notion_server_x");
+        // A name that's entirely unsafe characters still produces something
+        // non-empty and unique rather than an empty/colliding key.
+        assert_eq!(slugify_connector_name("!!!", 3, &mut taken), "connector3");
+        assert_eq!(slugify_connector_name("!!!", 4, &mut taken), "connector4");
     }
 
     #[test]

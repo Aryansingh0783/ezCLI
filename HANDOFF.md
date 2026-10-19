@@ -161,6 +161,59 @@ UI polish rides along in every PR; don't batch it.
 
 ## 5. Current status
 
+**v2.1.7 (2026-10-19, Claude).** Aryan asked to "integrate strata in the
+next version too and add things like the claude desktop app has in which
+we can easily connect connectors, API, MCP, plugins etc just how we do it
+in the claude desktop app." Scoped this to the slice ezCLI can actually do
+safely: a generalized **Connectors** settings page (replacing the single
+Strata-URL field from v2.1.1/v2.1.5) where you add any number of custom
+remote MCP servers — name + URL each, individually enabled/disabled — not
+pre-built OAuth SaaS connectors (Notion, Drive, Slack-style one-click
+"Connect"), since ezCLI has no backend to safely host OAuth redirects or
+hold third-party credentials. Said so explicitly in the UI copy
+(`public/index.html`'s Connectors settings note) and in README.
+
+Backend (`src-tauri/src/lib.rs`): `start_session`'s `strata_url: Option<String>`
+param became `connectors: Option<Vec<ConnectorIn>>`; reused the existing
+multi-entry `McpEntry`/`mcp_attach_args` mechanism (built for PC control +
+Strata coexisting) unchanged — only the call site changed. New
+`slugify_connector_name()` turns each connector's display name into a safe,
+collision-free MCP server key (lowercase, `[a-z0-9_-]`, de-duplicated with
+`_2`/`_3` suffixes); unit-tested. `StartResult.strata_active: bool` became
+`connectors_active: Vec<String>` (display names actually attached).
+Frontend (`public/app.js`, `public/features/connectors.js` replacing the
+deleted `strata.js`, `public/index.html`, `public/styles.css`): `prefs.connectors`
+array of `{id, name, url, enabled}`; one-time migration from the old
+`prefs.strataUrl` string on load; header chip shows "Connectors on (N)" and
+opts out per-tab the same way the old Strata chip did, still opt-out by
+default per Aryan's earlier "DONT MAKE THIS OPT IN" instruction — no new
+opt-in surface was introduced.
+
+Live-verified via a debug build driven over CDP (not just read by
+inspection): 3 configured connectors (2 enabled, 1 disabled) rendered
+correctly in Settings; launching a real `claude-code` session attached only
+the 2 enabled ones, reflected in `connectors_active`, the header chip text,
+and — checked on disk, not just in memory — the actual `--mcp-config` JSON
+file's `mcpServers` keys, correctly slugified (`strata`, `my_notion_server`).
+The `prefs.strataUrl` → `prefs.connectors` migration was verified by
+exercising the exact migration code in isolation against constructed
+old-format inputs (plain string, whitespace-only, already-has-connectors,
+already-new-format) rather than via a live reload — two reload-based
+attempts gave misleading results, traced to a wrong localStorage key name
+in the test script itself (`ezcli-prefs` vs. the real `ezcli.v2`) and
+separately to `savePrefs()`'s 150ms debounce racing the test's injected
+value, neither of which was an app bug.
+
+Toolchain note for whoever picks this up next: `cargo build`/`cargo check`
+failed in this session with `dlltool.exe`/`windres` not found (the GNU
+Windows target's MinGW binutils are missing from PATH in the current
+shell) — a machine/environment gap, not a code issue; the code was compiled
+and clippy-clean earlier in the same session, before this gap appeared, and
+the exact binary that was live-tested above came from that earlier build.
+Left `src-tauri/src/agents.rs`'s Codex Windows-launcher fix (from an earlier
+task, explicit "do not commit or push") untouched and uncommitted, as
+before — this release's commit excludes it.
+
 **2026-10-19, Claude, docs-only (no version bump — nothing in the app
 itself changed, so no release build was needed).** Added `AGENTS.md` at
 the repo root — Aryan
@@ -1109,6 +1162,16 @@ when PR 1 started; latest tag `v1.1.0`.
   pacman install). Validated the SteamOS command block for real in a
   distrobox-equivalent (passwordless sudo) Arch container; the
   distrobox CLI itself isn't testable from this Windows box.
+- 2026-10-19 — Claude: v2.1.7: generalized the single-Strata-URL field into
+  a full **Connectors** list (any number of custom MCP servers, name + URL
+  each), per Aryan's request to approach Claude Desktop's connectors UX for
+  the part ezCLI can do safely (no pre-built OAuth SaaS connectors). Backend
+  reused the existing multi-entry MCP-attach mechanism unchanged; added
+  name slugification with collision handling. Live-verified via CDP against
+  a running debug build (multi-connector attach, disabled filtering, header
+  chip, real on-disk MCP config contents) and verified the old-prefs
+  migration by exercising its logic in isolation. `agents.rs`'s separate
+  "do not commit" Codex fix remains untouched and uncommitted.
 
 ---
 

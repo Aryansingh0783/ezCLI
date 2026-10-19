@@ -134,7 +134,7 @@
               <button class="head-chip head-agent" id="headAgent" title="Change backend (relaunches this session)" hidden></button>
               <button class="head-chip" id="headModel" title="Start a fresh session with another model" hidden></button>
               <button class="head-chip head-control" id="headControl" title="Grant or revoke local PC control for this live session"></button>
-              <button class="head-chip head-strata" id="headStrata" title="Strata is attached automatically once configured in Settings; click to turn it off for just this tab" hidden></button>
+              <button class="head-chip head-connectors" id="headConnectors" title="Your configured connectors attach automatically; click to turn them off for just this tab" hidden></button>
               <span class="head-branch" id="headBranch" hidden></span>
               <span class="grow"></span>
               <button class="btn primary" id="actResume" title="Launch this session again" hidden>Resume</button>
@@ -327,9 +327,12 @@
         </div>
       </div>
       <div class="settings-section">
-        <h3>Strata</h3>
-        <p class="note">Strata is a third-party tool server from <a href="https://klavis.ai" target="_blank" rel="noopener">Klavis AI</a>, not part of ezCLI. ezCLI never creates an account or connects anything on its own — paste a Strata MCP server URL you already set up (self-hosted, or from your own Klavis dashboard). Once set, Strata attaches automatically to every session that can receive it — no per-session toggle. Turn it off for one tab with the Strata chip in that session's header, or clear this field to turn it off everywhere. Leave it blank and Strata stays completely inert.</p>
-        <label class="field"><span>Strata MCP server URL</span><input type="text" id="prefStrataUrl" placeholder="https://strata.klavis.ai/mcp/&hellip; or http://127.0.0.1:8080" autocomplete="off" spellcheck="false" /></label>
+        <h3>Connectors</h3>
+        <p class="note">Connect a remote MCP server you've already set up yourself — <a href="https://klavis.ai" target="_blank" rel="noopener">Strata</a>, your own tool server, or anything else that speaks MCP over HTTP. These are third-party servers, not part of ezCLI, and ezCLI never creates an account or connects anything on its own: you set each one up and paste in its URL. Once added and enabled, a connector attaches automatically to every session that can receive it — no per-session toggle. Turn one off for one tab with the Connectors chip in that session's header, or disable/remove it here to turn it off everywhere.</p>
+        <ul class="connector-list" id="connectorList"></ul>
+        <div class="row-actions">
+          <button class="btn quiet" id="addConnector">Add connector</button>
+        </div>
       </div>
       <div class="settings-section">
         <h3>Usage</h3>
@@ -384,7 +387,7 @@
     <script src="/features/health.js"></script>
     <script src="/features/updates.js"></script>
     <script src="/features/desktop.js"></script>
-    <script src="/features/strata.js"></script>
+    <script src="/features/connectors.js"></script>
     <script src="/features/installer.js"></script>
     <script src="/features/transcripts.js"></script>
     <script src="/features/git-actions.js"></script>
