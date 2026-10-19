@@ -1,0 +1,6 @@
+# Not part of ezCLI: local tooling and scratch assets
+.tooling/
+.tmp-model-import/
+threejs-animation-multiple-preview/
+src-tauri/target/
+src-tauri/gen/

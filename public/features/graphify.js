@@ -39,7 +39,7 @@ const Graphify = {
     if (this.busy) return;
     let cmd;
     try {
-      cmd = await invoke('graphify_plan', { action });
+      cmd = await invoke('graphify_plan', { action, cwd: this.folder() });
     } catch (e) {
       toast(String(e), 'error');
       return;
@@ -48,8 +48,11 @@ const Graphify = {
     if (!(await confirmDialog(title, `${why}\n\nezCLI will run${where}:\n${cmd}`, 'Run it'))) return;
     const log = $('graphifyLog');
     log.hidden = false;
-    log.textContent = `> ${cmd}\n`;
+    log.textContent = `> ${cmd}\nRunning… this can take a minute on a large project.\n`;
     this.busy = true;
+    for (const id of ['graphifyInstall', 'graphifySetup', 'graphifyBuild']) $(id).disabled = true;
+    $('graphifyStatus').textContent = `Running: ${title}…`;
+    log.scrollIntoView({ block: 'center' });
     const unlisten = await listen('install-out:graphify', (e) => {
       log.textContent += e.payload;
       log.scrollTop = log.scrollHeight;

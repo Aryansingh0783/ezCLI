@@ -17,3 +17,6 @@ src-tauri/icons/ios/
 # local tooling (impeccable design detector, installed via npx)
 .claude/
 PRODUCT.md
+
+# Graphify output (regenerate with the Build graph button)
+graphify-out/

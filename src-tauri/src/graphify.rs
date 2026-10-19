@@ -62,6 +62,12 @@ fn folder_arg(cwd: Option<String>) -> Result<PathBuf, String> {
     if !dir.is_dir() {
         return Err(format!("{} is not a folder.", dir.display()));
     }
+    // Indexing a whole profile or drive would run for hours and graph
+    // everything on it; a project graph needs an actual project folder.
+    let is_home = dirs::home_dir().is_some_and(|h| h == dir);
+    if is_home || dir.parent().is_none() {
+        return Err("That's your home folder or a drive root, too big to graph. Open a project folder (or start a session in one) first.".into());
+    }
     Ok(dir)
 }
 
@@ -132,7 +138,10 @@ pub fn graphify_open(cwd: Option<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn graphify_plan(action: String, state: State<'_, AppState>) -> Result<String, String> {
+pub fn graphify_plan(action: String, cwd: Option<String>, state: State<'_, AppState>) -> Result<String, String> {
+    if action == "build" {
+        folder_arg(cwd)?;
+    }
     plan(&action, &state)
 }
 

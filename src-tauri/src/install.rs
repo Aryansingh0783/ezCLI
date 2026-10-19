@@ -150,10 +150,33 @@ pub fn run_in(
         }
         all
     });
+    let app_e = app.clone();
+    let id_e = agent_id.clone();
     let err_thread = std::thread::spawn(move || {
+        // Many tools (Graphify among them) print their progress to stderr, so
+        // stream it live too instead of showing it only once the run ends.
         let mut s = String::new();
         if let Some(e) = stderr.as_mut() {
-            let _ = e.read_to_string(&mut s);
+            let mut buf = [0u8; 4096];
+            let mut carry: Vec<u8> = Vec::new();
+            loop {
+                match e.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        carry.extend_from_slice(&buf[..n]);
+                        let valid = match std::str::from_utf8(&carry) {
+                            Ok(_) => carry.len(),
+                            Err(er) => er.valid_up_to(),
+                        };
+                        if valid > 0 {
+                            let text = String::from_utf8_lossy(&carry[..valid]).into_owned();
+                            let _ = app_e.emit(&format!("install-out:{id_e}"), &text);
+                            s.push_str(&text);
+                            carry.drain(..valid);
+                        }
+                    }
+                }
+            }
         }
         s
     });
