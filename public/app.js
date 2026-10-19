@@ -44,7 +44,9 @@ const DEFAULT_PREFS = {
   // Connectors), e.g. Klavis AI's Strata or any other MCP endpoint. Empty by
   // default; ezCLI never adds one itself. Each entry is { id, name, url,
   // enabled }. See public/features/connectors.js.
-  connectors: []
+  connectors: [],
+  // Build a Graphify graph for every project a session starts in.
+  graphAuto: true
 };
 
 function loadPrefs() {
@@ -1064,6 +1066,7 @@ async function launch(s) {
     s.cwd = r.cwd;
     s.pcControl = Boolean(r.pcControl);
     s.connectorsActive = r.connectorsActive || [];
+    if (typeof Graphify !== 'undefined') Graphify.auto(s.cwd);
     if (s.pendingPrompt) {
       // If the CLI never goes quiet, deliver the first message anyway.
       setTimeout(() => deliverPending(s), 10000);

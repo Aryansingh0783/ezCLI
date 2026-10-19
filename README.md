@@ -133,6 +133,21 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.1.12
+
+- **A graph for every project, automatically.** When you start a session in a
+  project folder, ezCLI builds (or refreshes) that project's
+  [Graphify](https://github.com/safishamsi/graphify) knowledge graph in the
+  background. It's on by default (Settings → Graphify), never installs
+  anything by itself, skips your home folder and drive roots, and keeps
+  `graphify-out/` out of your git status locally.
+- **Second brain.** One graph merging every project's graph, plus an
+  [Obsidian](https://obsidian.md) vault with a note per concept, all in
+  `~/.ezcli/second-brain` on your PC. Open it from the new left-rail button,
+  Settings → Second brain, or the command palette.
+- The graph opens in its own ezCLI window instead of the system browser. It
+  loads its viewer script from the internet, so it needs a connection to draw.
+
 ### New in 2.1.8
 
 - **Agent browser you can see.** A globe button in the left rail opens the

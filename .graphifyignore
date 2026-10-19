@@ -4,3 +4,4 @@
 threejs-animation-multiple-preview/
 src-tauri/target/
 src-tauri/gen/
+public/vendor/

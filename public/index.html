@@ -73,6 +73,9 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" /></svg>
           </button>
           <span class="grow"></span>
+          <button class="rail-btn" id="brainBtn" title="Second brain — one graph of every project" aria-label="Second brain">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="7" r="2.2" /><circle cx="18" cy="6" r="2.2" /><circle cx="12" cy="17" r="2.2" /><path d="M7.8 8.2l3 7M16.4 7.6l-3.4 8M8.2 7h7.6" /></svg>
+          </button>
           <button class="rail-btn" id="browserBtn" title="Agent browser — the window agents use with PC control. Watch it or browse yourself." aria-label="Agent browser">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" /></svg>
           </button>
@@ -333,13 +336,25 @@
         <h3>Graphify</h3>
         <p class="note"><a href="https://github.com/safishamsi/graphify" target="_blank" rel="noopener">Graphify</a> is a third-party, open-source tool that turns a project into a knowledge graph your agents can query. ezCLI runs only Graphify's own documented commands, and shows you each one before it runs.</p>
         <p class="note" id="graphifyStatus">Checking…</p>
-        <div class="row-actions">
+        <div class="row-actions wrap">
           <button class="btn quiet" id="graphifyInstall">Install Graphify</button>
           <button class="btn quiet" id="graphifySetup">Add to my agents</button>
           <button class="btn quiet" id="graphifyBuild">Build graph for this project</button>
           <button class="btn quiet" id="graphifyOpen">Open graph</button>
         </div>
         <pre class="install-log" id="graphifyLog" hidden></pre>
+        <label class="toggle-row"><input type="checkbox" id="graphAuto" /> <span>Build a graph automatically for every project I start a session in (needs Graphify installed)</span></label>
+      </div>
+      <div class="settings-section">
+        <h3>Second brain</h3>
+        <p class="note">One graph that merges every project's graph, plus an <a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a> vault with a note for each concept. Everything stays on this PC, in <code>~/.ezcli/second-brain</code>.</p>
+        <p class="note" id="brainStatus">Checking…</p>
+        <div class="row-actions wrap">
+          <button class="btn quiet" id="brainUpdate">Update second brain</button>
+          <button class="btn quiet" id="brainGraph">Open brain graph</button>
+          <button class="btn quiet" id="brainObsidian">Open in Obsidian</button>
+          <button class="btn quiet" id="brainVault">Open vault folder</button>
+        </div>
       </div>
       <div class="settings-section">
         <h3>Connectors</h3>

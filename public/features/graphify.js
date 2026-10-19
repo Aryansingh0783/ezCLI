@@ -5,6 +5,28 @@
 
 const Graphify = {
   busy: false,
+  autoSeen: new Set(),
+
+  // Project folders ezCLI knows about; the backend keeps only those with a graph.
+  projectPaths() {
+    return [...new Set([...(prefs.spaces || []).map((x) => x.path), ...state.sessions.map((x) => x.cwd)].filter(Boolean))];
+  },
+
+  // Once per folder per app run: build (or refresh) its graph in the background,
+  // then fold it into the second brain. Never installs anything by itself.
+  async auto(cwd) {
+    if (!cwd || prefs.graphAuto === false || this.autoSeen.has(cwd)) return;
+    this.autoSeen.add(cwd);
+    try {
+      const r = await invoke('graphify_auto', { cwd });
+      if (r === 'built') {
+        toast('Project graph updated.');
+        await Brain.update(true);
+      }
+    } catch {
+      /* best effort; the manual buttons report errors */
+    }
+  },
 
   folder() {
     const s = active();
@@ -105,3 +127,79 @@ registerCommand({
     requestAnimationFrame(() => $('graphifyBuild')?.scrollIntoView({ block: 'center' }));
   }
 });
+
+const Brain = {
+  busy: false,
+
+  async refresh() {
+    const el = $('brainStatus');
+    if (!el) return;
+    let st;
+    try {
+      st = await invoke('brain_status', { paths: Graphify.projectPaths() });
+    } catch (e) {
+      el.textContent = `Couldn't check the second brain: ${e}`;
+      return;
+    }
+    el.textContent = st.built
+      ? `${st.projects} project${st.projects === 1 ? '' : 's'} with a graph. The merged graph and vault are built.`
+      : st.projects
+        ? `${st.projects} project${st.projects === 1 ? '' : 's'} with a graph. Not merged yet.`
+        : 'No project has a graph yet. One is built automatically when you start a session in a project folder.';
+    $('brainUpdate').disabled = !st.projects || this.busy;
+    $('brainGraph').disabled = !st.built;
+    $('brainVault').disabled = !st.built;
+    $('brainObsidian').disabled = !st.built;
+    $('brainObsidian').textContent = st.obsidian ? 'Open in Obsidian' : 'Open in Obsidian (not installed)';
+    this.vault = st.vault;
+  },
+
+  async update(quiet = false) {
+    if (this.busy) return;
+    this.busy = true;
+    try {
+      const done = await invoke('brain_run', { paths: Graphify.projectPaths() });
+      const ok = done.code === 0;
+      if (!quiet || !ok) toast(ok ? 'Second brain updated.' : 'Second brain update failed.', ok ? undefined : 'error');
+    } catch (e) {
+      if (!quiet) toast(String(e), 'error');
+    } finally {
+      this.busy = false;
+      this.refresh();
+    }
+  },
+
+  async open(what) {
+    try {
+      await invoke('brain_open', { what });
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  }
+};
+
+hooks.boot.push(() => {
+  if (!$('brainStatus')) return;
+  const auto = $('graphAuto');
+  auto.checked = prefs.graphAuto !== false;
+  auto.addEventListener('change', () => {
+    prefs.graphAuto = auto.checked;
+    savePrefs();
+  });
+  $('brainUpdate').addEventListener('click', () => Brain.update());
+  $('brainGraph').addEventListener('click', () => Brain.open('graph'));
+  $('brainObsidian').addEventListener('click', () => Brain.open('obsidian'));
+  $('brainVault').addEventListener('click', () => Brain.open('vault'));
+  $('brainBtn')?.addEventListener('click', async () => {
+    const st = await invoke('brain_status', { paths: Graphify.projectPaths() }).catch(() => null);
+    if (st && st.built) return Brain.open('graph');
+    $('settingsSheet').showModal();
+    Brain.refresh();
+    toast(st && st.projects ? 'Press "Update second brain" to merge your projects.' : 'No project graphs yet. Start a session in a project folder.');
+  });
+  $('settingsBtn')?.addEventListener('click', () => Brain.refresh());
+  Brain.refresh();
+});
+
+registerCommand({ group: 'App', label: 'Second brain: open the graph of all projects', run: () => $('brainBtn').click() });
+registerCommand({ group: 'App', label: 'Second brain: update from all projects', run: () => Brain.update() });
