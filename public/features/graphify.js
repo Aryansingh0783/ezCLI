@@ -14,18 +14,21 @@ const Graphify = {
 
   // Once per folder per app run: build (or refresh) its graph in the background,
   // then fold it into the second brain. Never installs anything by itself.
-  async auto(cwd) {
+  auto(cwd) {
     if (!cwd || prefs.graphAuto === false || this.autoSeen.has(cwd)) return;
     this.autoSeen.add(cwd);
-    try {
-      const r = await invoke('graphify_auto', { cwd });
-      if (r === 'built') {
-        toast('Project graph updated.');
-        await Brain.update(true);
+    // One build at a time: later projects wait their turn rather than being skipped.
+    this.queue = (this.queue || Promise.resolve()).then(async () => {
+      try {
+        const r = await invoke('graphify_auto', { cwd });
+        if (r === 'built') {
+          toast('Project graph updated.');
+          await Brain.update(true);
+        }
+      } catch {
+        /* best effort; the manual buttons report errors */
       }
-    } catch {
-      /* best effort; the manual buttons report errors */
-    }
+    });
   },
 
   folder() {
@@ -92,6 +95,7 @@ const Graphify = {
       unlisten();
       this.busy = false;
       this.refresh();
+      if (typeof Brain !== 'undefined') Brain.refresh();
     }
   }
 };
@@ -150,7 +154,8 @@ const Brain = {
     $('brainGraph').disabled = !st.built;
     $('brainVault').disabled = !st.built;
     $('brainObsidian').disabled = !st.built;
-    $('brainObsidian').textContent = st.obsidian ? 'Open in Obsidian' : 'Open in Obsidian (not installed)';
+    $('brainObsidian').hidden = !st.obsidian;
+    $('brainInstallObsidian').hidden = st.obsidian;
     this.vault = st.vault;
   },
 
@@ -190,6 +195,9 @@ hooks.boot.push(() => {
   $('brainGraph').addEventListener('click', () => Brain.open('graph'));
   $('brainObsidian').addEventListener('click', () => Brain.open('obsidian'));
   $('brainVault').addEventListener('click', () => Brain.open('vault'));
+  $('brainInstallObsidian').addEventListener('click', () =>
+    Graphify.run('obsidian', 'Install Obsidian', 'Installs Obsidian, a free notes app that opens the second-brain vault as a linked graph. It is optional: the graph also opens inside ezCLI.')
+  );
   $('brainBtn')?.addEventListener('click', async () => {
     const st = await invoke('brain_status', { paths: Graphify.projectPaths() }).catch(() => null);
     if (st && st.built) return Brain.open('graph');

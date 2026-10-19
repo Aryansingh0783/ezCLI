@@ -95,6 +95,20 @@ fn build_command() -> &'static str {
     }
 }
 
+/// Obsidian's own documented package-manager installs; nothing is downloaded
+/// from anywhere else, and the user confirms the exact command first.
+fn obsidian_install_command() -> Option<&'static str> {
+    if cfg!(windows) && agents::resolve_command("winget").is_some() {
+        Some("winget install --id Obsidian.Obsidian -e --accept-package-agreements --accept-source-agreements")
+    } else if cfg!(target_os = "macos") && agents::resolve_command("brew").is_some() {
+        Some("brew install --cask obsidian")
+    } else if cfg!(target_os = "linux") && agents::resolve_command("flatpak").is_some() {
+        Some("flatpak install -y flathub md.obsidian.Obsidian")
+    } else {
+        None
+    }
+}
+
 /// The exact command line an action would run. Shown to the user before
 /// `graphify_run` executes the very same plan.
 fn plan(action: &str, state: &AppState) -> Result<String, String> {
@@ -111,6 +125,9 @@ fn plan(action: &str, state: &AppState) -> Result<String, String> {
         }
         // Code-only extraction is local (tree-sitter) and needs no API key.
         "build" => Ok(build_command().into()),
+        "obsidian" => obsidian_install_command().map(String::from).ok_or_else(|| {
+            "No supported package manager found (winget, Homebrew or Flatpak). Download Obsidian from https://obsidian.md instead.".to_string()
+        }),
         _ => Err(format!("unknown Graphify action {action:?}")),
     }
 }
@@ -198,7 +215,8 @@ fn brain_plan(paths: &[String]) -> Result<String, String> {
     let and = if win { "; if ($LASTEXITCODE -eq 0) { " } else { " && " };
     let close = if win { " }" } else { "" };
     let first = if graphs.len() == 1 {
-        format!("{} {} {}", if win { "Copy-Item" } else { "cp" }, quote(&graphs[0]), quote(&merged))
+        // `cmd /c copy` (unlike Copy-Item) sets $LASTEXITCODE, which the chain below checks.
+        format!("{} {} {}", if win { "cmd /c copy /Y" } else { "cp" }, quote(&graphs[0]), quote(&merged))
     } else {
         format!(
             "graphify merge-graphs {} --out {}",
