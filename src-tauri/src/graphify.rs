@@ -126,15 +126,30 @@ pub fn graphify_status(cwd: Option<String>, state: State<'_, AppState>) -> Graph
     }
 }
 
-/// Open the project's interactive graph in the default browser. The path is
-/// always `<folder>/graphify-out/graph.html`, never one the page supplies.
+/// Open the project's interactive graph in an ezCLI window, so it doesn't
+/// depend on whatever the system opens `.html` files with. The path is always
+/// `<folder>/graphify-out/graph.html`, never one the page supplies. The window
+/// label is outside the capabilities manifest, so the page has no ezCLI access.
 #[tauri::command]
-pub fn graphify_open(cwd: Option<String>) -> Result<(), String> {
+pub async fn graphify_open(cwd: Option<String>, app: AppHandle) -> Result<(), String> {
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
     let html = graph_html(&folder_arg(cwd)?);
     if !html.is_file() {
         return Err("No graph yet for this folder. Build it first.".into());
     }
-    tauri_plugin_opener::open_path(&html, None::<&str>).map_err(|e| e.to_string())
+    let url = tauri::Url::from_file_path(&html).map_err(|_| "Could not open that path.".to_string())?;
+    if let Some(win) = app.get_webview_window("graph-view") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        return win.navigate(url).map_err(|e| e.to_string());
+    }
+    WebviewWindowBuilder::new(&app, "graph-view", WebviewUrl::External(url))
+        .title("Graphify: project graph")
+        .inner_size(1200.0, 820.0)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
