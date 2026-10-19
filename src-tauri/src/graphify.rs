@@ -145,7 +145,19 @@ pub async fn graphify_run(
     app: AppHandle,
 ) -> Result<install::InstallDone, String> {
     let command_line = plan(&action, &state)?;
-    let dir = if action == "build" { Some(folder_arg(cwd)?) } else { None };
+    let dir = match action.as_str() {
+        "build" => Some(folder_arg(cwd)?),
+        // Graphify's per-agent installers also write project-level files
+        // (.opencode/plugins, GEMINI.md, ...) into the current directory. The
+        // skills go to the user profile regardless, so run from a scratch
+        // folder rather than the app's install dir or one of the user's repos.
+        "setup" => {
+            let scratch = std::env::temp_dir().join("ezcli-graphify-setup");
+            std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+            Some(scratch)
+        }
+        _ => None,
+    };
     if runs.contains_running(KEY) {
         return Err("A Graphify command is already running.".into());
     }

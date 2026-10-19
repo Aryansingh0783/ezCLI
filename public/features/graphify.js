@@ -44,7 +44,7 @@ const Graphify = {
       toast(String(e), 'error');
       return;
     }
-    const where = action === 'build' ? ` in ${this.folder()}` : '';
+    const where = action === 'build' ? ` in ${this.folder()}` : action === 'setup' ? ' (from a temporary folder, so your projects are untouched)' : '';
     if (!(await confirmDialog(title, `${why}\n\nezCLI will run${where}:\n${cmd}`, 'Run it'))) return;
     const log = $('graphifyLog');
     log.hidden = false;
