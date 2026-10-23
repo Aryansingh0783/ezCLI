@@ -1038,3 +1038,6 @@
 .slash-row b { font-family: 'JetBrains Mono', Consolas, monospace; font-weight: 600; color: var(--ink, #1b1f2e); }
 .slash-row span { color: var(--ink-soft, #4a5066); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slash-row.on, .slash-row:hover { background: color-mix(in srgb, var(--accent, #4f6bff) 14%, transparent); }
+
+/* Container-type removes a tab's intrinsic width, so give it one: otherwise a lone tab collapses to its minimum. */
+.tab { width: 220px; }

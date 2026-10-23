@@ -133,6 +133,11 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.8.4
+
+- **Fix: a lone tab was squashed.** With one session open, its tab shrank to a
+  sliver and clipped the title. Tabs are full width again.
+
 ### New in 2.8.3
 
 - **Clickable file paths in the terminal.** A path an agent prints, such as
