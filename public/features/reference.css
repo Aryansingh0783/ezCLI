@@ -307,10 +307,6 @@
 .dash-col { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .dash-col-main { flex: 1.35; }
 .dash-col-side { flex: 1; }
-@media (max-width: 1000px) {
-  .dash-grid { flex-direction: column; }
-  .dash-col { width: 100%; }
-}
 /* Team chat / Web chat mount after the agent grid, inside the side column. */
 :root:root .home-team, :root:root .home-webchat {
   width: 100%;
@@ -738,7 +734,6 @@
 .stat-bar b { margin-top: 3px; font-size: 9.5px; font-weight: 600; color: var(--ink-faint); line-height: 1; }
 .stat-bars { padding-bottom: 12px; }
 .stat-bar b { position: absolute; bottom: -12px; }
-@media (max-width: 1100px) { .dash-stats { grid-template-columns: 1fr 1fr; } .stat-a { grid-column: 1 / -1; } }
 @media (prefers-reduced-motion: no-preference) {
   .dash-stats .stat-card { animation: rise 0.45s var(--ease-out) both; }
   .dash-stats .stat-b { animation-delay: 0.05s; }
@@ -826,4 +821,34 @@
   color: color-mix(in srgb, var(--warn) 55%, #000);
   background: color-mix(in srgb, var(--warn) 24%, transparent);
   font-weight: 600;
+}
+
+
+/* ===================== responsive: react to the space the dashboard really has ===================== */
+/* The file explorer can dock beside the dashboard, so window-width media queries are wrong here. */
+:root:root .home { container: home / inline-size; }
+.dash-head { flex-wrap: wrap; row-gap: 10px; }
+.dash-head h1 { min-width: 0; }
+.dash-head-actions { flex-wrap: wrap; }
+:root:root .dash-project { max-width: 100%; }
+.dash-project #homeProjectLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 18ch; }
+@container home (max-width: 880px) {
+  .dash-grid { flex-direction: column; }
+  .dash-col { width: 100%; }
+}
+@container home (max-width: 640px) {
+  :root:root .home-inner.dash { padding-top: 18px; }
+  :root:root .home-inner.dash .dash-head h1 { font-size: 24px; }
+  .agent-grid { grid-template-columns: 1fr; }
+  .dash-stats { grid-template-columns: 1fr 1fr; }
+  .stat-a { grid-column: 1 / -1; }
+  :root:root .session-thead, :root:root .session-trow { grid-template-columns: minmax(0, 1fr) 70px 28px; }
+  .session-agent, .session-thead > span:nth-child(2) { display: none; }
+  :root:root .dash-hero .composer-row { flex-wrap: wrap; row-gap: 8px; }
+  :root:root .dash-hero .composer-tools { width: 100%; justify-content: flex-end; }
+  :root:root .dash-hero .pill-pick { max-width: none; }
+}
+@container home (max-width: 420px) {
+  .dash-stats { grid-template-columns: 1fr; }
+  .stat-value { font-size: 26px; }
 }

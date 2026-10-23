@@ -388,14 +388,15 @@ const Sessions = (() => {
     const byAgent = new Map();
     for (const m of list) {
       const t = m.startedAt || 0;
-      if (t < days[0].start) continue;
+      // Outside the week, or dated in the future (a clock error): not this week's activity.
+      if (t < days[0].start || t > now + 5 * 60000) continue;
       sessions++;
       const end = m.endedAt && m.endedAt > t ? m.endedAt : t;
       ms += Math.min(end - t, 12 * 3600000);
       prompts += (m.prompts || []).length;
       const d = days.findIndex((x, i) => t >= x.start && (i === 6 || t < days[i + 1].start));
       if (d >= 0) days[d].count++;
-      const name = m.agentLabel || m.agentId;
+      const name = m.agentLabel || m.agentId || 'Unknown agent';
       byAgent.set(name, (byAgent.get(name) || 0) + 1);
     }
     const top = [...byAgent.entries()].sort((a, b) => b[1] - a[1])[0];

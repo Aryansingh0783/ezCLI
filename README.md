@@ -133,6 +133,17 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.5.3
+
+- **The home dashboard adapts to the space it really has.** With the file
+  explorer docked beside it (or in a small window) the dashboard used to
+  spill off the edge and scroll sideways. It now reflows column by column,
+  hides the least important table column and stacks the composer. Checked at
+  five window sizes with the explorer both open and closed.
+- **Stats fixes.** A session with no agent name no longer shows "undefined"
+  as your most-used agent, and a session dated in the future (a clock error)
+  is no longer counted as today.
+
 ### New in 2.5.2
 
 - **Fixed: terminal text was hard to read in the light themes.** Since the light default arrived the terminal pane has been dark, but its default text colour was still the dark-on-white set, so normal CLI output was dark on dark. The terminal now always uses its light-on-dark colours. Small labels (the Free tag, the changes count) are also darker on the light colour themes.
