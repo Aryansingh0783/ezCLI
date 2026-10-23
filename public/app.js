@@ -194,6 +194,23 @@ function termOptions(extra = {}) {
   };
 }
 
+/** Open a path printed in terminal output in the explorer's file view. */
+async function openTerminalPath(raw) {
+  const path = raw.replace(/:\d+(?::\d+)?$/, '').replaceAll('\\', '/');
+  const s = active();
+  const base = ((s && s.cwd) || (space() && space().path) || '').replaceAll('\\', '/').replace(/\/$/, '');
+  const abs = /^[A-Za-z]:\//.test(path) || path.startsWith('/') ? path : `${base}/${path.replace(/^\.\//, '')}`;
+  try {
+    await invoke('read_file', { path: abs });
+  } catch {
+    return toast(`Couldn’t open ${path}`, 'error');
+  }
+  state.explorer.view = 'file';
+  state.explorer.file = abs;
+  setExplorerOpen(true);
+  renderExplorer();
+}
+
 /** Build a terminal inside `host` with every add-on it needs. */
 function createTerminal(host, extra) {
   const term = new Terminal(termOptions(extra));
@@ -204,6 +221,27 @@ function createTerminal(host, extra) {
   } catch {
     /* optional add-on */
   }
+  // File paths in the output (src/app.js:42, C:\proj\a.rs) open in the explorer.
+  term.registerLinkProvider({
+    provideLinks(y, cb) {
+      const line = term.buffer.active.getLine(y - 1);
+      if (!line) return cb(undefined);
+      const text = line.translateToString(true);
+      const re = /(?:[A-Za-z]:[\\/]|\.{0,2}[\\/])?(?:[\w.@-]+[\\/])*[\w.@-]+\.[A-Za-z][A-Za-z0-9]{0,5}(?::\d+(?::\d+)?)?/g;
+      const links = [];
+      for (let m; (m = re.exec(text)); ) {
+        const raw = m[0];
+        if (/^\d+\.\d+/.test(raw) || /^(?:https?|www)/i.test(raw) || !/[\\/]/.test(raw)) continue;
+        if (text[m.index - 1] === '/' || text[m.index - 1] === '@') continue;
+        links.push({
+          range: { start: { x: m.index + 1, y }, end: { x: m.index + raw.length + 1, y } },
+          text: raw,
+          activate: () => openTerminalPath(raw)
+        });
+      }
+      cb(links.length ? links : undefined);
+    }
+  });
   try {
     // Correct widths for emoji, CJK and box-drawing so TUIs line up.
     term.loadAddon(new Unicode11Addon.Unicode11Addon());

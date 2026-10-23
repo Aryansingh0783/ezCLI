@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.8.3
+
+- **Clickable file paths in the terminal.** A path an agent prints, such as
+  `src/app.js:42` or `C:\proj\main.rs`, opens in the explorer's file view
+  when you click it. Version numbers and decimals are ignored.
+
 ### New in 2.8.2
 
 - **Ctrl + mouse wheel** over the terminal changes the text size.
