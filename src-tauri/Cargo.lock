@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "ezcli"
-version = "2.4.0"
+version = "2.4.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

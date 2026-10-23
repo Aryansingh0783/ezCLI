@@ -554,3 +554,97 @@
   --raised: color-mix(in srgb, #fff 9%, var(--panel));
   --text: var(--ink); --muted: var(--ink-soft); --faint: var(--ink-faint);
 }
+
+/* ============================ refinement pass =========================== */
+/* Rows are <button>s, which shrink to fit; the table grid needs the full width
+   or every column collapses onto the title. */
+:root:root .session-thead,
+:root:root .session-trow {
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+}
+:root:root .session-trow:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+/* The glass theme's animated conic-gradient focus glow reads as a stray
+   hairline on the flat dashboard cards; the soft ring below replaces it. */
+:root:root .home .composer-box::before,
+:root:root .home .composer-box::after {
+  display: none;
+}
+
+/* Active project in the rail stays legible on every palette. */
+:root:root:root .space.active {
+  background: #ffffff;
+  color: #15171d;
+  border-color: transparent;
+}
+:root[data-palette='midnight']:root:root .space.active,
+:root[data-palette='nebula']:root:root .space.active,
+:root[data-palette='ocean']:root:root .space.active {
+  background: color-mix(in srgb, var(--brand) 26%, transparent);
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 55%, transparent);
+}
+
+/* Appearance: give each control group its own breathing room. */
+:root:root .accent-seg {
+  margin: 14px 0 6px;
+}
+:root:root .stepper {
+  margin-top: 14px;
+  gap: 10px;
+}
+.accent-seg::before {
+  content: 'Accent';
+  display: block;
+  margin-bottom: 8px;
+  color: var(--faint);
+  font-size: 12px;
+}
+.accent-seg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.accent-seg::before { flex-basis: 100%; }
+
+/* Team chat and Web chat: a tidy pair under the agent cards. */
+:root:root .dash-assets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+:root:root .dash-assets > .dash-section-head,
+:root:root .dash-assets > .agent-grid {
+  flex: 1 1 100%;
+  margin-bottom: 0;
+}
+:root:root .dash-assets > .dash-section-head { margin-bottom: 0; }
+:root:root .dash-assets > .home-team,
+:root:root .dash-assets > .home-webchat {
+  flex: 1 1 calc(50% - 6px);
+  margin: 0;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  box-shadow: none;
+  font-weight: 600;
+  justify-content: center;
+}
+:root:root .dash-assets > .home-team:hover,
+:root:root .dash-assets > .home-webchat:hover {
+  background: color-mix(in srgb, var(--text) 13%, transparent);
+}
+
+:root:root .dash-assets > .home-team,
+:root:root .dash-assets > .home-webchat {
+  min-height: 42px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
