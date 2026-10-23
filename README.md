@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.8.1
+
+- **Slash-command suggestions.** Type `/` at the start of a message and the
+  agent's own commands appear above the box. Up / Down to move, Tab or Enter
+  to pick one, Esc to dismiss. Nothing is sent until you press Enter again.
+
 ### New in 2.8.0
 
 - **A much better terminal.** Bundled JetBrains Mono (identical on every PC), a

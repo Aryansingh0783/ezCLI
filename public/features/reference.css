@@ -1031,3 +1031,10 @@
 .tab-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* a narrow tab shows just its status, not a clipped model name */
 @container tab (max-width: 120px) { .tab-model { display: none; } }
+
+/* Inline slash-command suggestions above the composer */
+.slash-suggest { position: fixed; z-index: 90; max-height: 260px; overflow: auto; padding: 6px; border-radius: 14px; background: var(--panel, #fff); border: 1px solid var(--line, rgba(0,0,0,.1)); box-shadow: 0 18px 48px rgba(20,24,40,.22); animation: menu-in .14s ease both; }
+.slash-row { display: flex; gap: 12px; align-items: baseline; padding: 7px 10px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.slash-row b { font-family: 'JetBrains Mono', Consolas, monospace; font-weight: 600; color: var(--ink, #1b1f2e); }
+.slash-row span { color: var(--ink-soft, #4a5066); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slash-row.on, .slash-row:hover { background: color-mix(in srgb, var(--accent, #4f6bff) 14%, transparent); }

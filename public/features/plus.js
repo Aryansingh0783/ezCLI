@@ -207,3 +207,88 @@ hooks.boot.push(() => {
     Plus.addFiles();
   });
 });
+
+/* Typing "/" at the start of a composer opens the agent's commands inline:
+ * Up/Down to move, Tab or Enter to accept, Esc to dismiss. */
+const SlashSuggest = {
+  box: null, items: [], index: 0, input: null,
+
+  commands(input) {
+    Plus.target = input.id === 'homeInput' ? 'home' : 'pty';
+    const a = Plus.agent();
+    const family = a ? (a.mcp && a.mcp !== 'none' ? a.mcp : String(a.command || '').toLowerCase()) : '';
+    return SLASH_COMMANDS[family] || SLASH_COMMANDS[a && a.id] || [];
+  },
+
+  refresh(input) {
+    const v = input.value;
+    const m = /^\/([\w-]*)$/.exec(v);
+    if (!m) return this.close();
+    const q = m[1].toLowerCase();
+    this.items = this.commands(input).filter(([c]) => c.slice(1).toLowerCase().startsWith(q));
+    if (!this.items.length || (this.items.length === 1 && this.items[0][0] === v)) return this.close();
+    this.input = input;
+    this.index = Math.min(this.index, this.items.length - 1);
+    if (!this.box) {
+      this.box = document.createElement('div');
+      this.box.className = 'slash-suggest';
+      this.box.setAttribute('role', 'listbox');
+      this.box.addEventListener('mousedown', (e) => {
+        const row = e.target.closest('[data-i]');
+        if (!row) return;
+        e.preventDefault();
+        this.accept(Number(row.dataset.i));
+      });
+      document.body.appendChild(this.box);
+    }
+    this.box.innerHTML = this.items.map(([c, h], i) =>
+      `<div class="slash-row${i === this.index ? ' on' : ''}" role="option" aria-selected="${i === this.index}" data-i="${i}"><b>${c}</b><span>${h}</span></div>`).join('');
+    const r = input.closest('.composer-box').getBoundingClientRect();
+    this.box.style.left = `${r.left + 8}px`;
+    this.box.style.width = `${Math.min(420, r.width - 16)}px`;
+    this.box.style.bottom = `${innerHeight - r.top + 6}px`;
+    const on = this.box.querySelector('.on');
+    if (on) on.scrollIntoView({ block: 'nearest' });
+  },
+
+  accept(i) {
+    const cmd = this.items[i] && this.items[i][0];
+    const el = this.input;
+    this.close();
+    if (!cmd || !el) return;
+    el.value = cmd + ' ';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  },
+
+  close() {
+    if (this.box) this.box.remove();
+    this.box = null; this.items = []; this.index = 0;
+  }
+};
+
+hooks.boot.push(() => {
+  for (const id of ['ptyInput', 'homeInput']) {
+    const el = $(id);
+    if (!el) continue;
+    el.addEventListener('input', () => SlashSuggest.refresh(el));
+    el.addEventListener('blur', () => SlashSuggest.close());
+    // Capture phase: runs before the composer's own Enter-to-send handler.
+    el.addEventListener('keydown', (e) => {
+      if (!SlashSuggest.box) return;
+      const n = SlashSuggest.items.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopImmediatePropagation();
+        SlashSuggest.index = (SlashSuggest.index + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+        SlashSuggest.refresh(el);
+      } else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        SlashSuggest.accept(SlashSuggest.index);
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopImmediatePropagation();
+        SlashSuggest.close();
+      }
+    }, true);
+  }
+});
