@@ -294,3 +294,35 @@
   gap: 6px;
   margin-top: 18px;
 }
+
+/* ------------------------------------------------------------ "+" menu */
+.plus-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s var(--ease-out), color 0.15s var(--ease-out), transform 0.15s var(--ease-out);
+}
+.plus-btn:hover,
+.plus-btn:focus-visible {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text);
+}
+.plus-btn:active {
+  transform: scale(0.94);
+}
+#homeComposer .composer-row {
+  align-items: center;
+  gap: 6px;
+}
+/* The "+" menu's "Add files or photos" replaces this chip. */
+#btnAttachImage.superseded {
+  display: none !important;
+}
