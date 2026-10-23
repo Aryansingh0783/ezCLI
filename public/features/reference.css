@@ -1044,3 +1044,6 @@
 
 /* Header chips never wrap onto two lines; the row shrinks the title instead. */
 .head-chip { white-space: nowrap; flex: none; }
+
+/* The search box draws its own focus ring; the input inside must not add a second one. */
+.search-box input:focus, .search-box input:focus-visible { outline: none !important; box-shadow: none !important; }

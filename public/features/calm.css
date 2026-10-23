@@ -113,3 +113,6 @@ html[data-layout='calm'] #ptyComposer:hover .composer-row > :not(.plus-btn):not(
 html[data-layout='calm'] #ptyComposer:focus-within .composer-row > :not(.plus-btn):not(.send-btn) { opacity: 1; }
 html[data-layout='calm'] #ptyComposer { border-radius: 20px; }
 html[data-layout='calm'] #ptyInput { font-size: 14.5px; }
+
+/* keep the home list short: three recent sessions, the rest are one click away */
+html[data-layout='calm'] .home #continueRow > :nth-child(n+5) { display: none; }

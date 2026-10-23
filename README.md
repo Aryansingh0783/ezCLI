@@ -14,15 +14,15 @@ The window adds the parts a bare terminal lacks: tabs, an agent switcher, a file
 browser with git actions, model, effort and mode flags you pick before launch, images and
 videos in the chat, and a compare mode that runs one prompt on several agents at once.
 
-![The ezCLI launcher in the liquid glass style](docs/screenshot-launcher.png)
+![The calm home screen: one message box, quick starts and recent sessions](docs/screenshot-launcher.png)
 
-![Team chat: three agents working together in one conversation](docs/screenshot-team.png)
+![The same home screen in the dark Midnight theme](docs/screenshot-launcher-dark.png)
 
-![Sessions: everything saved on this PC, with one-click continue](docs/screenshot-sessions.png)
+![A live session with the file explorer docked beside it](docs/screenshot-session.png)
 
-![Compare mode: one prompt running on three agents side by side](docs/screenshot-compare.png)
+![Team chat: several agents working together in one conversation](docs/screenshot-team.png)
 
-![A session with an image and a video attached in the composer](docs/screenshot-session.png)
+![Compare mode: one prompt sent to three agents](docs/screenshot-compare.png)
 
 ## Install
 
@@ -132,6 +132,11 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 2.9.1
+
+- **Fix:** the search box in Sessions no longer draws a double focus ring.
+- The calm home lists your three most recent sessions.
 
 ### New in 2.9.0
 
