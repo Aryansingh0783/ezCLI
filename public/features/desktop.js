@@ -90,7 +90,7 @@ function applyProjectDefaults(spaceId) {
 /* ------------------------------------------------------------ accent colours */
 
 const ACCENTS = {
-  lime: { label: 'Lime', dark: ['#7cff3f', '#5bbf2f'], light: ['#368f06', '#2c7405'] },
+  lime: { label: 'Lime', dark: ['#7cff3f', '#5bbf2f'], light: ['#2d7a05', '#246204'] },
   sky: { label: 'Sky', dark: ['#5cc8ff', '#3a9fd6'], light: ['#0b6fb0', '#095a8f'] },
   violet: { label: 'Violet', dark: ['#b69cff', '#9277e6'], light: ['#6a3fd0', '#5531ab'] },
   amber: { label: 'Amber', dark: ['#ffc04d', '#d99a26'], light: ['#9a6200', '#7c4f00'] },

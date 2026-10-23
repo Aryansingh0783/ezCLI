@@ -793,3 +793,26 @@
 :root:root .dash-assets > .home-webchat:hover {
   background: color-mix(in srgb, var(--ink) 14%, var(--panel));
 }
+
+
+/* ======================= readable secondary text ========================= */
+/* Measured with the contrast audit: hints, labels and chart letters were
+   2.7-3.3:1 on the light palettes. Darkened to 4.5:1+ on every card tint. */
+:root:root:root {
+  --ink-faint: #5f657b;
+  --ink-soft: #4a5066;
+}
+:root:root:root[data-palette='midnight'],
+:root:root:root[data-palette='nebula'],
+:root:root:root[data-palette='ocean'] {
+  --ink-faint: #99a0b2;
+  --ink-soft: #b4bacb;
+}
+
+/* two last contrast fixes found by the audit */
+.dash-promo-body > p { color: #aab0be; }
+:root[data-theme='light']:root .backend-choice.selected .backend-choice-status,
+:root[data-theme='light']:root .backend-choice.recommended .backend-choice-status {
+  color: var(--brand-dim);
+  font-weight: 600;
+}
