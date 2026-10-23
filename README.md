@@ -133,6 +133,10 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.5.2
+
+- **Fixed: terminal text was hard to read in the light themes.** Since the light default arrived the terminal pane has been dark, but its default text colour was still the dark-on-white set, so normal CLI output was dark on dark. The terminal now always uses its light-on-dark colours. Small labels (the Free tag, the changes count) are also darker on the light colour themes.
+
 ### New in 2.5.1
 
 - **Readable secondary text.** An audit of every screen in a light and a dark theme found hint text, labels and chart letters well under the readable contrast level on the light themes; they are now darker (and slightly brighter on dark themes), and the lime accent is darker so white button text passes. All screens now pass.

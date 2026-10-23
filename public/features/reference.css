@@ -816,3 +816,14 @@
   color: var(--brand-dim);
   font-weight: 600;
 }
+
+/* ---- audit fixes: small accent-coloured labels need to be darker on light tints ---- */
+:root[data-theme='light']:root .free-badge {
+  color: color-mix(in srgb, var(--brand) 62%, #000);
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+}
+:root[data-theme='light']:root .explorer-tab-count {
+  color: color-mix(in srgb, var(--warn) 55%, #000);
+  background: color-mix(in srgb, var(--warn) 24%, transparent);
+  font-weight: 600;
+}

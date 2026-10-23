@@ -135,6 +135,11 @@ const TERM_THEMES = {
   }
 };
 
+// The terminal pane is always a dark surface, in the light themes too (see
+// reference.css), so it always uses the dark colour set. The light set draws
+// dark text, which is unreadable on that pane.
+TERM_THEMES.light = TERM_THEMES.dark;
+
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
 const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme);
 
@@ -761,7 +766,7 @@ function renameTab(s) {
 /** Put a parked tab's saved terminal text back on screen, so closing the app
  *  does not lose what the conversation looked like. */
 async function restoreSavedText(s) {
-  const dim = (t) => `\x1b[38;2;106;106;112m${t}\x1b[0m`;
+  const dim = (t) => `\x1b[38;2;139;145;160m${t}\x1b[0m`;
   const hint = s.providerSessionId
     ? 'Resume continues the same conversation.'
     : 'Resume starts the CLI again in this folder.';
