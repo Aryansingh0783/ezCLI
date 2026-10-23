@@ -367,29 +367,31 @@ const Sessions = (() => {
   }
 
   function renderContinueRow() {
-    const home = $('suggested');
-    if (!home) return;
     let row = $('continueRow');
     if (!row) {
+      const home = $('suggested');
+      if (!home) return;
       row = document.createElement('div');
       row.id = 'continueRow';
-      row.className = 'continue-row';
       home.before(row);
     }
     const sp = space();
     const inFolder = (m) => sp && m.cwd && m.cwd.toLowerCase().replace(/[\\/]+$/, '').startsWith(sp.path.toLowerCase().replace(/[\\/]+$/, ''));
     const here = recent.filter(inFolder);
-    const list = (here.length ? here : recent).filter((m) => m.title).slice(0, 3);
+    const list = (here.length ? here : recent).filter((m) => m.title).slice(0, 6);
+    row.className = 'session-table';
     row.hidden = !list.length;
     row.innerHTML = list.length
-      ? `<span class="continue-label">${here.length ? 'Pick up where you left off' : 'Recent sessions'}</span>${list
+      ? `<div class="session-thead"><span>Name</span><span>Agent</span><span>When</span><span></span></div>${list
           .map(
-            (m) => `<button type="button" class="continue-card" data-continue-id="${esc(m.id)}" title="${esc(m.cwd || '')}">
-              <span class="continue-title">${esc(m.title)}</span>
-              <span class="continue-meta">${esc(m.agentLabel || m.agentId)} · ${esc(fmtAgo(m.endedAt || m.startedAt))}</span></button>`
+            (m) => `<button type="button" class="session-trow" data-continue-id="${esc(m.id)}" title="${esc(m.cwd || '')}">
+              <span class="session-name">${esc(m.title)}</span>
+              <span class="session-agent">${esc(m.agentLabel || m.agentId)}</span>
+              <span class="session-when">${esc(fmtAgo(m.endedAt || m.startedAt))}</span>
+              <span class="session-go" aria-hidden="true">↵</span></button>`
           )
-          .join('')}<button type="button" class="continue-more" data-continue-all>All sessions</button>`
-      : '';
+          .join('')}`
+      : '<div class="session-empty">No saved sessions yet. Start one above and it shows up here.</div>';
   }
 
   /* ---------------------------------------------------------- Codex session ids */

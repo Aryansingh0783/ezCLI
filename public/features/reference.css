@@ -159,10 +159,10 @@
   transform: translateY(-2px);
   box-shadow: var(--card-shadow);
 }
-:root[data-theme='light']:root .continue-card:nth-child(4n+2) { background: var(--tint-a); }
-:root[data-theme='light']:root .continue-card:nth-child(4n+3) { background: var(--tint-b); }
-:root[data-theme='light']:root .continue-card:nth-child(4n+4) { background: var(--tint-c); }
-:root[data-theme='light']:root .continue-card:nth-child(4n+5) { background: var(--tint-d); }
+:root:root .continue-card:nth-child(4n+2) { background: var(--tint-a); }
+:root:root .continue-card:nth-child(4n+3) { background: var(--tint-b); }
+:root:root .continue-card:nth-child(4n+4) { background: var(--tint-c); }
+:root:root .continue-card:nth-child(4n+5) { background: var(--tint-d); }
 :root[data-theme='light']:root .continue-title { color: var(--ink); }
 :root:root .continue-more {
   border-radius: var(--r-md);
@@ -238,4 +238,319 @@
 /* scrollbars tuned for the light page */
 :root[data-theme='light']:root ::-webkit-scrollbar-thumb {
   background: #d3d9e8;
+}
+
+/* ========================= Overview dashboard ========================== */
+:root:root .home {
+  padding: 0 28px;
+}
+:root:root .home-inner.dash {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 0 40px;
+  text-align: left;
+}
+.dash-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+:root:root .home-inner.dash .dash-head h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.dash-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dash-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  cursor: pointer;
+  box-shadow: var(--card-shadow-sm);
+  transition: color 0.15s var(--ease-out), transform 0.15s var(--ease-out);
+}
+.dash-icon-btn:hover {
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+:root:root .dash-project {
+  height: 42px;
+  margin: 0;
+  padding: 0 16px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: var(--card-shadow-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dash-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+.dash-col { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.dash-col-main { flex: 1.35; }
+.dash-col-side { flex: 1; }
+@media (max-width: 1000px) {
+  .dash-grid { flex-direction: column; }
+  .dash-col { width: 100%; }
+}
+/* Team chat / Web chat mount after the agent grid, inside the side column. */
+:root:root .home-team, :root:root .home-webchat {
+  width: 100%;
+  justify-content: center;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: var(--r-md);
+}
+
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 2px 12px;
+}
+.dash-section-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.dash-link {
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dash-link:hover { color: var(--ink); }
+
+/* hero: the big tinted "start" card */
+:root:root .dash-hero .composer-box {
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--tint-d);
+  box-shadow: var(--card-shadow);
+}
+:root[data-theme='dark']:root .dash-hero .composer-box {
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+}
+:root:root .dash-hero .composer-box textarea {
+  min-height: 88px;
+  padding: 18px 18px 8px;
+  font-size: 15px;
+  background: transparent;
+}
+:root:root .dash-hero .composer-row {
+  padding: 8px 14px 14px;
+}
+
+/* your agents: pastel cards, two across */
+.agent-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+:root:root .agent-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  box-shadow: var(--card-shadow-sm);
+  text-align: left;
+  transition: transform 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
+}
+:root:root .agent-card:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow);
+}
+:root:root .agent-card:disabled { opacity: 0.5; box-shadow: none; }
+:root:root .agent-card:nth-child(4n+1) { background: var(--tint-a); }
+:root:root .agent-card:nth-child(4n+2) { background: var(--tint-b); }
+:root:root .agent-card:nth-child(4n+3) { background: var(--tint-c); }
+:root:root .agent-card:nth-child(4n+4) { background: var(--tint-d); }
+:root:root .agent-card.selected {
+  border-color: color-mix(in srgb, var(--brand) 60%, transparent);
+  box-shadow: var(--card-shadow), inset 0 0 0 1px color-mix(in srgb, var(--brand) 40%, transparent);
+}
+.agent-card-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 70%);
+  color: var(--ink);
+}
+:root[data-theme='dark']:root .agent-card-ico { background: rgb(255 255 255 / 10%); color: var(--text); }
+.agent-card-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.agent-card-name { font-size: 13.5px; font-weight: 650; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root[data-theme='dark']:root .agent-card-name { color: var(--text); }
+.agent-card-meta { font-size: 11.5px; color: var(--ink-soft); }
+:root:root .agent-card .free-badge { margin-left: auto; }
+
+/* recent sessions: a clean table */
+:root:root .dash-table-wrap, :root:root #continueRow.session-table {
+  background: var(--panel);
+  border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow);
+  padding: 8px;
+}
+:root[data-theme='dark']:root #continueRow.session-table { background: var(--surface); }
+.session-thead, .session-trow {
+  display: grid;
+  grid-template-columns: 1fr 120px 90px 24px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.session-thead {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.session-trow {
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.14s var(--ease-out);
+}
+.session-trow:hover { background: var(--raised); }
+.session-name { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root[data-theme='dark']:root .session-name { color: var(--text); }
+.session-agent, .session-when { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-go { color: var(--ink-faint); text-align: center; }
+.session-trow:hover .session-go { color: var(--brand); }
+.session-empty { padding: 22px 14px; color: var(--ink-faint); font-size: 13px; }
+
+/* dark promo card with quick-start prompts */
+.dash-promo {
+  display: flex;
+  border-radius: var(--r-lg);
+  background: var(--rail-dark);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+.dash-promo-body { padding: 20px; width: 100%; }
+.dash-promo-body h2 { margin: 0 0 4px; font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+.dash-promo-body > p { margin: 0 0 14px; font-size: 13px; color: var(--rail-ink-dim); }
+:root:root .dash-promo .suggested-prompts { grid-template-columns: 1fr; gap: 8px; margin: 0; }
+:root:root .dash-promo .suggested-prompt {
+  background: rgb(255 255 255 / 6%);
+  box-shadow: none;
+  color: var(--rail-ink);
+}
+:root:root .dash-promo .suggested-prompt:hover { background: rgb(255 255 255 / 12%); }
+:root:root .dash-promo .suggested-prompt b { color: #fff; }
+
+/* the home-screen entrance stagger targets the grid cells now */
+@media (prefers-reduced-motion: no-preference) {
+  .dash-col > .dash-cell { animation: rise 0.42s var(--ease-out) both; }
+  .dash-col-side > .dash-cell { animation-delay: 0.06s; }
+  .dash-cell.dash-promo { animation-delay: 0.12s; }
+}
+
+/* ============================ theme presets ============================= */
+.theme-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.theme-preset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.14s var(--ease-out), transform 0.1s var(--ease-out);
+}
+.theme-preset:hover { transform: translateY(-1px); }
+.theme-preset.on { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.theme-preset-chip {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 6px;
+  background: var(--chip);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
+}
+.theme-sub { margin: 2px 0 8px; }
+@media (max-width: 560px) { .theme-preset-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* ------------------------------ palettes -------------------------------- */
+/* Light palettes: recolor the page and the card tints. */
+:root:root:root[data-palette='mist'] {
+  --page: #eceff4; --tint-a: #e6eaf2; --tint-b: #e1edf0; --tint-c: #eef0f5; --tint-d: #e3eaf6;
+}
+:root:root:root[data-palette='grape'] {
+  --page: #efeafb; --tint-a: #ece7f7; --tint-b: #e9e3f6; --tint-c: #f2ecfb; --tint-d: #e4ecfb;
+}
+:root:root:root[data-palette='sunset'] {
+  --page: #fdebe0; --tint-a: #f7e4d4; --tint-b: #fbe6cf; --tint-c: #f9ded9; --tint-d: #f6ead6;
+}
+:root[data-palette='sunset'][data-theme='light']:root { --surface-2: #fdf7f2; }
+:root:root:root[data-palette='forest'] {
+  --page: #e7f1e9; --tint-a: #e0efe3; --tint-b: #dff0e4; --tint-c: #eef3e3; --tint-d: #e2eef0;
+}
+
+/* Dark palettes: flip the page, panels, rail, terminal and ink. */
+:root:root:root[data-palette='midnight'],
+:root:root:root[data-palette='nebula'],
+:root:root:root[data-palette='ocean'] {
+  --ink: #e9eaee; --ink-soft: #a7adbd; --ink-faint: #7b8191;
+  --line: rgb(255 255 255 / 9%);
+}
+:root:root:root[data-palette='midnight'] {
+  --page: #0d0e12; --panel: #16181f; --rail-dark: #0a0b0e; --term-bg: #16181f;
+  --tint-a: #241f30; --tint-b: #1c2a23; --tint-c: #2a2620; --tint-d: #1b2434;
+}
+:root:root:root[data-palette='nebula'] {
+  --page: #120f22; --panel: #1b1733; --rail-dark: #0f0b20; --term-bg: #1b1733;
+  --tint-a: #2a2048; --tint-b: #241b40; --tint-c: #322247; --tint-d: #202a52;
+}
+:root:root:root[data-palette='ocean'] {
+  --page: #07141a; --panel: #0e2029; --rail-dark: #05101700; --rail-dark: #051017; --term-bg: #0e2029;
+  --tint-a: #0f2a33; --tint-b: #0d2e30; --tint-c: #15323a; --tint-d: #10283a;
+}
+/* dark palettes reuse the dark-theme surfaces for controls */
+:root[data-palette='midnight']:root,
+:root[data-palette='nebula']:root,
+:root[data-palette='ocean']:root {
+  --surface: var(--panel);
+  --surface-2: color-mix(in srgb, #fff 5%, var(--panel));
+  --raised: color-mix(in srgb, #fff 9%, var(--panel));
+  --text: var(--ink); --muted: var(--ink-soft); --faint: var(--ink-faint);
 }

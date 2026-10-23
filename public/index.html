@@ -96,45 +96,81 @@
         <main class="main">
           <!-- home: start a new session in the active space -->
           <section class="home" id="home" aria-label="New session">
-            <div class="home-inner">
-              <div class="home-mark"><span class="mark big"><i></i><i></i></span></div>
-              <h1 id="homeTitle">What should we work on?</h1>
-              <button class="project-trigger" id="homeProject" title="Change the folder this space runs in">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
-                <span id="homeProjectLabel">Folder</span>
-                <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
-              </button>
-
-              <div class="composer-box" id="homeComposer">
-                <label class="sr-only" for="homeInput">First message</label>
-                <textarea id="homeInput" rows="2" placeholder="Describe a task, or press Enter to open an empty session"></textarea>
-                <div class="composer-row runconfig">
-                  <div class="pill-group">
-                    <button class="pill-pick" id="homeAgent" aria-label="Choose agent">
-                      <span class="pill-cap">Agent</span><span class="pill-val"></span>
-                    </button>
-                    <button class="pill-pick" id="homeModel" aria-label="Choose model">
-                      <span class="pill-cap">Model</span><span class="pill-val"></span>
-                    </button>
-                    <button class="pill-pick" id="homeEffort" aria-label="Choose reasoning effort">
-                      <span class="pill-cap">Effort</span><span class="pill-val"></span>
-                    </button>
-                    <button class="pill-pick" id="homeMode" aria-label="Choose mode">
-                      <span class="pill-cap">Mode</span><span class="pill-val"></span>
-                    </button>
-                  </div>
-                  <div class="composer-tools">
-                    <span class="send-key"><kbd>Enter</kbd></span>
-                    <button class="send-btn" id="homeSend" aria-label="Start session" title="Start session">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
-                    </button>
-                  </div>
+            <div class="home-inner dash">
+              <header class="dash-head">
+                <h1 id="homeTitle">Overview</h1>
+                <div class="dash-head-actions">
+                  <button class="dash-icon-btn" id="homeSearch" title="Search past sessions" aria-label="Search past sessions">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" /></svg>
+                  </button>
+                  <button class="dash-icon-btn" id="homeHistory" title="Recent sessions and history" aria-label="Sessions and history">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+                  </button>
+                  <button class="project-trigger dash-project" id="homeProject" title="Change the folder this space runs in">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+                    <span id="homeProjectLabel">Folder</span>
+                    <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
                 </div>
-              </div>
+              </header>
 
-              <p class="home-route-note" id="homeRouteNotice" role="status" hidden></p>
-              <div class="suggested-prompts" id="suggested" aria-label="Suggested next steps"></div>
-              <div class="agent-strip" id="agentStrip" role="radiogroup" aria-label="Agent"></div>
+              <div class="dash-grid">
+               <div class="dash-col dash-col-main">
+                <section class="dash-cell dash-hero">
+                  <div class="dash-section-head"><h2>Start a session</h2></div>
+                  <div class="composer-box" id="homeComposer">
+                    <label class="sr-only" for="homeInput">First message</label>
+                    <textarea id="homeInput" rows="2" placeholder="Describe a task, or press Enter to open an empty session"></textarea>
+                    <div class="composer-row runconfig">
+                      <div class="pill-group">
+                        <button class="pill-pick" id="homeAgent" aria-label="Choose agent">
+                          <span class="pill-cap">Agent</span><span class="pill-val"></span>
+                        </button>
+                        <button class="pill-pick" id="homeModel" aria-label="Choose model">
+                          <span class="pill-cap">Model</span><span class="pill-val"></span>
+                        </button>
+                        <button class="pill-pick" id="homeEffort" aria-label="Choose reasoning effort">
+                          <span class="pill-cap">Effort</span><span class="pill-val"></span>
+                        </button>
+                        <button class="pill-pick" id="homeMode" aria-label="Choose mode">
+                          <span class="pill-cap">Mode</span><span class="pill-val"></span>
+                        </button>
+                      </div>
+                      <div class="composer-tools">
+                        <span class="send-key"><kbd>Enter</kbd></span>
+                        <button class="send-btn" id="homeSend" aria-label="Start session" title="Start session">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="home-route-note" id="homeRouteNotice" role="status" hidden></p>
+                </section>
+
+                <section class="dash-cell dash-table">
+                  <div class="dash-section-head">
+                    <h2>Recent sessions</h2>
+                    <button type="button" class="dash-link" id="homeAllSessions">All sessions</button>
+                  </div>
+                  <div id="continueRow"></div>
+                </section>
+               </div>
+
+               <div class="dash-col dash-col-side">
+                <section class="dash-cell dash-assets">
+                  <div class="dash-section-head"><h2>Your agents</h2></div>
+                  <div class="agent-grid" id="agentStrip" role="radiogroup" aria-label="Agent"></div>
+                </section>
+
+                <aside class="dash-cell dash-promo">
+                  <div class="dash-promo-body">
+                    <h2>Quick starts</h2>
+                    <p>Hand the agent a focused task in one tap.</p>
+                    <div class="suggested-prompts" id="suggested" aria-label="Suggested next steps"></div>
+                  </div>
+                </aside>
+               </div>
+              </div>
             </div>
           </section>
 
@@ -297,6 +333,8 @@
       <h2>Settings</h2>
       <div class="settings-section">
         <h3>Appearance</h3>
+        <div class="theme-preset-grid" id="themePresets" role="radiogroup" aria-label="Theme"></div>
+        <p class="note theme-sub">Or set the base mode and accent yourself:</p>
         <div class="segmented" id="themeSeg" role="radiogroup" aria-label="Appearance">
           <button class="theme-option" data-theme-opt="system" role="radio">Match system</button>
           <button class="theme-option" data-theme-opt="dark" role="radio">Dark</button>

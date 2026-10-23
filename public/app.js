@@ -20,6 +20,7 @@ const { isContinuationMode, freshModeId, modelSwitchPlan } = SessionRouting;
 const PREFS_KEY = 'ezcli.v2';
 const DEFAULT_PREFS = {
   theme: 'light',
+  palette: 'daylight',
   fontSize: 13,
   zoom: 1,
   spaces: [],
@@ -138,6 +139,7 @@ const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'd
 function applyTheme() {
   const t = resolvedTheme();
   document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.palette = prefs.palette || 'daylight';
   for (const s of state.sessions) s.term.options.theme = TERM_THEMES[t];
   document.querySelectorAll('[data-theme-opt]').forEach((b) => {
     const on = b.dataset.themeOpt === prefs.theme;
@@ -1433,8 +1435,10 @@ function renderSessionAgentNotice(s = active()) {
 function renderHome() {
   const sp = space();
   const a = agent(prefs.agentId);
-  $('homeTitle').textContent = sp ? `What should we work on in ${sp.name}?` : 'What should we work on?';
-  $('homeProjectLabel').textContent = sp ? ellipsisLeft(sp.path, 48) : 'Choose a folder';
+  $('homeTitle').textContent = 'Overview';
+  $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
+  const projEl = $('homeProject');
+  if (projEl) projEl.title = sp ? sp.path : 'Choose a folder';
   const routeNotice = $('homeRouteNotice');
   const routeAdvice = ollamaRouteAdvice(a);
   routeNotice.hidden = !routeAdvice;
@@ -1458,10 +1462,13 @@ function renderHome() {
 
   $('agentStrip').innerHTML = state.agents
     .map(
-      (x) => `<button class="agent-option ${x.id === prefs.agentId ? 'selected' : ''}" data-agent="${esc(x.id)}"
+      (x) => `<button class="agent-option agent-card ${x.id === prefs.agentId ? 'selected' : ''}" data-agent="${esc(x.id)}"
         role="radio" aria-checked="${x.id === prefs.agentId}" ${x.available ? '' : 'disabled'}
         title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH`)}">
-        ${ICONS[x.icon] || ICONS.term}<span>${esc(x.label)}</span>${x.free ? '<span class="free-badge">Free</span>' : ''}${x.available ? '' : '<span class="off">not installed</span>'}
+        <span class="agent-card-ico">${ICONS[x.icon] || ICONS.term}</span>
+        <span class="agent-card-text"><span class="agent-card-name">${esc(x.label)}</span>
+        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Not installed'}</span></span>
+        ${x.free ? '<span class="free-badge">Free</span>' : ''}
       </button>`
     )
     .join('');
@@ -3269,6 +3276,9 @@ function wire() {
 
   // home
   $('homeProject').addEventListener('click', (e) => projectMenu(e.currentTarget));
+  $('homeSearch') && $('homeSearch').addEventListener('click', () => (window.TranscriptSearch ? TranscriptSearch.open() : $('openSearch') && $('openSearch').click()));
+  $('homeHistory') && $('homeHistory').addEventListener('click', () => (window.Sessions ? Sessions.open() : $('openImports') && $('openImports').click()));
+  $('homeAllSessions') && $('homeAllSessions').addEventListener('click', () => (window.Sessions ? Sessions.open() : $('openImports') && $('openImports').click()));
   $('homeAgent').addEventListener('click', (e) => agentOnlyMenu(e.currentTarget));
   $('homeModel').addEventListener('click', (e) => modelMenu(e.currentTarget));
   $('homeEffort').addEventListener('click', (e) => effortMenu(e.currentTarget));
