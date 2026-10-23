@@ -895,6 +895,8 @@ dialog.palette::backdrop {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  /* a long path or URL has no spaces to wrap at; break it rather than cut it off */
+  overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.35;
 }

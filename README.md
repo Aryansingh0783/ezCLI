@@ -133,6 +133,16 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.8.0
+
+- **A much better terminal.** Bundled JetBrains Mono (identical on every PC), a
+  refined colour palette that follows the theme, comfortable line spacing, a bar
+  cursor, correct widths for CJK and emoji, and a roomier inner margin.
+- **Terminal settings.** Choose the font, line spacing and cursor shape, and
+  turn the cursor blink or the experimental GPU renderer on or off.
+- **Dim text stays readable.** Grey "dim" output is lifted to a legible contrast.
+- **Fixes.** Session titles and tab labels no longer clip mid-word.
+
 ### New in 2.7.0
 
 - **Find in terminal output.** Ctrl+Shift+F searches the whole scrollback as

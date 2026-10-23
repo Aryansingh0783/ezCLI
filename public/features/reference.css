@@ -99,7 +99,7 @@
 :root:root .terminal-panel {
   margin: 0 12px;
   border-radius: var(--r-md);
-  background: #15171d;
+  background: var(--term-bg);
 }
 
 /* ---------------------------- light theme skin --------------------------- */
@@ -967,3 +967,67 @@
 .spaces.reordering .space:not(.dragging) { transition: transform 0.16s var(--ease-out); }
 .spaces.reordering .space.shift-up { transform: translateY(-46px); }
 .spaces.reordering .space.shift-down { transform: translateY(46px); }
+
+
+/* ============================ the text window ============================== */
+/* JetBrains Mono ships with the app (SIL Open Font License, vendor/fonts), so the
+   terminal looks the same on every PC instead of falling back to whatever is installed. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/vendor/fonts/JetBrainsMono-latin-wght.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/vendor/fonts/JetBrainsMono-latin-ext-wght.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/vendor/fonts/JetBrainsMono-latin-wght-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* more breathing room around the text */
+:root:root .term-host { inset: 14px 10px 8px 20px; }
+:root:root .terminal-panel { border-radius: var(--r-md); }
+.term-host .xterm { padding: 0; }
+.term-host .xterm-viewport { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 22%) transparent; }
+.term-host .xterm-viewport::-webkit-scrollbar { width: 10px; }
+.term-host .xterm-viewport::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 18%); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+.term-host .xterm-viewport::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 34%); background-clip: content-box; }
+.term-host .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+
+/* settings: terminal preferences */
+.term-prefs { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.term-pref-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.term-pref-row > span { color: var(--muted); font-size: 12.5px; }
+.select {
+  min-width: 180px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.select:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+
+/* ============================ tabs: never cut a word in half ============================ */
+.tab { container: tab / inline-size; }
+.tab-meta { min-width: 0; }
+.tab-badge { flex: none; }
+.tab-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a narrow tab shows just its status, not a clipped model name */
+@container tab (max-width: 120px) { .tab-model { display: none; } }

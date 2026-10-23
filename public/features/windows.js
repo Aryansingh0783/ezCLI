@@ -80,20 +80,7 @@ const Windows = (() => {
     host.className = 'term-host';
     host.style.visibility = 'hidden';
     $('termHosts').appendChild(host);
-    const term = new Terminal({
-      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'DM Mono', ui-monospace, Consolas, monospace",
-      fontSize: prefs.fontSize,
-      lineHeight: 1.3,
-      cursorBlink: true,
-      allowProposedApi: true,
-      allowTransparency: (prefs.style || 'glass') === 'glass',
-      theme: TERM_THEMES[resolvedTheme()],
-      scrollback: 10000
-    });
-    const fit = new FitAddon.FitAddon();
-    term.loadAddon(fit);
-    term.open(host);
-    term.attachCustomKeyEventHandler((e) => !isAppShortcut(e));
+    const { term, fit } = createTerminal(host);
     const s = {
       id: `t${++state.seq}`,
       ptyId: h.ptyId,

@@ -350,6 +350,24 @@
           <button class="theme-option" data-style-opt="solid" role="radio">Solid</button>
         </div>
         <div class="accent-seg" id="accentSeg" role="radiogroup" aria-label="Accent colour"></div>
+        <div class="term-prefs" id="termPrefs">
+          <label class="term-pref-row"><span>Terminal font</span>
+            <select id="termFont" class="select" aria-label="Terminal font"></select></label>
+          <div class="term-pref-row"><span>Line spacing</span>
+            <div class="segmented" id="termLineSeg" role="radiogroup" aria-label="Line spacing">
+              <button class="theme-option" data-term-line="compact" role="radio">Compact</button>
+              <button class="theme-option" data-term-line="comfortable" role="radio">Comfortable</button>
+              <button class="theme-option" data-term-line="relaxed" role="radio">Relaxed</button>
+            </div></div>
+          <div class="term-pref-row"><span>Cursor</span>
+            <div class="segmented" id="termCursorSeg" role="radiogroup" aria-label="Cursor shape">
+              <button class="theme-option" data-term-cursor="bar" role="radio">Bar</button>
+              <button class="theme-option" data-term-cursor="block" role="radio">Block</button>
+              <button class="theme-option" data-term-cursor="underline" role="radio">Underline</button>
+            </div></div>
+          <label class="toggle-row"><input type="checkbox" id="termBlink" /> <span>Blinking cursor</span></label>
+          <label class="toggle-row"><input type="checkbox" id="termGpu" /> <span>Draw the terminal with the graphics card (experimental: faster on huge output, but text can look tighter on a 100% display)</span></label>
+        </div>
         <div class="stepper">
           <span>Terminal text</span>
           <button class="btn" id="fontDown" aria-label="Smaller">−</button>
@@ -438,6 +456,8 @@
     </dialog>
 
     <script src="/vendor/xterm/lib/xterm.js"></script>
+    <script src="/vendor/addon-webgl/lib/addon-webgl.js"></script>
+    <script src="/vendor/addon-unicode11/lib/addon-unicode11.js"></script>
     <script src="/vendor/addon-fit/lib/addon-fit.js"></script>
     <script src="/vendor/addon-web-links/lib/addon-web-links.js"></script>
     <script src="/usage-parser.js"></script>

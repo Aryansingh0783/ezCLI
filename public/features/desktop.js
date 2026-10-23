@@ -210,6 +210,60 @@ hooks.boot.push(() => {
   homeMic.addEventListener('click', dictate);
   document.querySelector('#homeComposer .send-key').before(homeMic);
 
+  // Terminal typography: the bundled web font must be loaded before the terminal
+  // measures its character cells, and measured again if it arrives late.
+  if (document.fonts && document.fonts.load) {
+    Promise.all([document.fonts.load("400 14px 'JetBrains Mono'"), document.fonts.load("600 14px 'JetBrains Mono'")])
+      .then(() => document.fonts.ready)
+      .then(remeasureTerminals)
+      .catch(() => {});
+  }
+
+  const fontSel = $('termFont');
+  if (fontSel) {
+    fontSel.innerHTML = Object.entries(TERM_FONTS)
+      .map(([k, v]) => `<option value="${k}">${v.label}</option>`)
+      .join('');
+    const syncTermUi = () => {
+      fontSel.value = TERM_FONTS[prefs.termFont] ? prefs.termFont : 'jetbrains';
+      document.querySelectorAll('[data-term-line]').forEach((b) => {
+        const on = b.dataset.termLine === (prefs.termLine || 'comfortable');
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', String(on));
+      });
+      document.querySelectorAll('[data-term-cursor]').forEach((b) => {
+        const on = b.dataset.termCursor === (prefs.termCursor || 'bar');
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', String(on));
+      });
+      $('termBlink').checked = prefs.termBlink !== false;
+      $('termGpu').checked = prefs.gpu === true;
+    };
+    const change = (key, value) => {
+      prefs[key] = value;
+      savePrefs();
+      applyTermPrefs();
+      syncTermUi();
+    };
+    fontSel.addEventListener('change', () => change('termFont', fontSel.value));
+    $('termLineSeg').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-term-line]');
+      if (b) change('termLine', b.dataset.termLine);
+    });
+    $('termCursorSeg').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-term-cursor]');
+      if (b) change('termCursor', b.dataset.termCursor);
+    });
+    $('termBlink').addEventListener('change', (e) => change('termBlink', e.target.checked));
+    $('termGpu').addEventListener('change', (e) => {
+      prefs.gpu = e.target.checked;
+      savePrefs();
+      for (const s of state.sessions) setGpu(s, false);
+      syncGpu();
+    });
+    syncTermUi();
+  }
+
   const presets = $('themePresets');
   if (presets) {
     renderThemePresets();

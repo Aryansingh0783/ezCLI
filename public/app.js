@@ -21,6 +21,13 @@ const PREFS_KEY = 'ezcli.v2';
 const DEFAULT_PREFS = {
   theme: 'light',
   palette: 'daylight',
+  termFont: 'jetbrains',
+  termLine: 'comfortable',
+  termCursor: 'bar',
+  termBlink: true,
+  // Off by default: the GPU renderer snaps cells to whole pixels, so text can look
+  // tighter than the HTML renderer at 100% display scale. Opt-in under Settings.
+  gpu: false,
   pinnedSessions: [],
   homeDraft: '',
   fontSize: 13,
@@ -88,27 +95,28 @@ if (typeof prefs.strataUrl === 'string') {
 
 const TERM_THEMES = {
   dark: {
-    background: '#111318',
-    foreground: '#e7e7e8',
+    background: '#15171d',
+    foreground: '#d5d9e4',
     cursor: '#7cff3f',
-    cursorAccent: '#0c0d0f',
-    selectionBackground: 'rgba(124,255,63,0.20)',
-    black: '#15171a',
-    red: '#d56a6a',
-    green: '#7fc98f',
-    yellow: '#d8a14a',
-    blue: '#6b9fd0',
-    magenta: '#b58be0',
-    cyan: '#5bb6b0',
-    white: '#d9d9de',
-    brightBlack: '#6a6a70',
-    brightRed: '#e7a3a3',
-    brightGreen: '#a9e9b3',
-    brightYellow: '#ecc27a',
-    brightBlue: '#97c0e8',
-    brightMagenta: '#cfb0ef',
-    brightCyan: '#8ad6d0',
-    brightWhite: '#ffffff'
+    cursorAccent: '#15171d',
+    selectionBackground: 'rgba(255,255,255,0.22)',
+    selectionInactiveBackground: 'rgba(255,255,255,0.12)',
+    black: '#2b2f3a',
+    red: '#f7768e',
+    green: '#9ece6a',
+    yellow: '#e0af68',
+    blue: '#7aa2f7',
+    magenta: '#bb9af7',
+    cyan: '#7dcfff',
+    white: '#a9b1d6',
+    brightBlack: '#6b7285',
+    brightRed: '#ff899d',
+    brightGreen: '#b9f27c',
+    brightYellow: '#ffc777',
+    brightBlue: '#8db0ff',
+    brightMagenta: '#c7a9ff',
+    brightCyan: '#a4daff',
+    brightWhite: '#eef1fa'
   },
   light: {
     background: '#ffffff',
@@ -140,6 +148,123 @@ const TERM_THEMES = {
 // dark text, which is unreadable on that pane.
 TERM_THEMES.light = TERM_THEMES.dark;
 
+/* ---------------------------------------------------------- terminal setup */
+
+const TERM_FONTS = {
+  jetbrains: { label: 'JetBrains Mono', stack: "'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace" },
+  cascadia: { label: 'Cascadia Code', stack: "'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace" },
+  consolas: { label: 'Consolas', stack: "Consolas, 'Cascadia Mono', ui-monospace, monospace" },
+  system: { label: 'System monospace', stack: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace" }
+};
+const TERM_LINES = { compact: 1.15, comfortable: 1.35, relaxed: 1.55 };
+
+/** The terminal paints an opaque background that matches its pane exactly (the pane
+ *  colour changes with the palette). A transparent terminal looks fine in the HTML
+ *  renderer but the GPU renderer composites it as black boxes behind the text. */
+function syncTermBackground() {
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--term-bg').trim() || '#15171d';
+  TERM_THEMES.dark.background = bg;
+  TERM_THEMES.dark.cursorAccent = bg;
+}
+
+/** One configuration for every terminal in the app. */
+function termOptions(extra = {}) {
+  syncTermBackground();
+  return {
+    fontFamily: (TERM_FONTS[prefs.termFont] || TERM_FONTS.jetbrains).stack,
+    fontSize: prefs.fontSize,
+    fontWeight: '400',
+    fontWeightBold: '600',
+    lineHeight: TERM_LINES[prefs.termLine] || TERM_LINES.comfortable,
+    letterSpacing: 0,
+    cursorStyle: prefs.termCursor || 'bar',
+    cursorWidth: 2,
+    cursorBlink: prefs.termBlink !== false,
+    cursorInactiveStyle: 'outline',
+    // Lifts any colour a CLI picks that would be hard to read on the pane.
+    minimumContrastRatio: 4.5,
+    drawBoldTextInBrightColors: false,
+    rescaleOverlappingGlyphs: true,
+    smoothScrollDuration: 70,
+    allowProposedApi: true,
+    allowTransparency: false,
+    theme: TERM_THEMES[resolvedTheme()],
+    scrollback: 20000,
+    ...extra
+  };
+}
+
+/** Build a terminal inside `host` with every add-on it needs. */
+function createTerminal(host, extra) {
+  const term = new Terminal(termOptions(extra));
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  try {
+    term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => (T.opener ? T.opener.openUrl(uri) : window.open(uri))));
+  } catch {
+    /* optional add-on */
+  }
+  try {
+    // Correct widths for emoji, CJK and box-drawing so TUIs line up.
+    term.loadAddon(new Unicode11Addon.Unicode11Addon());
+    term.unicode.activeVersion = '11';
+  } catch {
+    /* optional add-on */
+  }
+  term.open(host);
+  // Our Ctrl+Alt shortcuts must never be swallowed by the terminal.
+  wireTerminalInput(term, host);
+  return { term, fit };
+}
+
+/** Optional GPU (WebGL) rendering. Browsers cap live GPU contexts, so only the tab
+ *  you are looking at gets one. */
+function setGpu(s, on) {
+  if (on && !s.gl && typeof WebglAddon !== 'undefined' && prefs.gpu === true) {
+    try {
+      const gl = new WebglAddon.WebglAddon();
+      gl.onContextLoss(() => {
+        gl.dispose();
+        if (s.gl === gl) s.gl = null;
+      });
+      s.term.loadAddon(gl);
+      s.gl = gl;
+    } catch {
+      s.gl = null;
+    }
+  } else if (!on && s.gl) {
+    try {
+      s.gl.dispose();
+    } catch {
+      /* already gone */
+    }
+    s.gl = null;
+  }
+}
+function syncGpu() {
+  for (const s of state.sessions) setGpu(s, s.id === state.activeId);
+}
+
+/** Push the font, spacing and cursor preferences into every open terminal. */
+function applyTermPrefs() {
+  const o = termOptions();
+  for (const s of state.sessions) {
+    for (const k of ['fontFamily', 'fontSize', 'lineHeight', 'cursorStyle', 'cursorBlink']) s.term.options[k] = o[k];
+  }
+  requestAnimationFrame(() => state.sessions.forEach(fitSession));
+}
+
+/** A web font that finishes loading after a terminal measured its cells leaves
+ *  the grid misaligned; nudge each terminal to measure again. */
+function remeasureTerminals() {
+  for (const s of state.sessions) {
+    const f = s.term.options.fontFamily;
+    s.term.options.fontFamily = `${f}, monospace`;
+    s.term.options.fontFamily = f;
+  }
+  requestAnimationFrame(() => state.sessions.forEach(fitSession));
+}
+
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
 const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme);
 
@@ -147,6 +272,7 @@ function applyTheme() {
   const t = resolvedTheme();
   document.documentElement.dataset.theme = t;
   document.documentElement.dataset.palette = prefs.palette || 'daylight';
+  syncTermBackground();
   for (const s of state.sessions) s.term.options.theme = TERM_THEMES[t];
   document.querySelectorAll('[data-theme-opt]').forEach((b) => {
     const on = b.dataset.themeOpt === prefs.theme;
@@ -673,7 +799,7 @@ function tabMeta(s) {
   else st = s.working ? 'working' : fmtElapsed(Date.now() - s.startedAt);
   const dot = sessionDot(s);
   return `${dot ? `<span class="status-dot ${dot}"></span>` : '<span class="status-dot"></span>'}
-    <span class="tab-badge">${esc(st)}</span>${model && model !== 'Default' ? `<span>${esc(model)}</span>` : ''}`;
+    <span class="tab-badge">${esc(st)}</span>${model && model !== 'Default' ? `<span class="tab-model">${esc(model)}</span>` : ''}`;
 }
 
 function renderTabs() {
@@ -804,21 +930,7 @@ function buildParked(sn) {
   host.style.visibility = 'hidden';
   $('termHosts').appendChild(host);
 
-  const term = new Terminal({
-    fontFamily: "'JetBrains Mono', 'Cascadia Code', 'DM Mono', ui-monospace, Consolas, monospace",
-    fontSize: prefs.fontSize,
-    lineHeight: 1.3,
-    cursorBlink: false,
-    allowProposedApi: true,
-    // Liquid glass draws the terminal over a frosted pane.
-    allowTransparency: (prefs.style || 'glass') === 'glass',
-    theme: TERM_THEMES[resolvedTheme()],
-    scrollback: 10000
-  });
-  const fit = new FitAddon.FitAddon();
-  term.loadAddon(fit);
-  term.open(host);
-  wireTerminalInput(term, host);
+  const { term, fit } = createTerminal(host);
 
 
   const s = {
@@ -891,27 +1003,7 @@ async function createSession(agentId, opts = {}) {
   host.style.visibility = 'hidden';
   $('termHosts').appendChild(host);
 
-  const term = new Terminal({
-    fontFamily: "'JetBrains Mono', 'Cascadia Code', 'DM Mono', ui-monospace, Consolas, monospace",
-    fontSize: prefs.fontSize,
-    lineHeight: 1.3,
-    cursorBlink: true,
-    allowProposedApi: true,
-    // Liquid glass draws the terminal over a frosted pane.
-    allowTransparency: (prefs.style || 'glass') === 'glass',
-    theme: TERM_THEMES[resolvedTheme()],
-    scrollback: 10000
-  });
-  const fit = new FitAddon.FitAddon();
-  term.loadAddon(fit);
-  try {
-    term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => T.opener ? T.opener.openUrl(uri) : window.open(uri)));
-  } catch {
-    /* optional addon */
-  }
-  term.open(host);
-  // Our Ctrl+Alt shortcuts must never be swallowed by the terminal.
-  wireTerminalInput(term, host);
+  const { term, fit } = createTerminal(host);
 
   const count = state.sessions.filter((x) => x.agentId === agentId).length + 1;
   const s = {
@@ -1297,9 +1389,12 @@ function selectSession(id) {
   if (s) {
     requestAnimationFrame(() => {
       fitSession(s);
+      syncGpu();
       s.term.focus();
       updateScrollButton(s);
     });
+  } else {
+    syncGpu();
   }
 }
 

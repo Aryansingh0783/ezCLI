@@ -34,13 +34,13 @@ const Glass = (() => {
   /** In glass mode the terminal draws on a transparent canvas over the pane. */
   function terminalTheme() {
     const base = TERM_THEMES[resolvedTheme()];
-    return isGlass() ? { ...base, background: 'rgba(0,0,0,0)' } : base;
+    // The terminal pane is a solid surface now; see syncTermBackground() in app.js.
+    return base;
   }
 
   function apply() {
     document.documentElement.dataset.style = isGlass() ? 'glass' : 'solid';
     for (const s of state.sessions) {
-      s.term.options.allowTransparency = isGlass();
       s.term.options.theme = { ...terminalTheme(), cursor: s.term.options.theme && s.term.options.theme.cursor };
     }
     document.querySelectorAll('[data-style-opt]').forEach((b) => {
@@ -90,9 +90,8 @@ const Glass = (() => {
   };
 }
 
-// New terminals pick up transparency as soon as they launch.
+// Terminals take the current palette's solid pane colour as soon as they launch.
 hooks.launched.push((s) => {
-  s.term.options.allowTransparency = Glass.isGlass();
   s.term.options.theme = { ...Glass.terminalTheme(), cursor: s.term.options.theme && s.term.options.theme.cursor };
 });
 
