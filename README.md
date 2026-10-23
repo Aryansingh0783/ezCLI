@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.8.2
+
+- **Ctrl + mouse wheel** over the terminal changes the text size.
+- **Copy terminal output.** A command-palette action copies the whole
+  scrollback as plain text, with wrapped lines rejoined.
+
 ### New in 2.8.1
 
 - **Slash-command suggestions.** Type `/` at the start of a message and the

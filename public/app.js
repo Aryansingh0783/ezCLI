@@ -3156,6 +3156,13 @@ function wireTerminalInput(term, host) {
     }
     return true;
   });
+  // Ctrl + mouse wheel resizes the terminal text, like an editor.
+  host.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setFontSize(prefs.fontSize + (e.deltaY < 0 ? 1 : -1));
+    toast(`Text size ${prefs.fontSize} px`);
+  }, { passive: false });
   host.addEventListener('contextmenu', async (e) => {
     e.preventDefault();
     if (term.hasSelection()) {

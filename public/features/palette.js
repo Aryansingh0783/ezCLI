@@ -72,6 +72,12 @@ const PaletteUI = (() => {
       { group: 'Session', label: 'Restart session', when: () => Boolean(active()), run: () => restartSession(active()) },
       { group: 'Session', label: 'Stop session', when: () => Boolean(active() && active().ptyId), run: () => stopSession(active()) },
       { group: 'Session', label: 'Clear terminal', keys: 'Ctrl Alt K', when: () => Boolean(active()), run: () => active().term.clear() },
+      { group: 'Session', label: 'Copy terminal output', hint: 'whole scrollback as text', when: () => Boolean(active()), run: () => {
+        const b = active().term.buffer.active; const out = [];
+        for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) out.push((l.isWrapped && out.length ? out.pop() : '') + l.translateToString(true)); }
+        copy(out.join('\n').replace(/\s+$/, ''));
+        toast(`Copied ${out.length} lines`);
+      } },
       { group: 'Session', label: 'Reopen closed tab', keys: 'Ctrl Alt Shift T', when: () => prefs.closed.length > 0, run: () => reopenClosed(prefs.closed[0]) },
       { group: 'Session', label: 'Choose agent…', run: () => agentOnlyMenu($('agentStrip')) },
       { group: 'Session', label: 'Choose model…', run: () => (active() ? $('headModel').click() : modelMenu($('homeModel'))) },
