@@ -60,16 +60,16 @@ const Graphify = {
     $('graphifyOpen').disabled = !st.graphHtml;
   },
 
-  async run(action, title, why) {
+  async run(action, title, why, o = {}) {
     if (this.busy) return;
     let cmd;
     try {
-      cmd = await invoke('graphify_plan', { action, cwd: this.folder() });
+      cmd = await invoke(o.plan || 'graphify_plan', o.args || { action, cwd: this.folder() });
     } catch (e) {
       toast(String(e), 'error');
       return;
     }
-    const where = action === 'build' ? ` in ${this.folder()}` : action === 'setup' ? ' (from a temporary folder, so your projects are untouched)' : '';
+    const where = o.where ?? (action === 'build' ? ` in ${this.folder()}` : action === 'setup' ? ' (from a temporary folder, so your projects are untouched)' : '');
     if (!(await confirmDialog(title, `${why}\n\nezCLI will run${where}:\n${cmd}`, 'Run it'))) return;
     const log = $('graphifyLog');
     log.hidden = false;
@@ -78,12 +78,12 @@ const Graphify = {
     for (const id of ['graphifyInstall', 'graphifySetup', 'graphifyBuild']) $(id).disabled = true;
     $('graphifyStatus').textContent = `Running: ${title}…`;
     log.scrollIntoView({ block: 'center' });
-    const unlisten = await listen('install-out:graphify', (e) => {
+    const unlisten = await listen(`install-out:${o.key || 'graphify'}`, (e) => {
       log.textContent += e.payload;
       log.scrollTop = log.scrollHeight;
     });
     try {
-      const done = await invoke('graphify_run', { action, cwd: this.folder() });
+      const done = await invoke(o.run || 'graphify_run', o.args || { action, cwd: this.folder() });
       if (done.outputTail && !log.textContent.includes(done.outputTail.trim().slice(-200))) log.textContent += `\n${done.outputTail}`;
       const ok = done.code === 0 && !done.cancelled && !done.timedOut;
       log.textContent += ok ? '\n✓ Done.' : `\n✗ Finished with exit code ${done.code ?? 'none'}${done.timedOut ? ' (timed out)' : ''}.`;
@@ -124,7 +124,7 @@ hooks.boot.push(() => {
 
 registerCommand({
   group: 'App',
-  label: 'Graphify: build a knowledge graph of this project',
+  label: 'Build this project\'s knowledge graph',
   run: () => {
     $('settingsSheet').showModal();
     Graphify.refresh();
@@ -145,16 +145,13 @@ const Brain = {
       el.textContent = `Couldn't check the second brain: ${e}`;
       return;
     }
-    el.textContent = st.built
-      ? `${st.projects} project${st.projects === 1 ? '' : 's'} with a graph. The merged graph and vault are built.`
-      : st.projects
-        ? `${st.projects} project${st.projects === 1 ? '' : 's'} with a graph. Not merged yet.`
-        : 'No project has a graph yet. One is built automatically when you start a session in a project folder.';
+    const n = `${st.projects} project${st.projects === 1 ? '' : 's'} with a graph`;
+    el.textContent = st.projects ? `${n}. ${st.built ? 'The second brain is ready.' : 'Press Update second brain to build it.'}` : 'No project has a graph yet. One is built automatically when you start a session in a project folder.';
     $('brainUpdate').disabled = !st.projects || this.busy;
     $('brainGraph').disabled = !st.built;
-    $('brainVault').disabled = !st.built;
-    $('brainObsidian').disabled = !st.built;
-    $('brainObsidian').hidden = !st.obsidian;
+    $('brainObsidian').disabled = !st.projects;
+    $('brainObsidian').textContent = st.hasVault ? (st.obsidian ? 'Open in Obsidian' : 'Open notes folder') : 'Export notes for Obsidian';
+    this.hasVault = st.hasVault;
     $('brainInstallObsidian').hidden = st.obsidian;
     this.vault = st.vault;
   },
@@ -163,15 +160,26 @@ const Brain = {
     if (this.busy) return;
     this.busy = true;
     try {
-      const done = await invoke('brain_run', { paths: Graphify.projectPaths() });
-      const ok = done.code === 0;
-      if (!quiet || !ok) toast(ok ? 'Second brain updated.' : 'Second brain update failed.', ok ? undefined : 'error');
+      const r = await invoke('brain_run', { paths: Graphify.projectPaths() });
+      if (!quiet) toast(`Second brain updated: ${r.projects} project${r.projects === 1 ? '' : 's'}${r.skipped.length ? `, skipped ${r.skipped.length} (${r.skipped[0]})` : ''}.`);
     } catch (e) {
       if (!quiet) toast(String(e), 'error');
     } finally {
       this.busy = false;
       this.refresh();
     }
+  },
+
+  async notes() {
+    if (!this.hasVault) {
+      const args = { paths: Graphify.projectPaths() };
+      await Graphify.run('vault', 'Export notes for Obsidian', "Writes one Markdown note per concept for each project, into ~/.ezcli/second-brain/vault. Large projects are left out.", {
+        plan: 'brain_vault_plan', run: 'brain_vault_run', args, key: 'graphify-vault', where: ''
+      });
+      await this.refresh();
+      return;
+    }
+    return this.open('obsidian');
   },
 
   async open(what) {
@@ -193,8 +201,7 @@ hooks.boot.push(() => {
   });
   $('brainUpdate').addEventListener('click', () => Brain.update());
   $('brainGraph').addEventListener('click', () => Brain.open('graph'));
-  $('brainObsidian').addEventListener('click', () => Brain.open('obsidian'));
-  $('brainVault').addEventListener('click', () => Brain.open('vault'));
+  $('brainObsidian').addEventListener('click', () => Brain.notes());
   $('brainInstallObsidian').addEventListener('click', () =>
     Graphify.run('obsidian', 'Install Obsidian', 'Installs Obsidian, a free notes app that opens the second-brain vault as a linked graph. It is optional: the graph also opens inside ezCLI.')
   );
@@ -209,5 +216,4 @@ hooks.boot.push(() => {
   Brain.refresh();
 });
 
-registerCommand({ group: 'App', label: 'Second brain: open the graph of all projects', run: () => $('brainBtn').click() });
-registerCommand({ group: 'App', label: 'Second brain: update from all projects', run: () => Brain.update() });
+registerCommand({ group: 'App', label: 'Second brain', run: () => $('brainBtn').click() });

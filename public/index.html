@@ -301,10 +301,8 @@
           <button class="theme-option" data-style-opt="solid" role="radio">Solid</button>
         </div>
         <div class="accent-seg" id="accentSeg" role="radiogroup" aria-label="Accent colour"></div>
-      </div>
-      <div class="settings-section">
-        <h3>Terminal font size</h3>
         <div class="stepper">
+          <span>Terminal text</span>
           <button class="btn" id="fontDown" aria-label="Smaller">−</button>
           <span id="fontSizeLabel">13 px</span>
           <button class="btn" id="fontUp" aria-label="Larger">+</button>
@@ -319,43 +317,40 @@
         </div>
       </div>
       <div class="settings-section">
-        <h3>Desktop</h3>
+        <h3>General</h3>
         <label class="toggle-row"><input type="checkbox" id="prefNotifications" /> <span>Notify me when a long task finishes in a tab I'm not looking at</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefCloseToTray" /> <span>Keep running in the tray when I close the window</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefProjectDefaults" /> <span>Remember the agent, model and mode for each folder</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefShowPaid" /> <span>Show paid models that use my own API key (hidden by default)</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefTranscripts" /> <span>Save session text on this PC so past sessions can be searched</span></label>
         <div class="row-actions wrap">
+          <button class="btn" id="openImports">Sessions</button>
+          <button class="btn" id="openSearch">Search sessions</button>
+          <button class="btn" id="openUsage">Usage</button>
           <button class="btn" id="openHealth">Health check</button>
-          <button class="btn" id="openSearch">Search past sessions</button>
           <button class="btn" id="openUpdates">Check for updates</button>
           <button class="btn" id="openRemote">Remote view</button>
         </div>
       </div>
       <div class="settings-section">
-        <h3>Graphify</h3>
-        <p class="note"><a href="https://github.com/safishamsi/graphify" target="_blank" rel="noopener">Graphify</a> is a third-party, open-source tool that turns a project into a knowledge graph your agents can query. ezCLI runs only Graphify's own documented commands, and shows you each one before it runs.</p>
+        <h3>Knowledge graph</h3>
+        <p class="note"><a href="https://github.com/safishamsi/graphify" target="_blank" rel="noopener">Graphify</a> (third-party, open source) turns each project into a graph your agents can query. ezCLI merges them into one second brain: a graph window, plus notes for <a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a>. It stays on this PC, in <code>~/.ezcli/second-brain</code>. ezCLI shows you each command before it runs.</p>
         <p class="note" id="graphifyStatus">Checking…</p>
+        <p class="note" id="brainStatus">Checking…</p>
         <div class="row-actions wrap">
           <button class="btn quiet" id="graphifyInstall">Install Graphify</button>
           <button class="btn quiet" id="graphifySetup">Add to my agents</button>
-          <button class="btn quiet" id="graphifyBuild">Build graph for this project</button>
-          <button class="btn quiet" id="graphifyOpen">Open graph</button>
+          <button class="btn quiet" id="graphifyBuild">Build this project's graph</button>
+          <button class="btn quiet" id="graphifyOpen">Open project graph</button>
+        </div>
+        <div class="row-actions wrap">
+          <button class="btn quiet" id="brainUpdate">Update second brain</button>
+          <button class="btn quiet" id="brainGraph">Open second brain</button>
+          <button class="btn quiet" id="brainObsidian">Open notes</button>
+          <button class="btn quiet" id="brainInstallObsidian">Install Obsidian (optional)</button>
         </div>
         <pre class="install-log" id="graphifyLog" hidden></pre>
         <label class="toggle-row"><input type="checkbox" id="graphAuto" /> <span>Build a graph automatically for every project I start a session in (needs Graphify installed)</span></label>
-      </div>
-      <div class="settings-section">
-        <h3>Second brain</h3>
-        <p class="note">One graph that merges every project's graph, plus an <a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a> vault with a note for each concept. The graph opens inside ezCLI; Obsidian is optional, for browsing the notes. Everything stays on this PC, in <code>~/.ezcli/second-brain</code>.</p>
-        <p class="note" id="brainStatus">Checking…</p>
-        <div class="row-actions wrap">
-          <button class="btn quiet" id="brainUpdate">Update second brain</button>
-          <button class="btn quiet" id="brainGraph">Open brain graph</button>
-          <button class="btn quiet" id="brainObsidian">Open in Obsidian</button>
-          <button class="btn quiet" id="brainInstallObsidian">Install Obsidian (optional)</button>
-          <button class="btn quiet" id="brainVault">Open vault folder</button>
-        </div>
       </div>
       <div class="settings-section">
         <h3>Connectors</h3>
@@ -363,20 +358,6 @@
         <ul class="connector-list" id="connectorList"></ul>
         <div class="row-actions">
           <button class="btn quiet" id="addConnector">Add connector</button>
-        </div>
-      </div>
-      <div class="settings-section">
-        <h3>Usage</h3>
-        <p class="note">Local session counters, plus quick links to your provider dashboards.</p>
-        <div class="row-actions">
-          <button class="btn" id="openUsage">Open usage view</button>
-        </div>
-      </div>
-      <div class="settings-section">
-        <h3>Sessions and history</h3>
-        <p class="note">Every tab is saved on this PC, and the chats Claude Code and Codex already keep are listed too. Continue any of them where you left off.</p>
-        <div class="row-actions">
-          <button class="btn" id="openImports">Open sessions</button>
         </div>
       </div>
       <form method="dialog"><button class="btn primary">Done</button></form>

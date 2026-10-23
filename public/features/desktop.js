@@ -195,6 +195,3 @@ hooks.boot.push(() => {
 });
 
 registerCommand({ group: 'Session', label: 'Voice typing', keys: 'Ctrl Alt D', run: () => dictate() });
-for (const [k, v] of Object.entries(ACCENTS)) {
-  registerCommand({ group: 'App', label: `Accent: ${v.label}`, run: () => { prefs.accent = k; savePrefs(); applyAccent(); } });
-}

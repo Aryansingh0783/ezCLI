@@ -112,5 +112,3 @@ hooks.boot.push(() => {
   Glass.markSpotlights();
 });
 
-registerCommand({ group: 'App', label: 'Style: liquid glass', run: () => Glass.set('glass') });
-registerCommand({ group: 'App', label: 'Style: solid', run: () => Glass.set('solid') });

@@ -133,6 +133,26 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.2.0
+
+- **A second brain you can actually read.** ezCLI now draws its own map of
+  your projects instead of using Graphify's viewer, which turned a large
+  project (one Unity project alone was 97,000 symbols) into thousands of
+  unnamed dots. Each circle is a named group of related code (for example
+  `agents.rs: AgentDef, AgentOut`), with an index, search, a "where this code
+  lives" file list, and the functions inside it. It works offline and stays
+  smooth (about 240 fps here). Build time is a couple of seconds.
+- **Builds skip junk.** Unity `Library`, `node_modules`, `target`, `dist`,
+  `build`, virtualenvs and `vendor` folders are never indexed, so the graph
+  shows your code, not your caches.
+- **Obsidian notes** are exported per project on request (Settings →
+  Knowledge graph → "Export notes for Obsidian").
+- **Less clutter.** Settings went from nine sections to five: Usage, Sessions
+  and the other launchers are now one row of buttons, Graphify and Second
+  brain are one "Knowledge graph" section, and terminal text size lives under
+  Appearance. The command palette no longer repeats Theme, Style and Accent
+  (already in Settings) or "Import local chats" (same as Sessions).
+
 ### New in 2.1.12
 
 - **A graph for every project, automatically.** When you start a session in a

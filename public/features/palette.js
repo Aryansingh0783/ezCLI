@@ -66,18 +66,8 @@ const PaletteUI = (() => {
       { group: 'Workspace', label: 'Show changes', run: () => { setExplorerOpen(true); document.querySelector('[data-xtab="changes"]').click(); } },
       { group: 'App', label: 'Settings', run: () => $('settingsSheet').showModal() },
       { group: 'App', label: 'Keyboard shortcuts', run: () => $('helpSheet').showModal() },
-      { group: 'App', label: 'Usage', run: () => $('openUsage').click() },
-      { group: 'App', label: 'Import local chats', run: () => showImportSheet() },
-      { group: 'App', label: 'Theme: dark', run: () => setTheme('dark') },
-      { group: 'App', label: 'Theme: light', run: () => setTheme('light') },
-      { group: 'App', label: 'Theme: match system', run: () => setTheme('system') }
+      { group: 'App', label: 'Usage', run: () => $('openUsage').click() }
     ];
-  }
-
-  function setTheme(t) {
-    prefs.theme = t;
-    savePrefs();
-    applyTheme();
   }
 
   /** Every query word must appear in the label, group or hint. */
