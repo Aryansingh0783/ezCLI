@@ -1,6 +1,6 @@
 [package]
 name = "ezcli"
-version = "2.2.0"
+version = "2.2.1"
 description = "A desktop window for the Claude and OpenAI coding CLIs"
 authors = ["Aryan Singh"]
 license = "MIT"

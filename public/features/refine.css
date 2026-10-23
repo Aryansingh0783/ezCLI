@@ -1,0 +1,296 @@
+/* Visual refinement pass. Loaded last so it can be read, tuned or removed in
+ * one place. Direction: a calm operator console. Neutral surfaces, one lime
+ * accent reserved for the primary action and the active choice, a clear type
+ * scale, and no controls that say the same thing twice.
+ * `:root:root` ties the specificity of the glass theme's rules; this file wins
+ * on order. */
+
+:root:root {
+  --muted: #b3b3bb;
+  --faint: #8d8d96;
+  --rail-w: 68px;
+  --radius: 12px;
+  --step-title: 30px;
+  --step-body: 13px;
+  --step-small: 12px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+:root[data-theme='light']:root {
+  --muted: #55555d;
+  --faint: #6b6b74;
+}
+::selection {
+  background: color-mix(in srgb, var(--brand) 32%, transparent);
+  color: inherit;
+}
+
+/* ------------------------------------------------------------------ rail */
+:root:root .rail {
+  gap: 4px;
+  padding: 12px 0;
+}
+:root:root .rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 56px;
+  height: 48px;
+  border-radius: 10px;
+  color: var(--faint);
+}
+:root:root .rail-btn:hover,
+:root:root .rail-btn:focus-visible {
+  color: var(--text);
+}
+.rail-label {
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+:root:root .rail-add {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+:root:root .space {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  font-size: 13px;
+}
+:root:root .space.active::before {
+  left: -14px;
+}
+
+/* ------------------------------------------------------------------ home */
+:root:root .home-inner {
+  padding: 36px 0 40px;
+}
+:root:root .home h1 {
+  margin: 0 0 8px;
+  font-size: var(--step-title);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+:root:root .project-trigger {
+  margin-bottom: 22px;
+  color: var(--muted);
+}
+:root:root .home .composer-box {
+  border-radius: 16px;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 5%) inset, 0 18px 40px -22px rgb(0 0 0 / 70%);
+}
+:root:root .home .composer-box textarea {
+  min-height: 84px;
+  padding-top: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+:root:root .home .composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
+}
+/* The agent is chosen once, in the strip below; the composer keeps only what
+   changes how the chosen agent runs. */
+#homeAgent {
+  display: none;
+}
+:root:root .pill-pick {
+  min-height: 32px;
+  padding: 3px 11px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+:root:root .pill-pick:hover:not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 13%, transparent);
+}
+:root:root .pill-pick > span {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+}
+:root:root .pill-cap {
+  font-size: var(--step-small);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--faint);
+}
+:root:root .pill-val {
+  font-size: var(--step-small);
+  font-weight: 600;
+}
+
+:root:root .suggested-prompts {
+  gap: 10px;
+  margin-top: 18px;
+}
+:root:root .suggested-prompt {
+  padding: 13px 15px;
+  border-color: transparent;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  transition: background 0.18s var(--ease-out), transform 0.18s var(--ease-out);
+}
+:root:root .suggested-prompt:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  transform: translateY(-1px);
+}
+:root:root .suggested-prompt b {
+  margin-bottom: 3px;
+  font-size: var(--step-body);
+  font-weight: 600;
+}
+:root:root .suggested-prompt {
+  line-height: 1.45;
+}
+.suggested-prompt-mark {
+  display: none;
+}
+
+:root:root .agent-strip {
+  gap: 8px;
+  margin-top: 26px;
+}
+:root:root .agent-option {
+  padding: 6px 12px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--muted);
+}
+:root:root .agent-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
+}
+:root:root .agent-option.selected {
+  border-color: color-mix(in srgb, var(--brand) 60%, transparent);
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .home-inner > * {
+    animation: rise 0.42s var(--ease-out) both;
+  }
+  .home-inner > :nth-child(2) { animation-delay: 0.03s; }
+  .home-inner > :nth-child(3) { animation-delay: 0.06s; }
+  .home-inner > :nth-child(4) { animation-delay: 0.1s; }
+  .home-inner > :nth-child(n + 5) { animation-delay: 0.15s; }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* --------------------------------------------------------------- session */
+:root:root .session-head {
+  height: 46px;
+  gap: 4px;
+  padding: 0 12px 0 16px;
+}
+:root:root .head-title {
+  margin-right: 6px;
+  font-size: 14px;
+  font-weight: 650;
+}
+/* The chips are the session's settings; their tooltips say what each one is,
+   so they no longer carry a repeated "Backend / Model / PC" prefix. */
+.head-chip::before,
+.head-agent::before,
+.head-control::before,
+.head-connectors::before {
+  display: none;
+}
+:root:root .head-chip {
+  height: 28px;
+  padding: 0 10px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--muted);
+  font-size: var(--step-small);
+  font-weight: 500;
+}
+:root:root .head-chip:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text);
+}
+:root:root .head-control.granted,
+:root:root .head-connectors.granted {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+  color: var(--brand);
+}
+:root:root .head-branch {
+  border-color: transparent;
+  background: transparent;
+  color: var(--faint);
+}
+
+:root:root .chip {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--muted);
+}
+:root:root .chip:hover {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  color: var(--text);
+}
+
+/* The launch command is noise to almost everyone; the working folder, state
+   and usage stay. */
+#stCmd {
+  display: none;
+}
+:root:root .statusbar {
+  height: 28px;
+  font-size: var(--step-small);
+}
+:root:root .statusbar code,
+:root:root .live-usage {
+  font-size: 11.5px;
+}
+
+/* Everything on the home screen should fit a 900px-tall window without scrolling. */
+:root:root .home-inner {
+  padding: 18px 0 24px;
+}
+:root:root .home-mark {
+  margin-bottom: 10px;
+}
+:root:root .home-mark .mark.big {
+  transform: scale(0.82);
+}
+:root:root .project-trigger {
+  margin-bottom: 16px;
+}
+:root:root .home .composer-box textarea {
+  min-height: 70px;
+}
+:root:root .suggested-prompts {
+  margin-top: 14px;
+  gap: 8px;
+}
+:root:root .suggested-prompt {
+  padding: 10px 14px;
+}
+:root:root .suggested-prompt span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+:root:root .agent-strip {
+  gap: 6px;
+  margin-top: 18px;
+}
