@@ -133,6 +133,15 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.7.0
+
+- **Find in terminal output.** Ctrl+Shift+F searches the whole scrollback as
+  you type, with a match count, Enter / Shift+Enter to step through matches and
+  Esc to close. Text the terminal wrapped across lines is found too.
+- **Undo for closed tabs.** Closing a tab shows an Undo button.
+- **Resume past sessions from the command palette.** Pinned sessions first.
+- **Drag projects in the left rail to reorder them.**
+
 ### New in 2.6.0
 
 - **Smoother, calmer motion.** Dialogs and menus ease in, switching between

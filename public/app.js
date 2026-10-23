@@ -733,7 +733,14 @@ function tabMenu(anchor, s, x, y) {
       ...tabMenuExtras(s),
       { sep: true },
       { label: 'Close', hint: 'Ctrl+Alt+W', run: () => closeSession(s.id) },
-      { label: 'Close other tabs', disabled: !others.length, run: () => others.forEach((o) => closeSession(o.id)) }
+      {
+        label: 'Close other tabs',
+        disabled: !others.length,
+        run: () => {
+          others.forEach((o) => closeSession(o.id, { quiet: true }));
+          toast(`Closed ${others.length} tab${others.length === 1 ? '' : 's'}. Reopen them from the Closed tabs menu.`);
+        }
+      }
     ]
   });
 }
@@ -1296,7 +1303,7 @@ function selectSession(id) {
   }
 }
 
-async function closeSession(id) {
+async function closeSession(id, { quiet = false } = {}) {
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i === -1) return;
   const s = state.sessions[i];
@@ -1310,7 +1317,7 @@ async function closeSession(id) {
   s.host.remove();
   state.sessions.splice(i, 1);
 
-  prefs.closed.unshift({
+  const entry = {
     agentId: s.agentId,
     modelId: s.modelId,
     modeId: s.modeId,
@@ -1319,9 +1326,11 @@ async function closeSession(id) {
     spaceId: s.spaceId,
     title: s.title,
     closedAt: Date.now()
-  });
+  };
+  prefs.closed.unshift(entry);
   prefs.closed = prefs.closed.slice(0, 25);
   savePrefs();
+  if (!quiet) toast(`Closed “${s.title}”`, '', () => reopenClosed(entry), 'Undo');
 
   if (state.activeId === id) {
     const siblings = spaceSessions(s.spaceId);
@@ -2726,16 +2735,26 @@ function projectMenu(anchor) {
 
 /* ----------------------------------------------------------- toasts, dialogs */
 
-function toast(msg, kind = '', onClick) {
+function toast(msg, kind = '', onClick, actionLabel) {
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
-  el.textContent = msg;
+  const text = document.createElement('span');
+  text.textContent = msg;
+  el.appendChild(text);
+  if (actionLabel) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'toast-action';
+    b.textContent = actionLabel;
+    el.appendChild(b);
+  }
   el.addEventListener('click', () => {
     el.remove();
     onClick && onClick();
   });
   $('toasts').appendChild(el);
-  setTimeout(() => el.remove(), kind === 'error' ? 7000 : 3500);
+  // A toast with an action stays long enough to be used.
+  setTimeout(() => el.remove(), actionLabel ? 7000 : kind === 'error' ? 7000 : 3500);
 }
 
 /** ezCLI drives command line tools. A provider's desktop app does not put
@@ -3034,6 +3053,7 @@ function wireTerminalInput(term, host) {
     if (isAppShortcut(e)) return false;
     if (e.type !== 'keydown') return true;
     if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Tab') return false;
+    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === 'KeyF') return false;
     if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'KeyC' && term.hasSelection()) {
       copy(term.getSelection());
       term.clearSelection();

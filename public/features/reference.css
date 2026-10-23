@@ -880,3 +880,90 @@
 @keyframes sheet-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
 @keyframes fade-in { from { opacity: 0; } }
+
+
+/* ================================ undo toast ================================ */
+.toast { align-items: center; }
+.toast-action {
+  flex: none;
+  margin: -3px -6px -3px 4px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--brand) 18%, transparent);
+  color: var(--brand-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+:root[data-theme='dark']:root .toast-action,
+:root[data-palette='midnight']:root .toast-action,
+:root[data-palette='nebula']:root .toast-action,
+:root[data-palette='ocean']:root .toast-action { color: var(--brand); }
+.toast-action:hover { background: color-mix(in srgb, var(--brand) 30%, transparent); }
+
+
+/* ============================ find in terminal ============================= */
+.terminal-panel { position: relative; }
+.find-bar {
+  position: absolute;
+  top: 12px;
+  right: 22px;
+  z-index: 6;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 12px;
+  background: rgb(26 28 36 / 94%);
+  color: #e9eaee;
+  box-shadow: 0 14px 34px -14px rgb(0 0 0 / 70%);
+  backdrop-filter: blur(14px);
+}
+.find-bar.open { display: flex; animation: menu-in 0.16s var(--ease-out) both; }
+.find-input {
+  width: 190px;
+  padding: 5px 2px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+.find-input::placeholder { color: #8e94a6; }
+.find-count { min-width: 54px; padding: 0 6px; color: #aab0be; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.find-bar.none { border-color: color-mix(in srgb, var(--danger) 70%, transparent); }
+.find-bar.none .find-count { color: #ff9a9a; }
+.find-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #c4c9d6;
+  cursor: pointer;
+}
+.find-btn:hover { background: rgb(255 255 255 / 12%); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .find-bar.open { animation: none; } }
+
+
+/* ============================ reorder projects ============================= */
+.spaces.reordering { cursor: grabbing; user-select: none; }
+.space { touch-action: none; }
+.space.dragging {
+  position: relative;
+  z-index: 5;
+  cursor: grabbing;
+  transition: none !important;
+  box-shadow: 0 10px 24px -8px rgb(0 0 0 / 55%);
+  scale: 1.06;
+}
+.spaces.reordering .space:not(.dragging) { transition: transform 0.16s var(--ease-out); }
+.spaces.reordering .space.shift-up { transform: translateY(-46px); }
+.spaces.reordering .space.shift-down { transform: translateY(46px); }

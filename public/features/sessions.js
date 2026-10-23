@@ -468,6 +468,24 @@ const Sessions = (() => {
       : '<div class="session-empty">No saved sessions yet. Start one above and it shows up here.</div>';
   }
 
+  /** Reopen a saved session (same agent, folder and CLI conversation). */
+  function resumeSaved(id) {
+    const m = recent.find((x) => x.id === id);
+    if (!m) return false;
+    continueItem({
+      kind: 'saved',
+      id: m.id,
+      title: m.title,
+      agentId: m.agentId,
+      agentLabel: m.agentLabel || m.agentId,
+      cwd: m.cwd || '',
+      sessionId: m.providerSessionId || '',
+      at: m.endedAt,
+      meta: m
+    });
+    return true;
+  }
+
   function togglePin(id) {
     const set = new Set(prefs.pinnedSessions || []);
     set.has(id) ? set.delete(id) : set.add(id);
@@ -497,7 +515,7 @@ const Sessions = (() => {
     }
   }
 
-  return { open, load, refreshHome, renderContinueRow, continueItem, findCodexId, togglePin, weekStats, recentSaved: () => recent };
+  return { open, load, refreshHome, renderContinueRow, continueItem, findCodexId, togglePin, weekStats, resumeSaved, recentSaved: () => recent };
 })();
 
 hooks.launched.push((s) => {
@@ -541,19 +559,7 @@ hooks.boot.push(() => {
     if (pin) return Sessions.togglePin(pin.dataset.pin);
     const card = e.target.closest('[data-continue-id]');
     if (!card) return;
-    const m = Sessions.recentSaved().find((x) => x.id === card.dataset.continueId);
-    if (!m) return;
-    Sessions.continueItem({
-      kind: 'saved',
-      id: m.id,
-      title: m.title,
-      agentId: m.agentId,
-      agentLabel: m.agentLabel || m.agentId,
-      cwd: m.cwd || '',
-      sessionId: m.providerSessionId || '',
-      at: m.endedAt,
-      meta: m
-    });
+    Sessions.resumeSaved(card.dataset.continueId);
   });
 });
 hooks.exit.push(() => setTimeout(Sessions.refreshHome, 1500));

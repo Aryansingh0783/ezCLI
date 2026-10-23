@@ -36,6 +36,20 @@ const PaletteUI = (() => {
     for (const sp of prefs.spaces) {
       out.push({ group: 'Spaces', label: `Go to ${sp.name}`, hint: sp.path, run: () => selectSpace(sp.id) });
     }
+    // Past sessions: pinned first, then the most recent. Enter reopens it.
+    if (typeof Sessions !== 'undefined') {
+      const pinned = new Set(prefs.pinnedSessions || []);
+      const saved = Sessions.recentSaved().filter((m) => m.title);
+      const ranked = [...saved.filter((m) => pinned.has(m.id)), ...saved.filter((m) => !pinned.has(m.id))].slice(0, 15);
+      for (const m of ranked) {
+        out.push({
+          group: 'Resume a session',
+          label: m.title,
+          hint: `${pinned.has(m.id) ? '★ ' : ''}${m.agentLabel || m.agentId} · ${fmtAgo(m.endedAt || m.startedAt)}`,
+          run: () => Sessions.resumeSaved(m.id)
+        });
+      }
+    }
     for (const a of state.agents.filter((x) => x.available)) {
       out.push({
         group: 'Start',
