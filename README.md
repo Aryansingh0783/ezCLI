@@ -133,6 +133,21 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.5.0
+
+A premium-feel pass:
+
+- **ezCLI remembers its window.** Position, size, which monitor and
+  maximized all come back on the next launch. If the saved spot is on a
+  monitor that is no longer connected, it opens in the default place instead
+  of off-screen.
+- **Your week at a glance.** The home screen shows sessions this week with a
+  seven-day chart, time spent with agents, and your most-used agent, all
+  worked out locally from the sessions saved on this PC.
+- **Pin sessions.** Hover a recent session and click the star to keep it at
+  the top. Up/Down move between recent sessions and Enter opens one.
+- **Your unsent first message is kept** if you close the app before sending.
+
 ### New in 2.4.2
 
 Quality-of-life fixes:

@@ -364,6 +364,71 @@ const Sessions = (() => {
       recent = [];
     }
     renderContinueRow();
+    renderStats();
+  }
+
+  /* ---------------------------------------------------------- home: your week */
+
+  const DAY = 86400000;
+  const fmtDur = (ms) => {
+    const m = Math.round(ms / 60000);
+    if (m < 1) return '0m';
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+  };
+
+  /** Seven-day activity from the sessions saved on this PC. Nothing leaves it. */
+  function weekStats(list, now = Date.now()) {
+    const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+    const days = Array.from({ length: 7 }, (_, i) => ({ start: startOfToday - (6 - i) * DAY, count: 0 }));
+    let sessions = 0;
+    let ms = 0;
+    let prompts = 0;
+    const byAgent = new Map();
+    for (const m of list) {
+      const t = m.startedAt || 0;
+      if (t < days[0].start) continue;
+      sessions++;
+      const end = m.endedAt && m.endedAt > t ? m.endedAt : t;
+      ms += Math.min(end - t, 12 * 3600000);
+      prompts += (m.prompts || []).length;
+      const d = days.findIndex((x, i) => t >= x.start && (i === 6 || t < days[i + 1].start));
+      if (d >= 0) days[d].count++;
+      const name = m.agentLabel || m.agentId;
+      byAgent.set(name, (byAgent.get(name) || 0) + 1);
+    }
+    const top = [...byAgent.entries()].sort((a, b) => b[1] - a[1])[0];
+    return { days, sessions, ms, prompts, top: top ? { name: top[0], share: Math.round((top[1] / sessions) * 100) } : null };
+  }
+
+  function renderStats() {
+    const el = $('dashStats');
+    if (!el) return;
+    const st = weekStats(recent);
+    el.hidden = false;
+    if (!st.sessions) {
+      el.innerHTML = `<div class="stat-empty">Your week shows up here once you have run a session.</div>`;
+      el.classList.add('is-empty');
+      return;
+    }
+    el.classList.remove('is-empty');
+    const max = Math.max(1, ...st.days.map((d) => d.count));
+    const letters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const bars = st.days
+      .map((d, i) => {
+        const hgt = d.count ? Math.max(14, Math.round((d.count / max) * 100)) : 6;
+        const label = letters[new Date(d.start).getDay()];
+        return `<span class="stat-bar${i === 6 ? ' today' : ''}${d.count ? '' : ' none'}" title="${d.count} session${d.count === 1 ? '' : 's'}"><i style="height:${hgt}%"></i><b>${label}</b></span>`;
+      })
+      .join('');
+    el.innerHTML = `
+      <div class="stat-card stat-a"><span class="stat-label">Sessions this week</span>
+        <span class="stat-value">${st.sessions}</span><div class="stat-bars" role="img" aria-label="Sessions per day for the last seven days">${bars}</div></div>
+      <div class="stat-card stat-b"><span class="stat-label">Time with agents</span>
+        <span class="stat-value">${esc(fmtDur(st.ms))}</span><span class="stat-sub">${st.prompts} message${st.prompts === 1 ? '' : 's'} sent</span></div>
+      <div class="stat-card stat-c"><span class="stat-label">Most used</span>
+        <span class="stat-value stat-text">${esc(st.top ? st.top.name : '—')}</span><span class="stat-sub">${st.top ? `${st.top.share}% of your sessions` : ''}</span></div>`;
   }
 
   function renderContinueRow() {
@@ -378,20 +443,38 @@ const Sessions = (() => {
     const sp = space();
     const inFolder = (m) => sp && m.cwd && m.cwd.toLowerCase().replace(/[\\/]+$/, '').startsWith(sp.path.toLowerCase().replace(/[\\/]+$/, ''));
     const here = recent.filter(inFolder);
-    const list = (here.length ? here : recent).filter((m) => m.title).slice(0, 6);
+    const pinned = new Set(prefs.pinnedSessions || []);
+    const base = (here.length ? here : recent).filter((m) => m.title);
+    // Pinned sessions stay at the top from any folder; the rest fill the remaining rows.
+    const pins = recent.filter((m) => m.title && pinned.has(m.id));
+    const rest = base.filter((m) => !pinned.has(m.id));
+    const list = [...pins, ...rest].slice(0, Math.max(6, pins.length));
     row.className = 'session-table';
-    row.hidden = !list.length;
+    row.hidden = false;
     row.innerHTML = list.length
       ? `<div class="session-thead"><span>Name</span><span>Agent</span><span>When</span><span></span></div>${list
-          .map(
-            (m) => `<button type="button" class="session-trow" data-continue-id="${esc(m.id)}" title="${esc(m.cwd || '')}">
+          .map((m) => {
+            const on = pinned.has(m.id);
+            return `<div class="session-trow${on ? ' pinned' : ''}" role="button" tabindex="0" data-continue-id="${esc(m.id)}" title="${esc(m.cwd || '')}">
               <span class="session-name">${esc(m.title)}</span>
               <span class="session-agent">${esc(m.agentLabel || m.agentId)}</span>
               <span class="session-when">${esc(fmtAgo(m.endedAt || m.startedAt))}</span>
-              <span class="session-go" aria-hidden="true">↵</span></button>`
-          )
+              <button type="button" class="pin-btn${on ? ' on' : ''}" data-pin="${esc(m.id)}" aria-pressed="${on}" aria-label="${on ? 'Unpin' : 'Pin'} ${esc(m.title)}" title="${on ? 'Unpin' : 'Pin to the top'}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>
+              </button></div>`;
+          })
           .join('')}`
       : '<div class="session-empty">No saved sessions yet. Start one above and it shows up here.</div>';
+  }
+
+  function togglePin(id) {
+    const set = new Set(prefs.pinnedSessions || []);
+    set.has(id) ? set.delete(id) : set.add(id);
+    prefs.pinnedSessions = [...set];
+    savePrefs();
+    renderContinueRow();
+    const btn = document.querySelector(`[data-pin="${CSS.escape(id)}"]`);
+    if (btn) btn.focus();
   }
 
   /* ---------------------------------------------------------- Codex session ids */
@@ -413,7 +496,7 @@ const Sessions = (() => {
     }
   }
 
-  return { open, load, refreshHome, renderContinueRow, continueItem, findCodexId, recentSaved: () => recent };
+  return { open, load, refreshHome, renderContinueRow, continueItem, findCodexId, togglePin, weekStats, recentSaved: () => recent };
 })();
 
 hooks.launched.push((s) => {
@@ -435,8 +518,26 @@ hooks.exit.push((s) => Sessions.findCodexId(s));
 hooks.boot.push(() => {
   Sessions.refreshHome();
   setInterval(Sessions.refreshHome, 60000);
+  // Rows are focusable: Up/Down move between them, Enter or Space opens one.
+  $('home').addEventListener('keydown', (e) => {
+    const row = e.target.closest && e.target.closest('.session-trow');
+    if (!row || e.target.closest('[data-pin]')) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const rows = [...document.querySelectorAll('#continueRow .session-trow')];
+      const next = rows[rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next) {
+        e.preventDefault();
+        next.focus();
+      }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      row.click();
+    }
+  });
   $('home').addEventListener('click', (e) => {
     if (e.target.closest('[data-continue-all]')) return Sessions.open();
+    const pin = e.target.closest('[data-pin]');
+    if (pin) return Sessions.togglePin(pin.dataset.pin);
     const card = e.target.closest('[data-continue-id]');
     if (!card) return;
     const m = Sessions.recentSaved().find((x) => x.id === card.dataset.continueId);

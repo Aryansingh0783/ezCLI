@@ -667,3 +667,129 @@
   outline-offset: -10px;
   background: color-mix(in srgb, var(--brand) 5%, transparent);
 }
+
+
+/* ============================== your week ============================== */
+.dash-stats {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 12px;
+}
+.dash-stats[hidden] { display: none; }
+.dash-stats.is-empty { display: block; }
+.stat-empty {
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.stat-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px 16px 14px;
+  border-radius: var(--r-md);
+  box-shadow: var(--card-shadow-sm);
+}
+.stat-a { background: var(--tint-a); }
+.stat-b { background: var(--tint-b); }
+.stat-c { background: var(--tint-c); }
+.stat-label { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.stat-value {
+  margin: 6px 0 2px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.stat-value.stat-text { font-size: 19px; line-height: 1.3; margin-top: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-sub { font-size: 12px; color: var(--ink-soft); }
+.stat-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 54px;
+  margin-top: 8px;
+}
+.stat-bar {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+}
+.stat-bar i {
+  display: block;
+  width: 100%;
+  max-width: 14px;
+  border-radius: 5px 5px 3px 3px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  transition: height 0.5s var(--ease-out), background 0.2s var(--ease-out);
+}
+.stat-bar.today i { background: var(--brand); }
+.stat-bar.none i { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.stat-bar:hover i { background: var(--brand); }
+.stat-bar b { margin-top: 3px; font-size: 9.5px; font-weight: 600; color: var(--ink-faint); line-height: 1; }
+.stat-bars { padding-bottom: 12px; }
+.stat-bar b { position: absolute; bottom: -12px; }
+@media (max-width: 1100px) { .dash-stats { grid-template-columns: 1fr 1fr; } .stat-a { grid-column: 1 / -1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .dash-stats .stat-card { animation: rise 0.45s var(--ease-out) both; }
+  .dash-stats .stat-b { animation-delay: 0.05s; }
+  .dash-stats .stat-c { animation-delay: 0.1s; }
+}
+
+
+/* ============================ pins and rows ============================ */
+:root:root .session-trow { cursor: pointer; }
+:root:root .session-trow:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.pin-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-faint);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s var(--ease-out), color 0.15s var(--ease-out), background 0.15s var(--ease-out), transform 0.15s var(--ease-out);
+}
+.session-trow:hover .pin-btn,
+.session-trow:focus-within .pin-btn,
+.pin-btn.on { opacity: 1; }
+.pin-btn:hover { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
+.pin-btn.on { color: #e0a61c; }
+.pin-btn:active { transform: scale(0.88); }
+:root:root .session-thead, :root:root .session-trow { grid-template-columns: 1fr 120px 90px 28px; }
+.session-trow.pinned .session-name::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #e0a61c;
+  vertical-align: middle;
+}
+
+/* Team chat / Web chat: a solid, visible tint on every palette (a translucent
+   tint disappears on a white panel). */
+:root:root .dash-assets > .home-team,
+:root:root .dash-assets > .home-webchat {
+  background: color-mix(in srgb, var(--ink) 8%, var(--panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink);
+}
+:root:root .dash-assets > .home-team:hover,
+:root:root .dash-assets > .home-webchat:hover {
+  background: color-mix(in srgb, var(--ink) 14%, var(--panel));
+}

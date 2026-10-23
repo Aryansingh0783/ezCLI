@@ -26,6 +26,7 @@ mod system_profile;
 mod transcripts;
 mod usage_live;
 mod tray;
+mod winstate;
 mod updater;
 
 use agents::{AgentDef, AgentOut};
@@ -880,7 +881,13 @@ pub fn run() {
         .manage(features::Handoffs::default())
         .manage(Arc::new(group::GroupRuns::default()))
         .manage(Arc::new(install::InstallRuns::default()))
+        .on_window_event(|window, event| {
+            winstate::on_event(window.app_handle(), window.label(), event);
+        })
         .setup(|app| {
+            // The main window starts hidden; put it back where it was and show it
+            // before anything below can fail.
+            winstate::restore_and_show(app.handle());
             // Stale per-session config files from a crashed run hold dead tokens.
             let _ = std::fs::remove_dir_all(mcp_config_dir());
             std::thread::spawn(media::prune_old_attachments);

@@ -21,6 +21,8 @@ const PREFS_KEY = 'ezcli.v2';
 const DEFAULT_PREFS = {
   theme: 'light',
   palette: 'daylight',
+  pinnedSessions: [],
+  homeDraft: '',
   fontSize: 13,
   zoom: 1,
   spaces: [],
@@ -1467,7 +1469,7 @@ function renderHome() {
         title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH. Click to install it.`)}">
         <span class="agent-card-ico">${ICONS[x.icon] || ICONS.term}</span>
         <span class="agent-card-text"><span class="agent-card-name">${esc(x.label)}</span>
-        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Not installed · click to install'}</span></span>
+        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Click to install'}</span></span>
         ${x.free ? '<span class="free-badge">Free</span>' : ''}
       </button>`
     )
@@ -3119,6 +3121,8 @@ async function startFromHome() {
   }
   if (prompt) pushHistory(prompt);
   $('homeInput').value = '';
+  prefs.homeDraft = '';
+  savePrefs();
   autoGrow($('homeInput'));
 }
 
@@ -3343,7 +3347,14 @@ function wire() {
   $('homeEffort').addEventListener('click', (e) => effortMenu(e.currentTarget));
   $('homeMode').addEventListener('click', (e) => modeMenu(e.currentTarget));
   $('homeSend').addEventListener('click', startFromHome);
-  $('homeInput').addEventListener('input', (e) => autoGrow(e.target));
+  // An unsent first message survives a restart.
+  $('homeInput').value = prefs.homeDraft || '';
+  autoGrow($('homeInput'));
+  $('homeInput').addEventListener('input', (e) => {
+    autoGrow(e.target);
+    prefs.homeDraft = e.target.value;
+    savePrefs();
+  });
   $('homeInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
