@@ -133,6 +133,14 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.6.0
+
+- **Smoother, calmer motion.** Dialogs and menus ease in, switching between
+  a session and the home screen fades, and changing theme cross-fades instead
+  of snapping. All of it switches off when your system asks for reduced
+  motion.
+- **A greeting on the home screen** ("Good evening · Saturday, 24 October").
+
 ### New in 2.5.3
 
 - **The home dashboard adapts to the space it really has.** With the file

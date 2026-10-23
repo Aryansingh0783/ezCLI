@@ -852,3 +852,31 @@
   .dash-stats { grid-template-columns: 1fr; }
   .stat-value { font-size: 26px; }
 }
+
+
+/* ============================ motion and greeting ============================ */
+.dash-titles { flex: 1; min-width: 0; }
+.dash-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: 0.005em;
+}
+:root:root .home-inner.dash .dash-head h1 { flex: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* dialogs ease in instead of appearing */
+  dialog.sheet[open] { animation: sheet-in 0.24s var(--ease-out) both; }
+  dialog.sheet[open]::backdrop { animation: fade-in 0.24s ease both; }
+  #menu:not([hidden]) { animation: menu-in 0.16s var(--ease-out) both; transform-origin: top left; }
+  .workspace.is-active { animation: fade-in 0.22s ease both; }
+  .toast { animation-timing-function: var(--ease-out); }
+  /* a theme or palette change cross-fades */
+  .theming, .theming *, .theming *::before, .theming *::after {
+    transition: background-color 0.32s ease, border-color 0.32s ease, color 0.32s ease, fill 0.32s ease, box-shadow 0.32s ease !important;
+  }
+  .btn:active:not(:disabled), .chip:active:not(:disabled), .agent-card:active:not(:disabled), .pill-pick:active:not(:disabled) { transform: scale(0.975); }
+}
+@keyframes sheet-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+@keyframes fade-in { from { opacity: 0; } }

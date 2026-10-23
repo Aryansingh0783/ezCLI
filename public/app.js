@@ -1443,6 +1443,9 @@ function renderHome() {
   const sp = space();
   const a = agent(prefs.agentId);
   $('homeTitle').textContent = 'Overview';
+  const hour = new Date().getHours();
+  const hello = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  $('homeGreeting').textContent = `${hello} · ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}`;
   $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
   const projEl = $('homeProject');
   if (projEl) projEl.title = sp ? sp.path : 'Choose a folder';

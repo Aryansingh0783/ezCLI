@@ -115,9 +115,18 @@ const THEME_PRESETS = {
   ocean: { label: 'Ocean', theme: 'dark', palette: 'ocean', accent: 'teal', swatch: '#0d1f26' }
 };
 
+/** Briefly enable colour transitions so a theme change fades instead of snapping. */
+function fadeTheme() {
+  const root = document.documentElement;
+  root.classList.add('theming');
+  clearTimeout(fadeTheme.t);
+  fadeTheme.t = setTimeout(() => root.classList.remove('theming'), 380);
+}
+
 function applyPreset(key) {
   const p = THEME_PRESETS[key];
   if (!p) return;
+  fadeTheme();
   prefs.theme = p.theme;
   prefs.palette = p.palette;
   prefs.accent = p.accent;
@@ -218,6 +227,7 @@ hooks.boot.push(() => {
     seg.addEventListener('click', (e) => {
       const b = e.target.closest('[data-accent]');
       if (!b) return;
+      fadeTheme();
       prefs.accent = b.dataset.accent;
       savePrefs();
       applyAccent();
