@@ -22,7 +22,6 @@ const Graphify = {
       try {
         const r = await invoke('graphify_auto', { cwd });
         if (r === 'built') {
-          toast('Project graph updated.');
           await Brain.update(true);
         }
       } catch {

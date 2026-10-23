@@ -648,3 +648,22 @@
   background: color-mix(in srgb, var(--text) 10%, transparent);
   color: var(--text);
 }
+
+
+/* ================================ QOL ================================== */
+/* Uninstalled agents are clickable (they open the installer); only dim them. */
+:root:root .agent-card.missing {
+  opacity: 0.62;
+  box-shadow: none;
+  cursor: pointer;
+}
+:root:root .agent-card.missing:hover {
+  opacity: 0.95;
+  transform: translateY(-2px);
+}
+/* Dropping a folder on the home screen. */
+:root:root .home.drop-ready {
+  outline: 2px dashed color-mix(in srgb, var(--brand) 65%, transparent);
+  outline-offset: -10px;
+  background: color-mix(in srgb, var(--brand) 5%, transparent);
+}

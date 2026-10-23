@@ -133,6 +133,20 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.4.2
+
+Quality-of-life fixes:
+
+- **Terminal copy and paste that works like a real terminal.** Ctrl+C copies
+  when text is selected (and still interrupts the CLI when nothing is), Ctrl+C
+  never gets in the way of stopping a run, and right-click copies a selection
+  or pastes the clipboard.
+- **Uninstalled agents are no longer dead cards.** Click one and ezCLI shows
+  the exact install command and runs it only after you confirm.
+- **Drop a folder on the home screen to open it as a project.**
+- **Ctrl+Tab / Ctrl+Shift+Tab** switch between tabs.
+- No more "Project graph updated" popup every time a session starts.
+
 ### New in 2.2.0
 
 - **A second brain you can actually read.** ezCLI now draws its own map of

@@ -804,7 +804,7 @@ function buildParked(sn) {
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(host);
-  term.attachCustomKeyEventHandler((e) => !isAppShortcut(e));
+  wireTerminalInput(term, host);
 
 
   const s = {
@@ -897,7 +897,7 @@ async function createSession(agentId, opts = {}) {
   }
   term.open(host);
   // Our Ctrl+Alt shortcuts must never be swallowed by the terminal.
-  term.attachCustomKeyEventHandler((e) => !isAppShortcut(e));
+  wireTerminalInput(term, host);
 
   const count = state.sessions.filter((x) => x.agentId === agentId).length + 1;
   const s = {
@@ -1462,12 +1462,12 @@ function renderHome() {
 
   $('agentStrip').innerHTML = state.agents
     .map(
-      (x) => `<button class="agent-option agent-card ${x.id === prefs.agentId ? 'selected' : ''}" data-agent="${esc(x.id)}"
-        role="radio" aria-checked="${x.id === prefs.agentId}" ${x.available ? '' : 'disabled'}
-        title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH`)}">
+      (x) => `<button class="agent-option agent-card ${x.id === prefs.agentId ? 'selected' : ''} ${x.available ? '' : 'missing'}" data-agent="${esc(x.id)}"
+        role="radio" aria-checked="${x.id === prefs.agentId}"
+        title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH. Click to install it.`)}">
         <span class="agent-card-ico">${ICONS[x.icon] || ICONS.term}</span>
         <span class="agent-card-text"><span class="agent-card-name">${esc(x.label)}</span>
-        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Not installed'}</span></span>
+        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Not installed · click to install'}</span></span>
         ${x.free ? '<span class="free-badge">Free</span>' : ''}
       </button>`
     )
@@ -1854,14 +1854,28 @@ async function pasteImages(e) {
  *  delivers real paths for native drops, so nothing is read into memory. */
 function wireFileDrop() {
   const composer = $('ptyComposer');
-  const off = () => composer.classList.remove('drop-ready');
-  listen('tauri://drag-enter', () => active() && composer.classList.add('drop-ready'));
+  const off = () => {
+    composer.classList.remove('drop-ready');
+    $('home').classList.remove('drop-ready');
+  };
+  listen('tauri://drag-enter', () => (active() ? composer : $('home')).classList.add('drop-ready'));
   listen('tauri://drag-leave', off);
-  listen('tauri://drag-drop', (e) => {
+  listen('tauri://drag-drop', async (e) => {
     off();
     const paths = (e.payload && e.payload.paths) || [];
-    if (!paths.length || !active()) return;
-    addAttachments(paths);
+    if (!paths.length) return;
+    if (active()) return addAttachments(paths);
+    // No session open: a dropped folder becomes a project.
+    let added = 0;
+    for (const p of paths) {
+      const isDir = await invoke('list_dir', { path: p }).then(() => true, () => false);
+      if (isDir) {
+        addSpace(p, { silent: true });
+        added++;
+      }
+    }
+    if (added) toast(`Opened ${added === 1 ? 'the folder' : `${added} folders`} as ${added === 1 ? 'a project' : 'projects'}.`, 'ok');
+    else toast('Drop a folder here to open it as a project, or open a session first to attach files.');
   });
 }
 
@@ -3001,6 +3015,38 @@ async function syncMaxIcon() {
 
 /* --------------------------------------------------------------- shortcuts */
 
+/** Keys the terminal must not swallow, plus the clipboard behaviour people expect
+ *  from a Windows terminal: Ctrl+C copies when text is selected (and still sends
+ *  an interrupt when nothing is), Ctrl+Shift+C always copies, and a right-click
+ *  copies a selection or pastes the clipboard. */
+function wireTerminalInput(term, host) {
+  term.attachCustomKeyEventHandler((e) => {
+    if (isAppShortcut(e)) return false;
+    if (e.type !== 'keydown') return true;
+    if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Tab') return false;
+    if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'KeyC' && term.hasSelection()) {
+      copy(term.getSelection());
+      term.clearSelection();
+      return false;
+    }
+    return true;
+  });
+  host.addEventListener('contextmenu', async (e) => {
+    e.preventDefault();
+    if (term.hasSelection()) {
+      copy(term.getSelection());
+      term.clearSelection();
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) term.paste(text);
+    } catch {
+      toast('Couldn’t read the clipboard. Use Ctrl+V to paste.', 'error');
+    }
+  });
+}
+
 function isAppShortcut(e) {
   if (e.type !== 'keydown' || !(e.ctrlKey && e.altKey) || e.metaKey) return false;
   // AltGr reports as Ctrl+Alt on Windows; it types characters, never shortcuts.
@@ -3111,6 +3157,19 @@ function autoGrow(el) {
 
 function wire() {
   window.addEventListener('keydown', onShortcut, true);
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey || e.code !== 'Tab') return;
+      const list = spaceSessions();
+      if (list.length < 2) return;
+      e.preventDefault();
+      const idx = list.findIndex((x) => x.id === state.activeId);
+      const step = e.shiftKey ? -1 : 1;
+      selectSession(list[(idx + step + list.length) % list.length].id);
+    },
+    true
+  );
   $('scrim').addEventListener('click', closeMenu);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('menu').hidden) closeMenu();
@@ -3293,7 +3352,12 @@ function wire() {
   });
   $('agentStrip').addEventListener('click', (e) => {
     const b = e.target.closest('[data-agent]');
-    if (b && !b.disabled) chooseAgent(b.dataset.agent);
+    if (!b || b.disabled) return;
+    if (b.classList.contains('missing')) {
+      if (typeof Installer !== 'undefined') Installer.open(b.dataset.agent);
+      return;
+    }
+    chooseAgent(b.dataset.agent);
   });
 
   // session head
