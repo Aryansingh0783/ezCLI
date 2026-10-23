@@ -20,7 +20,9 @@ const { isContinuationMode, freshModeId, modelSwitchPlan } = SessionRouting;
 const PREFS_KEY = 'ezcli.v2';
 const DEFAULT_PREFS = {
   theme: 'light',
-  palette: 'daylight',
+  palette: 'claude',
+  accent: 'coral',
+  calm: true,
   termFont: 'jetbrains',
   termLine: 'comfortable',
   termCursor: 'bar',
@@ -309,7 +311,8 @@ const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'd
 function applyTheme() {
   const t = resolvedTheme();
   document.documentElement.dataset.theme = t;
-  document.documentElement.dataset.palette = prefs.palette || 'daylight';
+  document.documentElement.dataset.palette = prefs.palette || 'claude';
+  document.documentElement.dataset.layout = prefs.calm === false ? 'dashboard' : 'calm';
   syncTermBackground();
   for (const s of state.sessions) s.term.options.theme = TERM_THEMES[t];
   document.querySelectorAll('[data-theme-opt]').forEach((b) => {
@@ -1584,10 +1587,12 @@ function renderSessionAgentNotice(s = active()) {
 function renderHome() {
   const sp = space();
   const a = agent(prefs.agentId);
-  $('homeTitle').textContent = 'Overview';
   const hour = new Date().getHours();
   const hello = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  $('homeGreeting').textContent = `${hello} · ${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}`;
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const calm = prefs.calm !== false;
+  $('homeTitle').textContent = calm ? hello : 'Overview';
+  $('homeGreeting').textContent = calm ? today : `${hello} · ${today}`;
   $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
   const projEl = $('homeProject');
   if (projEl) projEl.title = sp ? sp.path : 'Choose a folder';

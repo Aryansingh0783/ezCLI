@@ -1041,3 +1041,6 @@
 
 /* Container-type removes a tab's intrinsic width, so give it one: otherwise a lone tab collapses to its minimum. */
 .tab { width: 220px; }
+
+/* Header chips never wrap onto two lines; the row shrinks the title instead. */
+.head-chip { white-space: nowrap; flex: none; }

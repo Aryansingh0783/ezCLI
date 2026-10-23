@@ -133,6 +133,19 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.0
+
+- **Calm layout (new default).** A quieter, Claude-desktop-style look: a warm
+  "Sand" theme with a terracotta accent, a serif greeting, one large message
+  box with the agent, model and mode beside it, and quick starts as small
+  chips. The stats tiles, agent grid and usage readouts are gone from view.
+- **Controls appear when you reach for them.** In a session, Restart, Stop,
+  Export and the header chips fade in on hover, and the Ctrl+C, Esc, History
+  and Prompts buttons dim until you use the composer. The status bar no longer
+  shows token counts or the raw command line.
+- Turn it off under **Settings, Calm layout** to get the old dashboard back.
+- **Fix:** the header chips no longer wrap onto two lines.
+
 ### New in 2.8.4
 
 - **Fix: a lone tab was squashed.** With one session open, its tab shrank to a

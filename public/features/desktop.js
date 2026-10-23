@@ -105,6 +105,7 @@ const ACCENTS = {
 /* Full theme presets: each sets the base light/dark mode, a page/card palette
  * (data-palette, defined in reference.css) and an accent, in one tap. */
 const THEME_PRESETS = {
+  claude: { label: 'Sand', theme: 'light', palette: 'claude', accent: 'coral', swatch: '#f3f0e8' },
   daylight: { label: 'Daylight', theme: 'light', palette: 'daylight', accent: 'lime', swatch: '#e7edfa' },
   mist: { label: 'Mist', theme: 'light', palette: 'mist', accent: 'sky', swatch: '#eceff4' },
   grape: { label: 'Grape', theme: 'light', palette: 'grape', accent: 'violet', swatch: '#efeafb' },
@@ -292,7 +293,8 @@ hooks.boot.push(() => {
     prefCloseToTray: ['closeToTray', false],
     prefTranscripts: ['keepTranscripts', true],
     prefProjectDefaults: ['projectDefaultsOff', false, true],
-    prefShowPaid: ['showPaidModels', false]
+    prefShowPaid: ['showPaidModels', false],
+    prefCalm: ['calm', true]
   };
   for (const [id, [key, fallback, inverted]] of Object.entries(toggles)) {
     const box = $(id);
@@ -302,6 +304,10 @@ hooks.boot.push(() => {
     box.addEventListener('change', () => {
       prefs[key] = inverted ? !box.checked : box.checked;
       savePrefs();
+      if (key === 'calm') {
+        applyTheme();
+        renderHome();
+      }
     });
   }
   applyAccent();

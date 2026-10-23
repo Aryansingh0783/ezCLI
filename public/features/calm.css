@@ -1,0 +1,115 @@
+/* Calm layout: a quieter, Claude-desktop-style home and session chrome.
+ * Switched by html[data-layout='calm'] (Settings -> "Calm layout", on by default).
+ * Loaded after reference.css, so these rules win on specificity ties. */
+
+/* ------------------------------ warm palette ----------------------------- */
+:root:root:root[data-palette='claude'] {
+  --page: #f3f0e8;
+  --panel: #faf9f5;
+  --rail-dark: #2a2926;
+  --tint-a: #f0ece2; --tint-b: #efebe0; --tint-c: #f2eee5; --tint-d: #eeeae0;
+}
+:root[data-palette='claude'][data-theme='light']:root { --surface-2: #f6f3ec; }
+
+/* ------------------------------ home screen ------------------------------ */
+html[data-layout='calm'] .home .dash-head {
+  position: relative;
+  display: block;
+  max-width: 740px;
+  margin: 6vh auto 22px;
+  text-align: center;
+}
+html[data-layout='calm'] .home .dash-titles { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+html[data-layout='calm'] .home #homeTitle {
+  margin: 0;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: clamp(30px, 4.6vw, 42px);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+html[data-layout='calm'] .home .dash-sub { margin: 0; font-size: 13px; color: var(--ink-faint, var(--faint)); }
+html[data-layout='calm'] .home .dash-head-actions { position: absolute; top: -4vh; right: 0; opacity: 0.7; }
+html[data-layout='calm'] .home .dash-head-actions:hover { opacity: 1; }
+
+html[data-layout='calm'] .home .dash-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 740px;
+  margin: 0 auto;
+}
+html[data-layout='calm'] .home .dash-col { display: contents; }
+html[data-layout='calm'] .home .dash-hero { order: 1; }
+html[data-layout='calm'] .home .dash-promo { order: 2; }
+html[data-layout='calm'] .home .dash-table { order: 3; }
+html[data-layout='calm'] .home .dash-assets,
+html[data-layout='calm'] .home .dash-stats,
+html[data-layout='calm'] .home #dashStats { display: none !important; }
+
+html[data-layout='calm'] .home .dash-hero > .dash-section-head { display: none; }
+html[data-layout='calm'] .home .dash-hero .composer-box {
+  padding: 16px 18px 12px;
+  border-radius: 22px;
+  min-height: 130px;
+  background: var(--panel) !important;
+  box-shadow: 0 1px 2px rgb(40 30 10 / 6%), 0 8px 28px rgb(40 30 10 / 7%);
+}
+html[data-layout='calm'] .home #homeInput { font-size: 15.5px; line-height: 1.55; }
+html[data-layout='calm'] .home #homeAgent { display: inline-flex; }
+html[data-layout='calm'] .home .send-key { display: none; }
+
+/* quick starts become a quiet row of chips under the box */
+html[data-layout='calm'] .home .dash-promo {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  border: 0;
+}
+html[data-layout='calm'] .home .dash-promo-body > h2,
+html[data-layout='calm'] .home .dash-promo-body > p { display: none; }
+html[data-layout='calm'] .home .suggested-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+html[data-layout='calm'] .home .suggested-prompt {
+  display: inline-flex;
+  width: auto;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--ink) !important;
+  font-size: 13px;
+  box-shadow: none;
+}
+html[data-layout='calm'] .home .suggested-prompt:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
+html[data-layout='calm'] .home .suggested-prompt-mark,
+html[data-layout='calm'] .home .suggested-prompt span:last-child { font-size: 0; }
+html[data-layout='calm'] .home .suggested-prompt b { font-size: 13px; font-weight: 500; color: var(--ink) !important; }
+html[data-layout='calm'] .home .suggested-prompt-mark { display: none; }
+
+/* the recent list is a quiet footer, not a table */
+html[data-layout='calm'] .home .dash-table { width: 100%; margin-top: 10px; padding: 0; background: none; box-shadow: none; border: 0; }
+html[data-layout='calm'] .home .session-thead { display: none; }
+html[data-layout='calm'] .home .dash-table .dash-section-head h2 { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+
+/* ----------------------------- less chrome ------------------------------ */
+/* usage / token counters and the raw command line leave the status bar */
+html[data-layout='calm'] .statusbar .live-usage,
+html[data-layout='calm'] .statusbar #stCmd,
+html[data-layout='calm'] .statusbar #stSize { display: none !important; }
+
+/* session header: title and agent stay; the rest appears when you reach for it */
+html[data-layout='calm'] .session-head > :not(.agent-status):not(.head-title):not(.grow) {
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+html[data-layout='calm'] .session-head:hover > :not(.agent-status):not(.head-title):not(.grow),
+html[data-layout='calm'] .session-head:focus-within > :not(.agent-status):not(.head-title):not(.grow) { opacity: 1; }
+
+/* composer helpers (Ctrl+C, Esc, History, Prompts) are there, but not shouting */
+html[data-layout='calm'] #ptyComposer .composer-row > :not(.plus-btn):not(.send-btn) {
+  opacity: 0.45;
+  transition: opacity 0.16s ease;
+}
+html[data-layout='calm'] #ptyComposer:hover .composer-row > :not(.plus-btn):not(.send-btn),
+html[data-layout='calm'] #ptyComposer:focus-within .composer-row > :not(.plus-btn):not(.send-btn) { opacity: 1; }
+html[data-layout='calm'] #ptyComposer { border-radius: 20px; }
+html[data-layout='calm'] #ptyInput { font-size: 14.5px; }
