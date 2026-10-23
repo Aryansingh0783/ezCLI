@@ -1,0 +1,241 @@
+/* Reference restyle: a light, airy, card-based dashboard — soft blue-grey
+ * page, white rounded panels floating with a gap, a dark rounded rail, pastel
+ * tinted cards, soft shadows and friendly bold type. Loaded last. The terminal
+ * pane and the rail stay dark in both themes, the way the reference keeps its
+ * sidebar and promo card dark against a light page. */
+
+:root:root:root {
+  --page: #e7edfa;
+  --panel: #ffffff;
+  --ink: #141622;
+  --ink-soft: #5a6076;
+  --ink-faint: #878da0;
+  --line: #e7eaf3;
+  --rail-dark: #15171d;
+  --rail-ink: #cfd2da;
+  --rail-ink-dim: #767a86;
+  --card-shadow: 0 1px 2px rgb(20 28 60 / 6%), 0 14px 34px -20px rgb(24 34 74 / 34%);
+  --card-shadow-sm: 0 1px 2px rgb(20 28 60 / 5%), 0 8px 20px -14px rgb(24 34 74 / 26%);
+  --tint-a: #ece7f7;   /* lavender */
+  --tint-b: #dff0e4;   /* mint */
+  --tint-c: #f6efd8;   /* cream */
+  --tint-d: #e2ecfb;   /* sky */
+  --r-lg: 22px;
+  --r-md: 16px;
+  --r-sm: 12px;
+}
+
+/* ---------- theme-agnostic: the page, the rail and the terminal ---------- */
+:root:root .app {
+  box-shadow: none;
+  background: var(--page);
+}
+:root:root .app-body {
+  gap: 10px;
+  padding: 0 10px 10px;
+  background: var(--page);
+}
+:root:root .tabbar {
+  background: var(--page);
+  border-bottom: 0;
+  padding-left: 12px;
+}
+
+/* dark, rounded rail — floats like the reference sidebar */
+:root:root .rail {
+  margin: 0;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--rail-dark);
+  box-shadow: var(--card-shadow);
+}
+:root:root .rail-btn {
+  color: var(--rail-ink-dim);
+}
+:root:root .rail-btn:hover,
+:root:root .rail-btn:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  color: #fff;
+}
+:root:root .rail-label {
+  color: inherit;
+}
+:root:root .rail-add {
+  border-color: rgb(255 255 255 / 16%);
+  color: var(--rail-ink);
+}
+:root:root .space {
+  background: rgb(255 255 255 / 6%);
+  color: var(--rail-ink);
+}
+:root:root .space:hover {
+  border-color: rgb(255 255 255 / 20%);
+  color: #fff;
+}
+:root:root .space.active {
+  background: #fff;
+  color: var(--rail-dark);
+  box-shadow: none;
+}
+:root:root .space.active::before {
+  background: var(--brand);
+}
+:root:root .space .status-dot {
+  border-color: var(--rail-dark);
+}
+
+/* the main content is a white panel that floats on the page */
+:root:root .main {
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+/* terminal stays a dark, dense pane for CLI output legibility */
+:root:root {
+  --term-bg: #15171d;
+}
+:root:root .terminal-panel {
+  margin: 0 12px;
+  border-radius: var(--r-md);
+  background: #15171d;
+}
+
+/* ---------------------------- light theme skin --------------------------- */
+:root[data-theme='light']:root {
+  --surface: #ffffff;
+  --surface-2: #f3f5fb;
+  --raised: #eef1f9;
+  --border: var(--line);
+  --chrome: var(--page);
+  --text: var(--ink);
+  --muted: var(--ink-soft);
+  --faint: var(--ink-faint);
+}
+:root[data-theme='light'][data-style='glass']:root {
+  --glass: #ffffff;
+  --glass-strong: #ffffff;
+  --glass-pane: #15171d;
+  --base: var(--page);
+  --aurora-opacity: 0;
+  --border: var(--line);
+}
+
+/* --------------------------------- home ---------------------------------- */
+:root:root .home h1 {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+:root:root .home .composer-box {
+  border: 0;
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+}
+:root[data-theme='light']:root .home .composer-box {
+  background: #f7f9fd;
+}
+:root:root .home .composer-box:focus-within {
+  box-shadow: var(--card-shadow), 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+:root:root .project-trigger {
+  border-radius: 999px;
+}
+
+/* recent-session cards get the reference's rotating pastel tints */
+:root:root .continue-row {
+  gap: 12px;
+}
+:root:root .continue-card {
+  border: 0;
+  border-radius: var(--r-md);
+  box-shadow: var(--card-shadow-sm);
+  padding: 14px 16px;
+  transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+:root:root .continue-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow);
+}
+:root[data-theme='light']:root .continue-card:nth-child(4n+2) { background: var(--tint-a); }
+:root[data-theme='light']:root .continue-card:nth-child(4n+3) { background: var(--tint-b); }
+:root[data-theme='light']:root .continue-card:nth-child(4n+4) { background: var(--tint-c); }
+:root[data-theme='light']:root .continue-card:nth-child(4n+5) { background: var(--tint-d); }
+:root[data-theme='light']:root .continue-title { color: var(--ink); }
+:root:root .continue-more {
+  border-radius: var(--r-md);
+}
+
+:root:root .suggested-prompt {
+  border: 0;
+  border-radius: var(--r-md);
+  box-shadow: var(--card-shadow-sm);
+}
+:root[data-theme='light']:root .suggested-prompt {
+  background: #f7f9fd;
+}
+:root[data-theme='light']:root .suggested-prompt:hover {
+  background: #fff;
+}
+
+:root:root .agent-option {
+  border-radius: 999px;
+}
+:root[data-theme='light']:root .agent-option {
+  background: #f1f4fb;
+}
+:root[data-theme='light']:root .agent-option.selected {
+  background: color-mix(in srgb, var(--brand) 16%, #fff);
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+}
+
+/* -------------------------- session chrome ------------------------------- */
+:root:root .session-head {
+  padding: 0 14px 0 18px;
+}
+:root[data-theme='light']:root .head-chip {
+  background: #eef1f9;
+  color: var(--ink-soft);
+}
+:root[data-theme='light']:root .head-chip:hover {
+  background: #e4e9f5;
+  color: var(--ink);
+}
+
+:root:root .statusbar {
+  background: var(--page);
+  border-top: 0;
+}
+
+/* -------------------------- menus & sheets ------------------------------- */
+:root:root .menu {
+  border-radius: var(--r-md);
+  box-shadow: var(--card-shadow);
+}
+:root[data-theme='light']:root .menu {
+  background: #fff;
+  border-color: var(--line);
+}
+:root:root .sheet {
+  border-radius: var(--r-lg);
+}
+:root[data-theme='light']:root .sheet {
+  background: #fff;
+  border-color: var(--line);
+}
+
+/* primary action keeps a soft, friendly fill */
+:root:root .btn.primary,
+:root:root .send-btn {
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--brand) 55%, transparent);
+}
+:root:root .send-btn {
+  border-radius: 999px;
+}
+
+/* scrollbars tuned for the light page */
+:root[data-theme='light']:root ::-webkit-scrollbar-thumb {
+  background: #d3d9e8;
+}

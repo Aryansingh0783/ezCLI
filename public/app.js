@@ -19,7 +19,7 @@ const { isContinuationMode, freshModeId, modelSwitchPlan } = SessionRouting;
 
 const PREFS_KEY = 'ezcli.v2';
 const DEFAULT_PREFS = {
-  theme: 'system',
+  theme: 'light',
   fontSize: 13,
   zoom: 1,
   spaces: [],
