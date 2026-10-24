@@ -135,6 +135,15 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 3.2.0
+
+- **Closer to the Claude desktop app.** In the Sand theme the window is now flat, like
+  Claude's: a tinted sidebar and title bar, one continuous light content area split by a
+  hairline, no floating card. Claude's own light colours for text and borders, a white
+  message box with a hairline border and soft lift, and a terracotta spark before a serif
+  greeting. The message box asks "How can I help you today?".
+- **Fix:** faint text on the tinted bars is darker so it stays readable.
+
 ### New in 3.1.2
 
 - **Second brain: smaller, separated bubbles.** The bubbles in the second-brain map were
