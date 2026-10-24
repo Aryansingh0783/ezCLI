@@ -133,6 +133,11 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.2
+
+- **Light sidebar in the Sand theme.** The project rail is now a soft, borderless
+  column on the page colour, like the Claude desktop app, instead of a dark slab.
+
 ### New in 2.9.1
 
 - **Fix:** the search box in Sessions no longer draws a double focus ring.
