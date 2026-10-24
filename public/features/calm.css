@@ -249,7 +249,6 @@ html[data-layout='calm'] .home .pill-group { gap: 4px; }
 
   html[data-layout='calm'] .rail-sessions-head { margin-top: 18px; padding-bottom: 6px; font-weight: 500; font-size: 11.5px; text-transform: none; opacity: 0.85; }
   html[data-layout='calm'] .rail-session { height: 30px; border-radius: 8px; }
-  html[data-layout='calm'] .rail-saved:nth-child(n+7) { display: none; }
   html[data-layout='calm'] .rail-star:not(.on) { opacity: 0; transition: opacity 0.12s ease; }
   html[data-layout='calm'] .rail-saved:hover .rail-star,
   html[data-layout='calm'] .rail-saved:focus-within .rail-star { opacity: 1; }
@@ -386,3 +385,17 @@ html[data-layout='calm'] .statusbar { font-size: 11.5px; opacity: 0.9; }
 :root[data-style='glass']:root[data-layout='calm'] .home .pill-pick:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent) !important;
 }
+
+/* ===================== transparent terminal =====================
+ * "Transparent": the pane has no fill at all and the terminal sits on the page. On a light
+ * window the text switches to dark ink (see syncTermBackground in app.js). */
+:root[data-term-glass='clear'] .terminal-panel {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  border: 1px solid color-mix(in srgb, var(--ink, #1f1d19) 11%, transparent);
+}
+:root[data-term-glass='clear'] .terminal-panel .xterm-viewport { background-color: transparent !important; }
+:root[data-term-glass='clear'][data-theme='light'] .terminal-panel .xterm-scrollable-element ::-webkit-scrollbar-thumb { background: rgb(60 50 20 / 22%); }
+.term-look-hint { margin: -2px 0 8px; font-size: 12px; line-height: 1.45; }

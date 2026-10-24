@@ -18,6 +18,8 @@ videos in the chat, and a compare mode that runs one prompt on several agents at
 
 ![The same home screen in the dark Midnight theme](docs/screenshot-launcher-dark.png)
 
+![A session with the terminal background set to Transparent: the terminal sits on the page](docs/screenshot-terminal-clear.png)
+
 ![A live session with the file explorer docked beside it](docs/screenshot-session.png)
 
 ![Team chat: several agents working together in one conversation](docs/screenshot-team.png)
@@ -132,6 +134,18 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 3.1.0
+
+- **Transparent terminal.** The terminal pane now has no fill: it sits directly on the
+  window. On a light window the text switches to dark ink; on a dark window it stays
+  light. Pick **Transparent**, **Dark glass** or **Solid** under Settings, Terminal
+  background. A few CLIs draw as if the screen were dark (a logo can look washed out on
+  a light window); Dark glass fixes those. The graphics-card renderer always draws solid.
+- **Fix:** the "Earlier" list in the sidebar disappeared when many sessions were open.
+- **Fix:** the Instructions button is back in the compact sidebar.
+- **Fix:** the composer pickers stay plain text with the Liquid glass style on.
+- **Fix:** Open in Obsidian no longer says "Vault not found" (3.0.1).
 
 ### New in 3.0.3
 

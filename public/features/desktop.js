@@ -239,8 +239,8 @@ hooks.boot.push(() => {
       });
       $('termBlink').checked = prefs.termBlink !== false;
       $('termGpu').checked = prefs.gpu === true;
-      $('termGlass').checked = prefs.termGlass !== false;
-      $('termGlass').disabled = prefs.gpu === true;
+      $('termLook').value = prefs.termLook || (prefs.termGlass === false ? 'solid' : 'clear');
+      $('termLook').disabled = prefs.gpu === true;
     };
     const change = (key, value) => {
       prefs[key] = value;
@@ -258,7 +258,10 @@ hooks.boot.push(() => {
       if (b) change('termCursor', b.dataset.termCursor);
     });
     $('termBlink').addEventListener('change', (e) => change('termBlink', e.target.checked));
-    $('termGlass').addEventListener('change', (e) => change('termGlass', e.target.checked));
+    $('termLook').addEventListener('change', (e) => {
+      change('termLook', e.target.value);
+      applyTheme();
+    });
     $('termGpu').addEventListener('change', (e) => {
       prefs.gpu = e.target.checked;
       savePrefs();

@@ -103,7 +103,7 @@ const RailSessions = {
     const here = Sessions.recentSaved().filter((m) => m.title && m.cwd && m.cwd.toLowerCase().replace(/[\/]+$/, '').startsWith(root) && !open.has(m.title.toLowerCase()));
     const seen = new Set();
     const uniq = here.filter((m) => (seen.has(m.title) ? false : seen.add(m.title)));
-    return [...uniq.filter((m) => pinned.has(m.id)), ...uniq.filter((m) => !pinned.has(m.id))].slice(0, 8);
+    return [...uniq.filter((m) => pinned.has(m.id)), ...uniq.filter((m) => !pinned.has(m.id))].slice(0, 6);
   }
 };
 

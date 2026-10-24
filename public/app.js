@@ -148,6 +148,7 @@ const TERM_THEMES = {
 // The terminal pane is always a dark surface, in the light themes too (see
 // reference.css), so it always uses the dark colour set. The light set draws
 // dark text, which is unreadable on that pane.
+const TERM_LIGHT = TERM_THEMES.light;
 TERM_THEMES.light = TERM_THEMES.dark;
 
 /* ---------------------------------------------------------- terminal setup */
@@ -163,15 +164,35 @@ const TERM_LINES = { compact: 1.15, comfortable: 1.35, relaxed: 1.55 };
 /** The terminal paints an opaque background that matches its pane exactly (the pane
  *  colour changes with the palette). A transparent terminal looks fine in the HTML
  *  renderer but the GPU renderer composites it as black boxes behind the text. */
-/** A see-through terminal needs the HTML renderer; the GPU renderer cannot do it. */
-const termGlass = () => prefs.termGlass !== false && prefs.gpu !== true;
+/** How the terminal pane is painted:
+ *   clear  fully transparent; on a light window the text switches to dark ink so the
+ *          terminal simply sits on the page, on a dark window it stays light text
+ *   glass  a translucent, blurred dark pane
+ *   solid  an opaque dark pane
+ *  Transparency needs the HTML renderer; the GPU renderer always draws solid. */
+const termLook = () => (prefs.gpu === true ? 'solid' : prefs.termLook || (prefs.termGlass === false ? 'solid' : 'clear'));
+
+function cssRgb(value, fallback) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(value).trim());
+  if (!m) return fallback;
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
 
 function syncTermBackground() {
-  const bg = getComputedStyle(document.documentElement).getPropertyValue('--term-bg').trim() || '#15171d';
-  const glass = termGlass();
-  TERM_THEMES.dark.background = glass ? 'rgba(0, 0, 0, 0)' : bg;
+  const cs = getComputedStyle(document.documentElement);
+  const bg = cs.getPropertyValue('--term-bg').trim() || '#15171d';
+  const panel = cs.getPropertyValue('--panel').trim() || '#ffffff';
+  const look = termLook();
+  const lightInk = look === 'clear' && resolvedTheme() === 'light';
+  // The channels of a transparent background still tell the contrast fixer what the text sits on.
+  TERM_THEMES.dark.background = look === 'solid' ? bg : `rgba(${look === 'clear' ? cssRgb(bg, '21, 23, 29') : '0, 0, 0'}, 0)`;
   TERM_THEMES.dark.cursorAccent = bg;
-  document.documentElement.dataset.termGlass = glass ? 'on' : 'off';
+  TERM_THEMES.light = lightInk
+    ? { ...TERM_LIGHT, background: `rgba(${cssRgb(panel, '255, 255, 255')}, 0)`, cursorAccent: panel }
+    : TERM_THEMES.dark;
+  const root = document.documentElement.dataset;
+  root.termGlass = look === 'glass' ? 'on' : look === 'clear' ? 'clear' : 'off';
 }
 
 /** One configuration for every terminal in the app. */
@@ -194,7 +215,7 @@ function termOptions(extra = {}) {
     rescaleOverlappingGlyphs: true,
     smoothScrollDuration: 70,
     allowProposedApi: true,
-    allowTransparency: termGlass(),
+    allowTransparency: termLook() !== 'solid',
     theme: TERM_THEMES[resolvedTheme()],
     scrollback: 20000,
     ...extra

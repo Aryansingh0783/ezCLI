@@ -367,7 +367,9 @@
               <button class="theme-option" data-term-cursor="underline" role="radio">Underline</button>
             </div></div>
           <label class="toggle-row"><input type="checkbox" id="termBlink" /> <span>Blinking cursor</span></label>
-          <label class="toggle-row"><input type="checkbox" id="termGlass" /> <span>See-through terminal (the pane lets the window colour show through; off while the graphics-card renderer is on)</span></label>
+          <label class="term-pref-row"><span>Terminal background</span>
+            <select id="termLook" class="select" aria-label="Terminal background"><option value="clear">Transparent</option><option value="glass">Dark glass</option><option value="solid">Solid</option></select></label>
+          <p class="muted term-look-hint">Transparent follows your window colour. A few CLIs draw as if the screen were dark (a logo can look washed out on a light window); pick Dark glass if one does.</p>
           <label class="toggle-row"><input type="checkbox" id="termGpu" /> <span>Draw the terminal with the graphics card (experimental: faster on huge output, but text can look tighter on a 100% display)</span></label>
         </div>
         <div class="stepper">
