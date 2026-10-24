@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A liquid-glass desktop window for Claude Code, Codex, OpenCode, Antigravity, Gemini CLI, Ollama and Freebuff.
+  A calm desktop window for Claude Code, Codex, OpenCode, Antigravity, Gemini CLI, Ollama and Freebuff.
 </p>
 
 ---
@@ -14,7 +14,7 @@ The window adds the parts a bare terminal lacks: tabs, an agent switcher, a file
 browser with git actions, model, effort and mode flags you pick before launch, images and
 videos in the chat, and a compare mode that runs one prompt on several agents at once.
 
-![The calm home screen: one message box, quick starts and recent sessions](docs/screenshot-launcher.png)
+![The calm home screen: one message box, your sessions in the sidebar](docs/screenshot-launcher.png)
 
 ![The same home screen in the dark Midnight theme](docs/screenshot-launcher-dark.png)
 
@@ -132,6 +132,28 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 3.0.0
+
+The calm redesign, as a major release.
+
+- **A new look, modelled on the Claude desktop app.** A warm Sand theme, a labelled
+  sidebar with New session, your projects, the open project's sessions with
+  stars, and Instructions, Brain, Browser, Settings. The tab strip steps aside on
+  wide windows; the sidebar is the session switcher. A quiet home screen with one
+  message box, and a composer footer with mode on the left and agent, model and
+  effort on the right. Flat, borderless buttons. Turn it off under
+  **Settings, Calm layout** for the old dashboard.
+- **See-through terminal.** The terminal background is now transparent over a
+  softly blurred pane, so the window colour shows faintly through it. Settings has
+  a switch; it turns itself off while the experimental graphics-card renderer is on.
+- **Project instructions** editor for `CLAUDE.md`, `AGENTS.md` and `GEMINI.md`.
+- **Terminal:** bundled JetBrains Mono, slash-command suggestions, clickable file
+  paths, Ctrl + wheel text size, copy terminal output, find in output.
+- **Fixes from a full scan.** Every theme in both layouts was checked for duplicate
+  ids, unnamed buttons and low-contrast text; the sidebar, active project name and
+  Done button contrast were fixed. A lone tab no longer collapses, the session header
+  no longer squeezes the title, and header buttons no longer wrap.
 
 ### New in 2.10.0
 

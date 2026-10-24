@@ -1,125 +1,51 @@
 <svg width="1280" height="440" viewBox="0 0 1280 440" fill="none" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="440" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0a0b0a"/>
-      <stop offset="0.55" stop-color="#121312"/>
-      <stop offset="1" stop-color="#171917"/>
+      <stop stop-color="#f6f3ec"/>
+      <stop offset="1" stop-color="#ece6d8"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(1010 150) rotate(130) scale(430 520)" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#b5cea5" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#b5cea5" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="win" x1="720" y1="70" x2="1210" y2="390" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1f211f"/>
-      <stop offset="1" stop-color="#191b19"/>
-    </linearGradient>
-    <linearGradient id="brandText" x1="92" y1="150" x2="92" y2="215" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#d8e6cc"/>
-    </linearGradient>
-    <filter id="soft" x="-20%" y="-20%" width="140%" height="160%">
-      <feDropShadow dx="0" dy="24" stdDeviation="30" flood-color="#000000" flood-opacity="0.55"/>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#3c320f" flood-opacity="0.14"/>
     </filter>
-    <clipPath id="winclip"><rect x="700" y="64" width="520" height="312" rx="18"/></clipPath>
   </defs>
+  <rect width="1280" height="440" fill="url(#bg)"/>
 
-  <!-- backdrop -->
-  <rect width="1280" height="440" rx="20" fill="url(#bg)"/>
-  <rect width="1280" height="440" rx="20" fill="url(#glow)"/>
-  <rect x="0.5" y="0.5" width="1279" height="439" rx="19.5" stroke="#2f322f"/>
+  <!-- the mark -->
+  <rect x="96" y="84" width="14" height="30" rx="3" fill="#c24a22"/>
+  <rect x="116" y="68" width="14" height="46" rx="3" fill="#c24a22"/>
 
-  <!-- faint dotted grid, top-left -->
-  <g fill="#ffffff" opacity="0.04">
-    <circle cx="70" cy="56" r="1.6"/><circle cx="110" cy="56" r="1.6"/><circle cx="150" cy="56" r="1.6"/>
-    <circle cx="70" cy="96" r="1.6"/><circle cx="110" cy="96" r="1.6"/><circle cx="150" cy="96" r="1.6"/>
+  <text x="96" y="196" font-family="Georgia, 'Times New Roman', serif" font-size="76" fill="#1f1d19" letter-spacing="-1.5">ezCLI</text>
+  <text x="96" y="248" font-size="28" fill="#3b372f">Run every coding CLI in one calm window.</text>
+  <text x="96" y="288" font-size="18" fill="#6f695c">Claude Code, Codex, Gemini, OpenCode, Ollama and Freebuff,</text>
+  <text x="96" y="314" font-size="18" fill="#6f695c">each in a real terminal.</text>
+
+  <g font-size="15" fill="#3b372f">
+    <rect x="96" y="346" width="168" height="34" rx="17" fill="#1f1d19" fill-opacity="0.06"/>
+    <text x="115" y="368">Real CLI, no harness</text>
+    <rect x="276" y="346" width="132" height="34" rx="17" fill="#1f1d19" fill-opacity="0.06"/>
+    <text x="296" y="368">Compare agents</text>
+    <rect x="420" y="346" width="116" height="34" rx="17" fill="#1f1d19" fill-opacity="0.06"/>
+    <text x="440" y="368">Calm layout</text>
   </g>
 
-  <!-- wordmark -->
-  <g transform="translate(92 86)">
-    <rect x="0" y="0" width="5" height="26" rx="2" fill="#b5cea5"/>
-    <rect x="9" y="8" width="5" height="18" rx="2" fill="#b5cea5"/>
-    <text x="28" y="22" font-size="27" font-weight="700" fill="#dedfdd" letter-spacing="-0.5">ezCLI</text>
+  <!-- a window -->
+  <g filter="url(#sh)">
+    <rect x="700" y="64" width="484" height="312" rx="18" fill="#faf9f5"/>
   </g>
-
-  <!-- headline -->
-  <text x="90" y="192" font-size="54" font-weight="600" letter-spacing="-1.6" fill="url(#brandText)">Run every coding CLI</text>
-  <text x="90" y="256" font-size="54" font-weight="600" letter-spacing="-1.6" fill="#dedfdd">in <tspan fill="#b5cea5">one</tspan> window.</text>
-
-  <!-- subhead -->
-  <text x="92" y="308" font-size="20" fill="#a0a39f">Claude Code, Codex, Gemini, OpenCode, Ollama</text>
-  <text x="92" y="336" font-size="20" fill="#a0a39f">and Freebuff, each in a real terminal.</text>
-
-  <!-- feature pills -->
-  <g font-size="14" fill="#c7cac5">
-    <g transform="translate(92 366)">
-      <rect width="196" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
-      <circle cx="20" cy="17" r="3.5" fill="#b5cea5"/>
-      <text x="36" y="22">Real CLI, no harness</text>
-    </g>
-    <g transform="translate(300 366)">
-      <rect width="152" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
-      <circle cx="20" cy="17" r="3.5" fill="#b5cea5"/>
-      <text x="36" y="22">Compare agents</text>
-    </g>
-    <g transform="translate(464 366)">
-      <rect width="122" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#2f322f"/>
-      <circle cx="20" cy="17" r="3.5" fill="#b5cea5"/>
-      <text x="36" y="22">Liquid glass</text>
-    </g>
-  </g>
-
-  <!-- app window preview -->
-  <g filter="url(#soft)">
-    <rect x="700" y="64" width="520" height="312" rx="18" fill="url(#win)" stroke="#343734"/>
-  </g>
-  <g clip-path="url(#winclip)">
-    <!-- title bar -->
-    <rect x="700" y="64" width="520" height="40" fill="#0e0f0e"/>
-    <circle cx="724" cy="84" r="5" fill="#cf4646"/>
-    <circle cx="744" cy="84" r="5" fill="#d9a441"/>
-    <circle cx="764" cy="84" r="5" fill="#5e9e55"/>
-    <!-- active tab -->
-    <rect x="792" y="72" width="128" height="24" rx="7" fill="#1c1d1c"/>
-    <circle cx="806" cy="84" r="3" fill="#b5cea5"/>
-    <text x="816" y="88" font-size="12" fill="#dedfdd">Claude Code 1</text>
-
-    <!-- sidebar -->
-    <rect x="700" y="104" width="30" height="272" fill="#0e0f0e"/>
-    <rect x="709" y="118" width="12" height="12" rx="3" fill="#b5cea5" opacity="0.85"/>
-    <rect x="709" y="142" width="12" height="12" rx="3" fill="#565a56"/>
-    <rect x="709" y="166" width="12" height="12" rx="3" fill="#565a56"/>
-
-    <!-- chips row -->
-    <g transform="translate(746 116)" font-size="11" fill="#a0a39f">
-      <rect width="86" height="22" rx="11" fill="#1c1d1c" stroke="#2f322f"/>
-      <text x="12" y="15">Claude Code</text>
-      <rect x="96" width="62" height="22" rx="11" fill="#1c1d1c" stroke="#2f322f"/>
-      <text x="108" y="15">Opus</text>
-      <rect x="168" width="58" height="22" rx="11" fill="#1c1d1c" stroke="#2f322f"/>
-      <text x="180" y="15">Plan</text>
-    </g>
-
-    <!-- terminal body -->
-    <rect x="746" y="150" width="458" height="186" rx="10" fill="#131413"/>
-    <g font-family="'JetBrains Mono', ui-monospace, Consolas, monospace" font-size="12.5">
-      <text x="762" y="176" fill="#5e9e55">➜</text>
-      <text x="782" y="176" fill="#dedfdd">claude</text>
-      <text x="762" y="200" fill="#858984"># finding the files that matter…</text>
-      <text x="762" y="224" fill="#53aec2">●</text>
-      <text x="780" y="224" fill="#c7cac5">Edited</text>
-      <text x="836" y="224" fill="#b5cea5">server.js</text>
-      <text x="922" y="224" fill="#858984">+42 -7</text>
-      <text x="762" y="248" fill="#53aec2">●</text>
-      <text x="780" y="248" fill="#c7cac5">Edited</text>
-      <text x="836" y="248" fill="#b5cea5">public/app.js</text>
-      <text x="946" y="248" fill="#858984">+18 -3</text>
-      <text x="762" y="276" fill="#b5a4e0">auto mode on</text>
-      <text x="868" y="276" fill="#858984">(shift+tab to cycle)</text>
-    </g>
-    <!-- composer -->
-    <rect x="746" y="298" width="458" height="30" rx="15" fill="#1c1d1c" stroke="#2f322f"/>
-    <text x="764" y="317" font-size="12" fill="#727c76" font-family="'JetBrains Mono', monospace">Type here, then press Enter…</text>
-    <circle cx="1188" cy="313" r="11" fill="#b5cea5"/>
-    <path d="M1188 318 v-10 M1183 313 l5 -5 l5 5" stroke="#1c211b" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
+  <rect x="700" y="64" width="150" height="312" rx="18" fill="#f1ede3"/>
+  <rect x="832" y="64" width="18" height="312" fill="#f1ede3"/>
+  <text x="720" y="102" font-size="13" fill="#1f1d19">New session</text>
+  <text x="720" y="124" font-size="13" fill="#c24a22">+</text>
+  <rect x="712" y="146" width="126" height="28" rx="8" fill="#1f1d19" fill-opacity="0.09"/>
+  <text x="724" y="165" font-size="13" fill="#1f1d19">landing-page</text>
+  <text x="720" y="204" font-size="11" fill="#6f695c">Sessions</text>
+  <circle cx="724" cy="224" r="3.5" fill="#c24a22"/><text x="736" y="228" font-size="12.5" fill="#3b372f">Polish the hero</text>
+  <circle cx="724" cy="248" r="3.5" fill="#c24a22"/><text x="736" y="252" font-size="12.5" fill="#3b372f">Review accessibility</text>
+  <text x="940" y="156" font-family="Georgia, 'Times New Roman', serif" font-size="30" fill="#1f1d19">Good afternoon</text>
+  <rect x="884" y="178" width="276" height="112" rx="16" fill="#ffffff" stroke="#1f1d19" stroke-opacity="0.08"/>
+  <text x="904" y="210" font-size="13" fill="#8a8374">Describe a task…</text>
+  <text x="904" y="272" font-size="12" fill="#6f695c">Default</text>
+  <text x="1008" y="272" font-size="12" fill="#3b372f">Claude Code</text>
+  <rect x="1124" y="254" width="24" height="24" rx="7" fill="#c24a22"/>
+  <path d="M1136 271V262M1132 266l4-4 4 4" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

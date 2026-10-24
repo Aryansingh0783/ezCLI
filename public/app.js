@@ -163,10 +163,15 @@ const TERM_LINES = { compact: 1.15, comfortable: 1.35, relaxed: 1.55 };
 /** The terminal paints an opaque background that matches its pane exactly (the pane
  *  colour changes with the palette). A transparent terminal looks fine in the HTML
  *  renderer but the GPU renderer composites it as black boxes behind the text. */
+/** A see-through terminal needs the HTML renderer; the GPU renderer cannot do it. */
+const termGlass = () => prefs.termGlass !== false && prefs.gpu !== true;
+
 function syncTermBackground() {
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--term-bg').trim() || '#15171d';
-  TERM_THEMES.dark.background = bg;
+  const glass = termGlass();
+  TERM_THEMES.dark.background = glass ? 'rgba(0, 0, 0, 0)' : bg;
   TERM_THEMES.dark.cursorAccent = bg;
+  document.documentElement.dataset.termGlass = glass ? 'on' : 'off';
 }
 
 /** One configuration for every terminal in the app. */
@@ -189,7 +194,7 @@ function termOptions(extra = {}) {
     rescaleOverlappingGlyphs: true,
     smoothScrollDuration: 70,
     allowProposedApi: true,
-    allowTransparency: false,
+    allowTransparency: termGlass(),
     theme: TERM_THEMES[resolvedTheme()],
     scrollback: 20000,
     ...extra
@@ -289,7 +294,8 @@ function syncGpu() {
 function applyTermPrefs() {
   const o = termOptions();
   for (const s of state.sessions) {
-    for (const k of ['fontFamily', 'fontSize', 'lineHeight', 'cursorStyle', 'cursorBlink']) s.term.options[k] = o[k];
+    for (const k of ['fontFamily', 'fontSize', 'lineHeight', 'cursorStyle', 'cursorBlink', 'allowTransparency']) s.term.options[k] = o[k];
+    s.term.options.theme = { ...o.theme, cursor: s.term.options.theme && s.term.options.theme.cursor };
   }
   requestAnimationFrame(() => state.sessions.forEach(fitSession));
 }
