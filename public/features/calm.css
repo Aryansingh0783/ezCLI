@@ -207,3 +207,8 @@ html[data-layout='calm'] .home #continueRow > :nth-child(n+5) { display: none; }
 .instructions-sheet .sheet-actions { display: flex; gap: 8px; }
 .rail-instr { display: none !important; }
 @media (min-width: 980px) { html[data-layout='calm'] .rail-instr { display: flex !important; } }
+
+.rail-star { flex: none; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: #8a8374; font-size: 14px; line-height: 1; cursor: pointer; }
+.rail-star.on { color: #c24a22; }
+.rail-star:hover { color: #c24a22; }
+html[data-layout='calm'] .rail-saved { color: #4a4639; }

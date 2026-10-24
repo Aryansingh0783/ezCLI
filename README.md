@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.8
+
+- **Earlier sessions and stars in the sidebar.** Under your open sessions the
+  sidebar lists the project's saved sessions; click one to resume it. The star
+  beside each pins it to the top, the same pin the home screen uses.
+
 ### New in 2.9.7
 
 - **Project instructions.** A sidebar button (also in the command palette) opens

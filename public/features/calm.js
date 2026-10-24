@@ -14,6 +14,14 @@ const RailSessions = {
     this.box.setAttribute('aria-label', 'Sessions in this project');
     spaces.after(this.box);
     this.box.addEventListener('click', (e) => {
+      const star = e.target.closest('[data-rail-star]');
+      if (star) {
+        e.stopPropagation();
+        Sessions.togglePin(star.dataset.railStar);
+        return this.render();
+      }
+      const saved = e.target.closest('[data-rail-saved]');
+      if (saved) return Sessions.resumeSaved(saved.dataset.railSaved);
       const x = e.target.closest('[data-rail-close]');
       if (x) return closeSession(x.dataset.railClose);
       const row = e.target.closest('[data-rail-session]');
@@ -24,13 +32,16 @@ const RailSessions = {
   render() {
     if (!this.box) return;
     const list = spaceSessions().slice().reverse().slice(0, 12);
-    this.box.hidden = list.length === 0;
+    const earlier = this.earlier(list);
+    this.box.hidden = list.length === 0 && earlier.length === 0;
     this.box.textContent = '';
-    if (!list.length) return;
-    const head = document.createElement('div');
-    head.className = 'rail-sessions-head';
-    head.textContent = 'Sessions';
-    this.box.append(head);
+    if (this.box.hidden) return;
+    if (list.length) {
+      const head = document.createElement('div');
+      head.className = 'rail-sessions-head';
+      head.textContent = 'Sessions';
+      this.box.append(head);
+    }
     for (const s of list) {
       const row = document.createElement('div');
       row.setAttribute('role', 'button');
@@ -52,6 +63,47 @@ const RailSessions = {
       row.append(d, t, x);
       this.box.append(row);
     }
+    if (earlier.length) {
+      const head = document.createElement('div');
+      head.className = 'rail-sessions-head';
+      head.textContent = 'Earlier';
+      this.box.append(head);
+      const pinned = new Set(prefs.pinnedSessions || []);
+      for (const m of earlier) {
+        const row = document.createElement('div');
+        row.className = 'rail-session rail-saved';
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        row.dataset.railSaved = m.id;
+        row.title = `${m.agentLabel || m.agentId || ''} · resume`;
+        const star = document.createElement('button');
+        star.type = 'button';
+        star.className = 'rail-star' + (pinned.has(m.id) ? ' on' : '');
+        star.dataset.railStar = m.id;
+        star.setAttribute('aria-pressed', String(pinned.has(m.id)));
+        star.setAttribute('aria-label', pinned.has(m.id) ? 'Unstar' : 'Star');
+        star.textContent = pinned.has(m.id) ? '★' : '☆';
+        const t = document.createElement('span');
+        t.className = 'rail-session-title';
+        t.textContent = m.title;
+        row.append(star, t);
+        this.box.append(row);
+      }
+    }
+  },
+
+  /** Saved sessions from this project that are not already open, starred ones first. */
+  earlier(live) {
+    if (typeof Sessions === 'undefined' || !Sessions.recentSaved) return [];
+    const sp = space();
+    if (!sp) return [];
+    const root = sp.path.toLowerCase().replace(/[\/]+$/, '');
+    const open = new Set(live.map((s) => (s.title || '').toLowerCase()));
+    const pinned = new Set(prefs.pinnedSessions || []);
+    const here = Sessions.recentSaved().filter((m) => m.title && m.cwd && m.cwd.toLowerCase().replace(/[\/]+$/, '').startsWith(root) && !open.has(m.title.toLowerCase()));
+    const seen = new Set();
+    const uniq = here.filter((m) => (seen.has(m.title) ? false : seen.add(m.title)));
+    return [...uniq.filter((m) => pinned.has(m.id)), ...uniq.filter((m) => !pinned.has(m.id))].slice(0, 8);
   }
 };
 
