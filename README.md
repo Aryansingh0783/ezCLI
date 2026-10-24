@@ -135,6 +135,13 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 3.1.2
+
+- **Second brain: smaller, separated bubbles.** The bubbles in the second-brain map were
+  so large they piled on top of each other and hid the lines between them. They are now
+  about half the size, push each other apart, and stop growing past a sensible size on
+  screen when you zoom in, so the connections and labels are readable.
+
 ### New in 3.1.1
 
 - **Codex on Windows with a reasoning effort set.** Codex's npm launcher is a `.cmd`

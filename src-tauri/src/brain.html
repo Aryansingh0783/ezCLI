@@ -51,10 +51,10 @@ const DATA = /*DATA*/null;
   const nodes = [], links = [], byId = new Map(), projHidden = new Set();
   DATA.projects.forEach((p, pi) => {
     const color = hue(pi);
-    const pn = { id: 'p' + pi, kind: 'project', label: p.name, pi, color, r: 20, size: p.nodes, p, x: Math.cos(pi * 2.4) * 300, y: Math.sin(pi * 2.4) * 300, vx: 0, vy: 0 };
+    const pn = { id: 'p' + pi, kind: 'project', label: p.name, pi, color, r: 12, size: p.nodes, p, x: Math.cos(pi * 2.4) * 300, y: Math.sin(pi * 2.4) * 300, vx: 0, vy: 0 };
     nodes.push(pn); byId.set(pn.id, pn);
     p.comms.forEach((c) => {
-      const n = { id: `c${pi}_${c.id}`, kind: 'cluster', label: c.name, pi, color, r: 4 + Math.sqrt(c.size) * 1.1, size: c.size, c, x: pn.x + (Math.random() - .5) * 200, y: pn.y + (Math.random() - .5) * 200, vx: 0, vy: 0 };
+      const n = { id: `c${pi}_${c.id}`, kind: 'cluster', label: c.name, pi, color, r: Math.min(11, 2 + Math.sqrt(c.size) * 0.5), size: c.size, c, x: pn.x + (Math.random() - .5) * 200, y: pn.y + (Math.random() - .5) * 200, vx: 0, vy: 0 };
       nodes.push(n); byId.set(n.id, n);
       links.push({ a: pn, b: n, w: 1, k: 'own' });
     });
@@ -80,7 +80,8 @@ const DATA = /*DATA*/null;
     const act = nodes.filter(vis); const n = act.length;
     for (let i = 0; i < n; i++) { const a = act[i];
       for (let j = i + 1; j < n; j++) { const b = act[j]; let dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy + 0.01;
-        if (d2 > 90000) continue; const f = (a.kind === 'project' || b.kind === 'project' ? 5200 : 900) / d2, d = Math.sqrt(d2); dx /= d; dy /= d; a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f; } }
+        if (d2 > 90000) continue; const f = (a.kind === 'project' || b.kind === 'project' ? 5200 : 900) / d2, d = Math.sqrt(d2); dx /= d; dy /= d; a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
+        const gap = a.r + b.r + 5; if (d < gap) { const o = (gap - d) * 0.5; a.x += dx * o; a.y += dy * o; b.x -= dx * o; b.y -= dy * o; } } }
     for (const l of links) { if (!vis(l.a)) continue; const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
       const rest = l.k === 'own' ? 70 + l.b.r * 2 : 90, f = (d - rest) * (l.k === 'own' ? 0.012 : 0.004 * Math.min(3, l.w)); const fx = dx / d * f, fy = dy / d * f;
       l.a.vx += fx; l.a.vy += fy; l.b.vx -= fx; l.b.vy -= fy; }
@@ -95,7 +96,7 @@ const DATA = /*DATA*/null;
       const on = focus && (l.a === focus || l.b === focus); ctx.globalAlpha = focus ? (on ? .85 : .05) : (l.k === 'own' ? .16 : .3);
       ctx.strokeStyle = on ? '#fff' : l.a.color; ctx.lineWidth = on ? 1.6 : Math.min(2.5, .6 + l.w * .2); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
     const rects = [], later = [];
-    for (const n of nodes) { if (!vis(n)) continue; const p = toScreen(n.x, n.y), r = Math.max(2, n.r * view.k); if (p.x < -50 || p.y < -50 || p.x > W + 50 || p.y > H + 50) continue;
+    for (const n of nodes) { if (!vis(n)) continue; const p = toScreen(n.x, n.y), r = Math.min(n.kind === 'project' ? 26 : 18, Math.max(2, n.r * view.k)); if (p.x < -50 || p.y < -50 || p.x > W + 50 || p.y > H + 50) continue;
       ctx.globalAlpha = focus && !near.has(n) ? .15 : 1; const gr = ctx.createRadialGradient(p.x - r * .3, p.y - r * .3, r * .1, p.x, p.y, r); gr.addColorStop(0, '#ffffffcc'); gr.addColorStop(.25, n.color); gr.addColorStop(1, n.color); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
       if (n === sel || n === hover) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
       later.push({ n, p, r }); }
