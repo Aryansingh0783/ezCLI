@@ -133,6 +133,15 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 3.0.1
+
+- **Fix: "Vault not found" when opening the second brain in Obsidian.** Obsidian only
+  opens folders it already lists as vaults. ezCLI now adds the second-brain vault to
+  Obsidian's vault list (the same entry Obsidian writes for "Open folder as vault",
+  leaving your other vaults untouched) and opens it by id. Obsidian reads that list
+  only when it starts, so if it is already running ezCLI tells you to close it and try
+  again instead of showing Obsidian's error.
+
 ### New in 3.0.0
 
 The calm redesign, as a major release.

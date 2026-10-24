@@ -444,6 +444,70 @@ fn obsidian_installed() -> bool {
     false
 }
 
+/// Obsidian's per-user vault list.
+fn obsidian_config_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("obsidian").join("obsidian.json"))
+}
+
+fn same_path(a: &str, b: &str) -> bool {
+    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    norm(a) == norm(b)
+}
+
+/// Make sure `vault` is a vault Obsidian knows about and return its id.
+fn register_obsidian_vault(vault: &Path) -> Result<String, String> {
+    std::fs::create_dir_all(vault.join(".obsidian")).map_err(|e| format!("couldn't prepare the vault: {e}"))?;
+    let cfg = obsidian_config_path().ok_or("couldn't find Obsidian's settings folder")?;
+    let path = vault.to_string_lossy().into_owned();
+    let mut root: serde_json::Value = match std::fs::read_to_string(&cfg) {
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|_| "Obsidian's settings file couldn't be read, so ezCLI left it alone.".to_string())?,
+        Err(_) => serde_json::json!({}),
+    };
+    let obj = root
+        .as_object_mut()
+        .ok_or("Obsidian's settings file has an unexpected shape, so ezCLI left it alone.")?;
+    let vaults = obj.entry("vaults").or_insert_with(|| serde_json::json!({}));
+    let map = vaults
+        .as_object_mut()
+        .ok_or("Obsidian's vault list has an unexpected shape, so ezCLI left it alone.")?;
+    if let Some((id, _)) = map
+        .iter()
+        .find(|(_, v)| v.get("path").and_then(|p| p.as_str()).map_or(false, |p| same_path(p, &path)))
+    {
+        return Ok(id.clone());
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(1);
+    let mix = now ^ (path.bytes().fold(1469598103934665603u128, |h, b| (h ^ b as u128).wrapping_mul(1099511628211)) << 17);
+    let id = format!("{:016x}", (mix as u64) ^ ((mix >> 64) as u64));
+    map.insert(id.clone(), serde_json::json!({ "path": path, "ts": (now / 1_000_000) as u64 }));
+    if let Some(dir) = cfg.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let text = serde_json::to_string(&root).map_err(|e| e.to_string())?;
+    std::fs::write(&cfg, text).map_err(|e| format!("couldn't add the vault to Obsidian: {e}"))?;
+    Ok(id)
+}
+
+#[cfg(windows)]
+fn obsidian_running() -> bool {
+    use std::os::windows::process::CommandExt;
+    std::process::Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq Obsidian.exe", "/NH"])
+        .creation_flags(0x0800_0000)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("obsidian.exe"))
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn obsidian_running() -> bool {
+    false
+}
+
 #[tauri::command]
 pub fn brain_status(paths: Vec<String>) -> BrainStatus {
     let dir = brain_dir();
@@ -503,7 +567,17 @@ pub async fn brain_open(what: String, app: AppHandle) -> Result<(), String> {
                 return Err("Export the notes first.".into());
             }
             if what == "obsidian" && obsidian_installed() {
-                let url = format!("obsidian://open?path={}", vault.to_string_lossy().replace('\\', "/").replace(' ', "%20"));
+                // Obsidian only opens folders it already knows as vaults ("Vault not found"
+                // otherwise), so add this one to its vault list first, the same entry it
+                // writes itself when you choose "Open folder as vault".
+                let id = register_obsidian_vault(&vault)?;
+                if obsidian_running() {
+                    return Err(format!(
+                        "Obsidian is already running and only reads its vault list when it starts. Close Obsidian and press this again, or in Obsidian choose \"Open folder as vault\" and pick {}.",
+                        vault.to_string_lossy()
+                    ));
+                }
+                let url = format!("obsidian://open?vault={id}");
                 return tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string());
             }
             tauri_plugin_opener::open_path(&vault, None::<&str>).map_err(|e| e.to_string())
