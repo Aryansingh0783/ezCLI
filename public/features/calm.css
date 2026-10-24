@@ -201,3 +201,9 @@ html[data-layout='calm'] .home #continueRow > :nth-child(n+5) { display: none; }
 }
 
 @media (min-width: 980px) { html[data-layout='calm'] #tabNew { display: none; } }
+
+.instructions-sheet { width: min(640px, 92vw); }
+.instructions-sheet textarea { width: 100%; min-height: 260px; margin: 8px 0 12px; padding: 12px 14px; border-radius: 12px; font: 13px/1.55 'JetBrains Mono', Consolas, monospace; resize: vertical; }
+.instructions-sheet .sheet-actions { display: flex; gap: 8px; }
+.rail-instr { display: none !important; }
+@media (min-width: 980px) { html[data-layout='calm'] .rail-instr { display: flex !important; } }

@@ -133,6 +133,15 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.7
+
+- **Project instructions.** A sidebar button (also in the command palette) opens
+  an editor for the project's `CLAUDE.md`, `AGENTS.md` or `GEMINI.md`, picked by
+  the agent, which the CLI reads at the start of every session. Saving creates
+  the file if it does not exist.
+- **Right-click a sidebar session** for the same menu the tabs had: rename,
+  duplicate, restart, copy folder path, move to a new window.
+
 ### New in 2.9.6
 
 - **New session row.** The calm sidebar starts with a "New session" button, like
