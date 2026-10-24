@@ -133,6 +133,13 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.6
+
+- **New session row.** The calm sidebar starts with a "New session" button, like
+  "New chat" in the Claude desktop app, and the duplicate + in the title bar is gone.
+- **Warm terminal.** In the Sand theme the terminal pane is a warm charcoal that
+  matches the rest of the window, instead of blue-black.
+
 ### New in 2.9.5
 
 - **The sidebar is the session switcher.** In the calm layout on a wide window the

@@ -55,7 +55,21 @@ const RailSessions = {
   }
 };
 
+/* "New session": the sidebar's first row, like "New chat" in the Claude desktop app. */
+function mountNewSessionRow() {
+  const rail = document.querySelector('.rail');
+  if (!rail || $('railNew')) return;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.id = 'railNew';
+  b.className = 'rail-new';
+  b.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg><span>New session</span>';
+  b.addEventListener('click', () => newSession());
+  rail.prepend(b);
+}
+
 hooks.boot.push(() => {
+  mountNewSessionRow();
   RailSessions.mount();
   RailSessions.box.addEventListener('keydown', (e) => {
     const row = e.target.closest && e.target.closest('[data-rail-session]');
