@@ -133,6 +133,11 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.9
+
+- **Fix:** with the explorer open, the session header could squeeze the title
+  down to nothing. The title now keeps a minimum width.
+
 ### New in 2.9.8
 
 - **Earlier sessions and stars in the sidebar.** Under your open sessions the

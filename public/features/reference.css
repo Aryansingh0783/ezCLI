@@ -1043,7 +1043,8 @@
 .tab { width: 220px; }
 
 /* Header chips never wrap onto two lines; the row shrinks the title instead. */
-.head-chip { white-space: nowrap; flex: none; }
+.head-chip { white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.session-head .head-title { flex: 0 1 auto; min-width: 140px; }
 
 /* The search box draws its own focus ring; the input inside must not add a second one. */
 .search-box input:focus, .search-box input:focus-visible { outline: none !important; box-shadow: none !important; }
