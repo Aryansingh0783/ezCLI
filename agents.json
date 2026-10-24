@@ -418,6 +418,7 @@
           "id": "plan",
           "label": "Plan",
           "args": [
+            "mini",
             "--agent",
             "plan"
           ]
@@ -612,6 +613,7 @@
           "id": "plan",
           "label": "Plan",
           "args": [
+            "mini",
             "--agent",
             "plan"
           ]

@@ -135,6 +135,17 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 3.1.1
+
+- **Codex on Windows with a reasoning effort set.** Codex's npm launcher is a `.cmd`
+  shim, and cmd.exe cannot carry a quoted setting like `model_reasoning_effort="high"`,
+  so picking an effort could stop Codex from starting. ezCLI now runs Codex's own
+  `codex.js` through Node directly, with each argument passed untouched. Only Codex's
+  shim is treated this way, and only when Node and `codex.js` are found.
+- **OpenCode Plan mode.** OpenCode 2 removed `--agent` from its main command, so Plan
+  mode exited immediately. It now starts through `opencode mini --agent plan`, which
+  still supports it. Edited mode arguments are left alone.
+
 ### New in 3.1.0
 
 - **Transparent terminal.** The terminal pane now has no fill: it sits directly on the

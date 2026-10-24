@@ -447,6 +447,20 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             {
                 existing.models_from = builtin_agent.models_from.clone();
             }
+            // OpenCode v2 removed `--agent` from the top-level interactive
+            // command, but keeps it on `mini` (and `run`). Old stock configs
+            // launched `opencode --agent plan`, which exits before a model can
+            // start. Keep Plan mode working by using the supported mini TUI;
+            // preserve any user-edited mode args.
+            if matches!(existing.id.as_str(), "opencode" | "deepseek")
+                && existing.command.eq_ignore_ascii_case("opencode")
+            {
+                for mode in existing.modes.iter_mut() {
+                    if mode.id == "plan" && mode.args == ["--agent", "plan"] {
+                        mode.args = vec!["mini".into(), "--agent".into(), "plan".into()];
+                    }
+                }
+            }
             // Codex dropped --full-auto entirely ("unrecognized flag"); its
             // modern equivalent is --approve-for-me. Migrate an unedited
             // stock "Full auto" mode and the matching headless.edit flag.
@@ -1113,6 +1127,35 @@ fn cmd_safe_token(_: &str) -> bool {
     true
 }
 
+/// Codex's npm-installed `.cmd` shim on Windows just forwards to the
+/// package's own `bin/codex.js`, which re-spawns the native binary with
+/// `process.argv.slice(2)` as an argv array (`spawn(binaryPath, args, {
+/// stdio: "inherit" })`) — confirmed by reading the actual installed
+/// `codex.js`. Running that JS entry directly through node.exe, with every
+/// argument as its own CreateProcessW argv entry, skips cmd.exe's parser
+/// entirely, so a quoted Codex effort argument like
+/// `model_reasoning_effort="high"` survives unchanged instead of tripping
+/// `cmd_safe_token`'s `"` check below. This only ever fires for Codex's own
+/// shim (matched by filename, not a hardcoded path) and only when both
+/// node.exe and the expected `codex.js` are actually found; every other
+/// `.cmd`/`.bat` launcher, and Codex itself on an unusual install layout,
+/// still goes through the generic guarded path unchanged.
+#[cfg(windows)]
+fn codex_node_launch(resolved: &str) -> Option<(String, String)> {
+    let stem = Path::new(resolved).file_stem().and_then(OsStr::to_str)?;
+    if !stem.eq_ignore_ascii_case("codex") {
+        return None;
+    }
+    // npm's global Windows layout puts packages directly under
+    // <shim_dir>\node_modules, unlike Unix's <prefix>/lib/node_modules.
+    let codex_js = Path::new(resolved).parent()?.join("node_modules").join("@openai").join("codex").join("bin").join("codex.js");
+    if !codex_js.is_file() {
+        return None;
+    }
+    let node = resolve_command("node")?;
+    Some((node, codex_js.to_string_lossy().into_owned()))
+}
+
 /// portable-pty calls CreateProcessW directly on Windows, which cannot launch
 /// a `.cmd`/`.bat` shim as an executable. npm installs its global CLIs as those
 /// shims, so route them through the trusted system cmd.exe with `call`.
@@ -1121,6 +1164,18 @@ fn cmd_safe_token(_: &str) -> bool {
 /// are still constrained to agents.json or a backend-validated model catalog.
 pub fn launch_command(resolved: &str, args: &[String]) -> Result<LaunchCommand> {
     let lower = resolved.to_ascii_lowercase();
+    // Only reached when the generic .cmd/.bat path below would otherwise
+    // reject this launch (e.g. Codex's quoted effort config); the common
+    // default-effort launch is untouched and keeps using the plain `call`
+    // path it already works with.
+    #[cfg(windows)]
+    if (lower.ends_with(".cmd") || lower.ends_with(".bat")) && (!cmd_safe_token(resolved) || args.iter().any(|a| !cmd_safe_token(a))) {
+        if let Some((node, codex_js)) = codex_node_launch(resolved) {
+            let mut wrapped = vec![codex_js];
+            wrapped.extend(args.iter().cloned());
+            return Ok(LaunchCommand { program: node, args: wrapped });
+        }
+    }
     if cfg!(windows) && lower.ends_with(".ps1") {
         let mut wrapped = vec![
             "-NoLogo".to_string(),
@@ -1212,6 +1267,131 @@ mod tests {
     fn cmd_shim_launches_from_a_path_with_a_space() {
         let out = run_shim_through_pty("ezcli shim spaced", &["--model", "opus"]);
         assert!(out.contains("EZCLI_SHIM_RAN [--model] [opus]"), "{out}");
+    }
+
+    /// Build a fake `<dir_name>/codex.cmd` (never actually run — the whole
+    /// point is that codex_node_launch bypasses it) alongside a fake
+    /// `node_modules/@openai/codex/bin/codex.js` stub that just prints its
+    /// own argv, one bracketed token per line, then launches it through the
+    /// exact production path (launch_command + portable-pty) with the given
+    /// args and returns everything printed.
+    #[cfg(windows)]
+    fn run_codex_shim_through_pty(dir_name: &str, args: &[&str]) -> String {
+        use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+        use std::io::Read;
+        let dir = std::env::temp_dir().join(dir_name);
+        let codex_pkg = dir.join("node_modules").join("@openai").join("codex").join("bin");
+        std::fs::create_dir_all(&codex_pkg).unwrap();
+        std::fs::write(dir.join("codex.cmd"), "@echo off\r\necho NEVER ACTUALLY RUN\r\n").unwrap();
+        std::fs::write(
+            codex_pkg.join("codex.js"),
+            "for (const a of process.argv.slice(2)) { console.log('EZCLI_ARG[' + a + ']'); }\n",
+        )
+        .unwrap();
+
+        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let launch = launch_command(&dir.join("codex.cmd").to_string_lossy(), &args).unwrap();
+        let pair = native_pty_system().openpty(PtySize { rows: 24, cols: 120, pixel_width: 0, pixel_height: 0 }).unwrap();
+        let mut cmd = CommandBuilder::new(&launch.program);
+        cmd.args(&launch.args);
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let out = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            String::from_utf8_lossy(&buf).into_owned()
+        });
+        let _ = child.wait();
+        drop(pair.master);
+        let text = out.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        text
+    }
+
+    /// The real bug: `model_reasoning_effort="high"` contains `"`, which
+    /// cmd_safe_token rejects, so every non-default Codex effort failed to
+    /// launch at all on Windows. Routing through node.exe + codex.js instead
+    /// of cmd.exe means the quote survives unmangled end to end, run through
+    /// the exact same portable-pty path production uses -- not just checked
+    /// as a string, but actually executed and printed back by a real child
+    /// process launched via CreateProcessW argv.
+    #[test]
+    #[cfg(windows)]
+    fn codex_quoted_effort_argument_survives_the_real_launch() {
+        if resolve_command("node").is_none() {
+            eprintln!("skipping: no node.exe on PATH in this environment");
+            return;
+        }
+        let out = run_codex_shim_through_pty("ezcli-codex-effort", &["-c", r#"model_reasoning_effort="high""#]);
+        assert!(out.contains(r#"EZCLI_ARG[model_reasoning_effort="high"]"#), "{out}");
+        assert!(!out.contains("NEVER ACTUALLY RUN"), "the .cmd shim should never execute: {out}");
+    }
+
+    /// A default-effort launch (no quotes, no unsafe tokens) is completely
+    /// unaffected: it still goes through the existing, already-working
+    /// cmd.exe `call` path, not the new node.exe path.
+    #[test]
+    #[cfg(windows)]
+    fn codex_default_effort_still_uses_the_existing_cmd_path() {
+        let dir = std::env::temp_dir().join("ezcli-codex-default");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("codex.cmd"), "@echo off\r\necho EZCLI_SHIM_RAN [%1]\r\n").unwrap();
+        let launch = launch_command(&dir.join("codex.cmd").to_string_lossy(), &["--no-daemon".to_string()]).unwrap();
+        assert!(launch.program.to_ascii_lowercase().ends_with("cmd.exe"), "{}", launch.program);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Only Codex's own shim is special-cased, matched by filename -- a
+    /// generic .cmd/.bat launcher with an unsafe token is still rejected
+    /// exactly as before, even one sitting right next to a decoy
+    /// node_modules/@openai/codex tree.
+    #[test]
+    #[cfg(windows)]
+    fn other_cmd_launchers_with_unsafe_tokens_are_still_rejected() {
+        let dir = std::env::temp_dir().join("ezcli-not-codex");
+        let decoy_pkg = dir.join("node_modules").join("@openai").join("codex").join("bin");
+        std::fs::create_dir_all(&decoy_pkg).unwrap();
+        std::fs::write(dir.join("some-agent.cmd"), "@echo off\r\n").unwrap();
+        std::fs::write(decoy_pkg.join("codex.js"), "// decoy, must never be reached\n").unwrap();
+        let err = launch_command(&dir.join("some-agent.cmd").to_string_lossy(), &[r#"bad"quote"#.to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cmd.exe cannot safely run"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn codex_node_launch_requires_the_codex_filename() {
+        let dir = std::env::temp_dir().join("ezcli-codex-filename-check");
+        let codex_pkg = dir.join("node_modules").join("@openai").join("codex").join("bin");
+        std::fs::create_dir_all(&codex_pkg).unwrap();
+        std::fs::write(codex_pkg.join("codex.js"), "").unwrap();
+        std::fs::write(dir.join("notcodex.cmd"), "").unwrap();
+        assert!(codex_node_launch(&dir.join("notcodex.cmd").to_string_lossy().into_owned()).is_none());
+        std::fs::write(dir.join("CODEX.CMD"), "").unwrap();
+        // Filename matching is case-insensitive either way.
+        if resolve_command("node").is_some() {
+            assert!(codex_node_launch(&dir.join("CODEX.CMD").to_string_lossy().into_owned()).is_some());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn codex_node_launch_falls_back_when_codex_js_is_missing() {
+        let dir = std::env::temp_dir().join("ezcli-codex-no-js");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("codex.cmd"), "").unwrap();
+        assert!(codex_node_launch(&dir.join("codex.cmd").to_string_lossy().into_owned()).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
