@@ -133,6 +133,18 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.10.0
+
+- **Composer footer like the Claude desktop app.** On the home screen the mode sits
+  at the left and the agent, model and effort at the right as plain text with a
+  caret, with a soft square send button.
+- **Flat, borderless buttons** across the calm layout: a light wash on hover, 8px
+  corners, one solid accent for the primary action.
+- **Contrast fixes from a full scan.** Every theme, in both layouts, was checked for
+  duplicate ids, unnamed buttons and text under 4.5:1. The sidebar labels on the
+  light and dark themes, the active project name on light themes and the Done
+  button on dark themes were below that and are fixed.
+
 ### New in 2.9.11
 
 - **A quieter calm layout.** Less decoration: the filled "New session" button, the

@@ -263,3 +263,83 @@ html[data-layout='calm'] .home .pill-group { gap: 4px; }
 @media (min-width: 980px) {
   html[data-layout='calm'] .space { border: 0 !important; box-shadow: none !important; }
 }
+
+/* ===================== buttons, Claude-desktop style =====================
+ * Flat and borderless; a soft wash on hover; 8px corners; one solid accent for the
+ * primary action. Selectors in the composer footer are plain text with a caret. */
+html[data-layout='calm'] :is(.btn, .chip, .head-chip, .dash-icon-btn, .project-trigger, .btn.open-in-primary, .open-in-menu-trigger) {
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-soft, var(--muted));
+  font-weight: 500;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html[data-layout='calm'] :is(.btn, .chip, .head-chip, .dash-icon-btn, .project-trigger, .open-in-menu-trigger):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent);
+  color: var(--ink, var(--text));
+}
+html[data-layout='calm'] :is(.btn, .chip, .head-chip, .pill-pick, .send-btn, .plus-btn):active:not(:disabled) { background: color-mix(in srgb, var(--ink, #1f1d19) 12%, transparent); }
+html[data-layout='calm'] .open-in { border: 0; background: transparent; box-shadow: none; }
+html[data-layout='calm'] .btn.primary {
+  background: var(--brand); color: var(--brand-ink, #fff); border-color: transparent; font-weight: 550;
+}
+html[data-layout='calm'] .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #000); color: var(--brand-ink, #fff); }
+html[data-layout='calm'] :is(.btn, .chip, .head-chip, .pill-pick, .send-btn, .plus-btn, .rail-btn, .dash-icon-btn):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 55%, transparent); outline-offset: 1px;
+}
+html[data-layout='calm'] .dash-icon-btn { width: 34px; height: 34px; box-shadow: none; }
+
+/* send: a soft rounded square, not a glowing circle */
+:root:root[data-layout='calm'] .send-btn {
+  width: 32px; height: 32px; border-radius: 9px; border: 0; box-shadow: none; background: var(--brand); color: var(--brand-ink, #fff);
+}
+:root:root[data-layout='calm'] .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #000); }
+html[data-layout='calm'] .plus-btn { border: 0; background: transparent; width: 32px; height: 32px; border-radius: 8px; color: var(--ink-soft, var(--muted)); }
+html[data-layout='calm'] .plus-btn:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+
+/* composer footer: mode on the left; agent, model and effort on the right, as plain text */
+html[data-layout='calm'] .home .pill-group { display: contents; }
+:root:root[data-layout='calm'] .home .composer-row.runconfig { display: flex; align-items: center; flex-wrap: nowrap; gap: 2px; }
+:root:root[data-layout='calm'] .home .pill-pick {
+  min-height: 30px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; box-shadow: none;
+  font-size: 13px; font-weight: 500; color: var(--ink-soft, var(--muted)); gap: 4px;
+}
+:root:root[data-layout='calm'] .home .pill-pick:hover:not(:disabled) { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); color: var(--ink, var(--text)); }
+html[data-layout='calm'] .home .pill-pick .pill-val { color: var(--ink, var(--text)); font-weight: 500; }
+html[data-layout='calm'] .home #homeMode { order: 1; }
+html[data-layout='calm'] .home #homeAgent { order: 2; margin-left: auto; }
+html[data-layout='calm'] .home #homeModel { order: 3; }
+html[data-layout='calm'] .home #homeEffort { order: 4; }
+html[data-layout='calm'] .home #homeEffort .pill-cap { display: none; }
+html[data-layout='calm'] .home #homeEffort .pill-val { color: var(--ink-faint, var(--faint)); font-weight: 400; }
+html[data-layout='calm'] .home #homeMode .pill-cap { display: none; }
+html[data-layout='calm'] .home .composer-tools { order: 5; margin-left: 6px; }
+html[data-layout='calm'] .home .plus-btn { order: 0; }
+html[data-layout='calm'] .home .composer-tools .tool-btn,
+html[data-layout='calm'] .home .composer-tools button:not(.send-btn) { border: 0; background: transparent; box-shadow: none; }
+html[data-layout='calm'] .home .dash-grid > .dash-col > .dash-cell,
+html[data-layout='calm'] .home .dash-hero { width: 100%; box-sizing: border-box; }
+
+/* ---- contrast fixes found by the scan ---- */
+:root:root:root { --rail-ink-dim: #bcc1d0; }
+:root:root[data-layout='calm'] { --rf-dim: #b4bac9; }
+:root:root[data-layout='calm'][data-palette='claude'] { --rf-dim: #6f695c; }
+/* active project tile: the base theme paints it white, so its label must be dark */
+:root[data-theme='light']:not([data-palette='claude']):root[data-layout='calm'] .space.active,
+:root[data-theme='light']:not([data-palette='claude']):root[data-layout='dashboard'] .space.active { color: #1d2028; }
+:root[data-theme='light']:not([data-palette='claude']):root[data-layout='calm'] .space.active .space-name,
+:root[data-theme='light']:not([data-palette='claude']):root[data-layout='calm'] .space.active .space-ini { color: #1d2028; }
+:root[data-theme='light']:not([data-palette='claude']):root[data-layout='dashboard'] .space:not(.active) .space-ini { color: #2a2d36; }
+@media (min-width: 980px) {
+  html[data-layout='calm']:not([data-palette='claude'])[data-theme='light'] .space.active { background: #fff !important; }
+}
+
+/* chips and header buttons are flat in the calm layout; the base styles add borders back at higher specificity */
+:root:root[data-layout='calm'] :is(.chip, .head-chip, .head-branch, .btn:not(.primary), .open-in, .open-in-primary, .open-in-menu-trigger) {
+  border-color: transparent !important; background-color: transparent; box-shadow: none !important;
+}
+:root:root[data-layout='calm'] :is(.chip, .head-chip, .btn:not(.primary), .open-in-primary, .open-in-menu-trigger):hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent);
+}
