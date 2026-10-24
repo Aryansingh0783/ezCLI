@@ -172,3 +172,17 @@ html[data-layout='calm'] .home #continueRow > :nth-child(n+5) { display: none; }
   html[data-layout='calm'] .rail-session .status-dot { position: static; flex: none; }
   html[data-layout='calm'] .rail-session-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+@media (min-width: 980px) {
+  /* the sidebar is the session switcher now, so the tab strip steps aside (the + stays) */
+  html[data-layout='calm'] #tabs { display: none; }
+  html[data-layout='calm'] .rail-session { position: relative; }
+  html[data-layout='calm'] .rail-session-title { flex: 1; }
+  html[data-layout='calm'] .rail-session-x {
+    flex: none; width: 20px; height: 20px; border: 0; border-radius: 6px; background: transparent;
+    color: #7a7467; font-size: 15px; line-height: 1; cursor: pointer; opacity: 0;
+  }
+  html[data-layout='calm'] .rail-session:hover .rail-session-x,
+  html[data-layout='calm'] .rail-session:focus-within .rail-session-x { opacity: 1; }
+  html[data-layout='calm'] .rail-session-x:hover { background: rgb(60 50 20 / 14%); color: #1f1d19; }
+}

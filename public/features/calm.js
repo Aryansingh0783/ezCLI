@@ -14,6 +14,8 @@ const RailSessions = {
     this.box.setAttribute('aria-label', 'Sessions in this project');
     spaces.after(this.box);
     this.box.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-rail-close]');
+      if (x) return closeSession(x.dataset.railClose);
       const row = e.target.closest('[data-rail-session]');
       if (row) selectSession(row.dataset.railSession);
     });
@@ -30,8 +32,9 @@ const RailSessions = {
     head.textContent = 'Sessions';
     this.box.append(head);
     for (const s of list) {
-      const row = document.createElement('button');
-      row.type = 'button';
+      const row = document.createElement('div');
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
       row.className = 'rail-session' + (s.id === state.activeId ? ' active' : '');
       row.dataset.railSession = s.id;
       const dot = sessionDot(s);
@@ -40,7 +43,13 @@ const RailSessions = {
       const t = document.createElement('span');
       t.className = 'rail-session-title';
       t.textContent = s.title || 'Untitled';
-      row.append(d, t);
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'rail-session-x';
+      x.dataset.railClose = s.id;
+      x.setAttribute('aria-label', 'Close session');
+      x.textContent = '×';
+      row.append(d, t, x);
       this.box.append(row);
     }
   }
@@ -48,6 +57,13 @@ const RailSessions = {
 
 hooks.boot.push(() => {
   RailSessions.mount();
+  RailSessions.box.addEventListener('keydown', (e) => {
+    const row = e.target.closest && e.target.closest('[data-rail-session]');
+    if (row && e.target === row && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      selectSession(row.dataset.railSession);
+    }
+  });
   RailSessions.render();
 });
 hooks.tabs.push(() => RailSessions.render());

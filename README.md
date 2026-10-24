@@ -133,6 +133,13 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.5
+
+- **The sidebar is the session switcher.** In the calm layout on a wide window the
+  tab strip steps aside: switch sessions from the sidebar list, and close one
+  with the x that appears on hover. The + for a new session stays at the top.
+  Narrow windows and the dashboard layout keep their tabs.
+
 ### New in 2.9.4
 
 - **Sessions in the sidebar.** The calm sidebar lists the open project's sessions
