@@ -133,6 +133,14 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.11
+
+- **A quieter calm layout.** Less decoration: the filled "New session" button, the
+  tiles behind project names and the dashed "Open folder" box are now plain rows
+  that only gain a soft background on hover or when active. The home screen drops
+  the quick-start chips and the date line, and the agent, model, effort and mode
+  pickers fit on one row. Stars in the sidebar show on hover.
+
 ### New in 2.9.10
 
 - **Sidebar colours follow every theme.** The new sidebar was only tuned for Sand;

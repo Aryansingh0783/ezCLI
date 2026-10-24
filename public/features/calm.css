@@ -219,3 +219,47 @@ html[data-layout='calm'] .rail-saved { color: var(--rf); }
 
 /* light palettes with the dark sidebar: inactive project tiles are pale, so keep their label dark */
 :root[data-theme='light']:not([data-palette='claude']):root[data-layout='calm'] .space:not(.active) { color: #2a2d36; }
+
+/* ===================== restraint pass =====================
+ * Less ornament: no filled call-to-action, no tiles, no dashed boxes, no pill clouds.
+ * Rows are plain text that gain a soft background on hover or when active. */
+html[data-layout='calm'] .home .dash-promo { display: none; }
+html[data-layout='calm'] .home .dash-sub { display: none; }
+html[data-layout='calm'] .home .dash-head { margin-top: 9vh; }
+html[data-layout='calm'] .home .dash-hero .composer-box { min-height: 0; }
+html[data-layout='calm'] .home #homeAgent .pill-cap,
+html[data-layout='calm'] .home #homeModel .pill-cap { display: none; }
+html[data-layout='calm'] .home .composer-row.runconfig { gap: 6px; }
+html[data-layout='calm'] .home .pill-group { gap: 4px; }
+
+@media (min-width: 980px) {
+  html[data-layout='calm'] .rail-new {
+    background: transparent; color: var(--rf-strong); font-weight: 500; margin-bottom: 6px;
+  }
+  html[data-layout='calm'] .rail-new svg { color: var(--brand); }
+  html[data-layout='calm'] .rail-new:hover { background: var(--rf-hover); filter: none; }
+
+  :root:root[data-layout='calm'] .space,
+  :root:root[data-layout='calm'][data-palette] .space { background: transparent; box-shadow: none; border-color: transparent; }
+  :root:root[data-layout='calm'] .space:hover { background: var(--rf-hover); border-color: transparent; }
+  :root:root[data-layout='calm'] .space.active { background: var(--rf-active); box-shadow: none; color: var(--rf-strong); }
+  :root:root[data-layout='calm'][data-palette='claude'] .space.active { background: var(--rf-active); box-shadow: none; }
+  :root[data-theme='light']:not([data-palette='claude']):root[data-layout='calm'] .space:not(.active) { color: var(--rf); }
+
+  :root:root[data-layout='calm'] .rail-add { border: 0; margin-top: 0; padding: 0 10px; }
+  :root:root[data-layout='calm'] .rail-add:hover { background: var(--rf-hover); }
+
+  html[data-layout='calm'] .rail-sessions-head { margin-top: 18px; padding-bottom: 6px; font-weight: 500; font-size: 11.5px; text-transform: none; opacity: 0.85; }
+  html[data-layout='calm'] .rail-session { height: 30px; border-radius: 8px; }
+  html[data-layout='calm'] .rail-saved:nth-child(n+7) { display: none; }
+  html[data-layout='calm'] .rail-star:not(.on) { opacity: 0; transition: opacity 0.12s ease; }
+  html[data-layout='calm'] .rail-saved:hover .rail-star,
+  html[data-layout='calm'] .rail-saved:focus-within .rail-star { opacity: 1; }
+}
+@media (min-width: 980px) {
+  html[data-layout='calm'] .space:not(.active) { background: transparent !important; }
+  html[data-layout='calm'] .space:not(.active):hover { background: var(--rf-hover) !important; }
+}
+@media (min-width: 980px) {
+  html[data-layout='calm'] .space { border: 0 !important; box-shadow: none !important; }
+}
