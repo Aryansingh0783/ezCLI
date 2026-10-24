@@ -219,3 +219,132 @@ hooks.boot.push(() => {
   b.addEventListener('click', () => ProjectInstructions.open());
   brain.before(b);
 });
+
+/* ---------------------------------------------------------------- 4.0 */
+
+/* Session composer footer: which agent, model and effort this tab runs, on the right,
+ * like the model line in the Claude desktop composer. Click to change the model. */
+const ComposerMeta = {
+  el: null,
+  mount() {
+    const row = document.querySelector('#ptyComposer .composer-row');
+    if (!row || this.el) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'ptyMeta';
+    b.className = 'composer-meta';
+    b.addEventListener('click', () => {
+      const m = $('headModel');
+      if (m && !m.hidden) m.click();
+    });
+    const send = row.querySelector('.send-btn') || row.lastElementChild;
+    row.insertBefore(b, send);
+    this.el = b;
+  },
+  render() {
+    if (!this.el) return;
+    const s = active();
+    const a = s && agent(s.agentId);
+    if (!a) {
+      this.el.hidden = true;
+      return;
+    }
+    // "Default" says nothing the agent's name doesn't; show only real choices.
+    const real = (v) => (v && !/^(agent )?default$/i.test(String(v).trim()) ? v : '');
+    const model = real(modelLabel(a, s.modelId));
+    const effort = (a.efforts || []).length > 1 ? real(effortLabel(a, s.effortId)) : '';
+    this.el.hidden = false;
+    this.el.innerHTML = `<span class="meta-agent">${esc(a.label)}</span>${model ? `<span class="meta-model">${esc(model)}</span>` : ''}${effort ? `<span class="meta-effort">${esc(effort)}</span>` : ''}`;
+    const canPick = Boolean($('headModel') && !$('headModel').hidden);
+    this.el.disabled = !canPick;
+    this.el.title = canPick ? 'Change the model (starts a fresh session)' : `${a.label}${model ? ' · ' + model : ''}`;
+  }
+};
+hooks.boot.push(() => {
+  ComposerMeta.mount();
+  ComposerMeta.render();
+});
+hooks.view.push(() => ComposerMeta.render());
+hooks.tabs.push(() => ComposerMeta.render());
+
+/* Settings: a section list on the left, like a desktop app's preferences window. */
+const SettingsNav = {
+  build() {
+    const sheet = $('settingsSheet');
+    if (!sheet) return;
+    let layout = sheet.querySelector('.settings-layout');
+    if (!layout) {
+      layout = document.createElement('div');
+      layout.className = 'settings-layout';
+      const nav = document.createElement('nav');
+      nav.className = 'settings-nav';
+      nav.setAttribute('aria-label', 'Settings sections');
+      const body = document.createElement('div');
+      body.className = 'settings-body';
+      layout.append(nav, body);
+      const form = sheet.querySelector(':scope > form');
+      sheet.insertBefore(layout, form || null);
+      nav.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-sec]');
+        if (!b) return;
+        const sec = body.querySelectorAll('.settings-section')[Number(b.dataset.sec)];
+        if (sec) body.scrollTo({ top: sec.offsetTop - body.offsetTop - 4, behavior: 'smooth' });
+      });
+      body.addEventListener('scroll', () => this.mark(), { passive: true });
+    }
+    const body = layout.querySelector('.settings-body');
+    sheet.querySelectorAll(':scope > .settings-section').forEach((s) => body.append(s));
+    const nav = layout.querySelector('.settings-nav');
+    nav.innerHTML = [...body.querySelectorAll('.settings-section')]
+      .map((s, i) => `<button type="button" data-sec="${i}">${esc((s.querySelector('h3') || {}).textContent || 'Section')}</button>`)
+      .join('');
+    this.mark();
+  },
+  mark() {
+    const body = document.querySelector('#settingsSheet .settings-body');
+    if (!body) return;
+    const secs = [...body.querySelectorAll('.settings-section')];
+    let cur = 0;
+    secs.forEach((s, i) => {
+      if (s.offsetTop - body.offsetTop - body.scrollTop <= 40) cur = i;
+    });
+    if (body.scrollTop + body.clientHeight >= body.scrollHeight - 4) cur = secs.length - 1;
+    document.querySelectorAll('#settingsSheet .settings-nav [data-sec]').forEach((b, i) => b.classList.toggle('on', i === cur));
+  }
+};
+hooks.boot.push(() => {
+  const sheet = $('settingsSheet');
+  if (!sheet) return;
+  SettingsNav.build();
+  new MutationObserver(() => {
+    if (sheet.open) SettingsNav.build();
+  }).observe(sheet, { attributes: true, attributeFilter: ['open'] });
+});
+
+/* Home: in the calm layout the folder picker sits just under the message box, like the
+ * project picker under the Claude desktop composer (the title bar already has search and
+ * history). The dashboard layout keeps it in the page header. */
+function placeProjectPicker() {
+  const proj = $('homeProject');
+  const row = document.querySelector('#homeComposer .composer-row');
+  const head = document.querySelector('.home .dash-head-actions');
+  if (!proj || !row || !head) return;
+  const calm = document.documentElement.dataset.layout === 'calm';
+  const box = $('homeComposer');
+  proj.classList.toggle('composer-project', calm);
+  if (calm && proj.previousElementSibling !== box) {
+    box.after(proj);
+  } else if (!calm && proj.parentElement !== head) {
+    head.append(proj);
+  }
+}
+hooks.boot.push(placeProjectPicker);
+{
+  const original = applyTheme;
+  // eslint-disable-next-line no-global-assign
+  applyTheme = function (...args) {
+    const r = original(...args);
+    placeProjectPicker();
+    return r;
+  };
+}

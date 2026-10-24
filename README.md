@@ -16,7 +16,7 @@ videos in the chat, and a compare mode that runs one prompt on several agents at
 
 ![The calm home screen: one message box, your sessions in the sidebar](docs/screenshot-launcher.png)
 
-![The same home screen in the dark Midnight theme](docs/screenshot-launcher-dark.png)
+![The same home screen in Sand Dark, modelled on Claude's dark theme](docs/screenshot-launcher-dark.png)
 
 ![A session with the terminal background set to Transparent: the terminal sits on the page](docs/screenshot-terminal-clear.png)
 
@@ -25,6 +25,8 @@ videos in the chat, and a compare mode that runs one prompt on several agents at
 ![Team chat: several agents working together in one conversation](docs/screenshot-team.png)
 
 ![Compare mode: one prompt sent to three agents](docs/screenshot-compare.png)
+
+![Settings, with a section list on the left](docs/screenshot-settings.png)
 
 ## Install
 
@@ -134,6 +136,25 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 4.0.0
+
+A big pass on the interface, modelled on the Claude desktop app.
+
+- **Sand Dark.** A new theme built on Claude's dark colours, with the same flat window,
+  sidebar and white-on-charcoal message box as Sand.
+- **The model line in every session.** The message box in a session now shows the agent,
+  model and effort on the right, like the model line in Claude's composer. Click it to
+  switch models. "Default" values are left out so it only says what you chose.
+- **Settings with a section list.** Appearance, Agents, General, Knowledge graph and
+  Connectors are listed on the left; the current section is highlighted as you scroll.
+- **Quieter home.** The floating search, history and folder buttons above the greeting
+  are gone (the title bar already has search and history). The folder picker sits just
+  under the message box. Recent sessions are a plain list with hairline dividers.
+- **Menus, dialogs and toasts** follow the same style: rounded, hairline borders, soft
+  shadows, plain hover washes, sentence-case headings.
+- **Fix:** the Ctrl+C, Esc, History and Prompts buttons were drawn as dark tiles in some
+  dark themes; they are flat now.
 
 ### New in 3.2.0
 

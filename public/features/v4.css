@@ -1,0 +1,144 @@
+/* ezCLI 4.0 — the Claude-desktop pass.
+ * Loaded last. Everything here is scoped to the calm layout (html[data-layout='calm']),
+ * so the dashboard layout keeps its own look. */
+
+/* ===================== Sand Dark: Claude's dark theme ===================== */
+:root:root:root[data-palette='claude-dark'] {
+  --page: #1f1e1d;
+  --panel: #262624;
+  --rail-dark: #1f1e1d;
+  --term-bg: #262624;
+  --ink: #f5f4ef;
+  --ink-soft: #c9c7bd;
+  --ink-faint: #a29f96;
+  --line: rgb(222 220 209 / 14%);
+  --tint-a: #2c2b29; --tint-b: #2a2a27; --tint-c: #2e2d2a; --tint-d: #2b2a28;
+}
+:root[data-palette='claude-dark']:root {
+  --surface: var(--panel);
+  --surface-2: #2e2d2b;
+  --raised: #34332f;
+  --text: var(--ink); --muted: var(--ink-soft); --faint: var(--ink-faint);
+  --border: var(--line);
+}
+
+/* both Sand palettes share the flat Claude window */
+@media (min-width: 980px) {
+  :root[data-palette='claude-dark'][data-layout='calm'] .app-body { gap: 0 !important; padding: 0 !important; }
+  :root[data-palette='claude-dark'][data-layout='calm'] .main { border-radius: 0 !important; box-shadow: none !important; border-left: 1px solid var(--line); }
+  :root:root[data-palette='claude-dark'][data-layout='calm'] { --rail-w: 256px; }
+  :root[data-palette='claude-dark'][data-layout='calm'] .rail { box-sizing: border-box; padding: 10px 12px; border-radius: 0; background: transparent; box-shadow: none; }
+}
+:root[data-palette='claude-dark'][data-layout='calm'] .tabbar { background: var(--page); }
+:root[data-palette='claude-dark'][data-layout='calm'] .home .dash-hero .composer-box,
+:root[data-palette='claude-dark'][data-layout='calm'] #ptyComposer {
+  background: #30302e !important; border: 1px solid rgb(222 220 209 / 14%) !important; border-radius: 22px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 18%) !important;
+}
+:root[data-palette='claude-dark'][data-layout='calm'] .home .dash-hero .composer-box:focus-within,
+:root[data-palette='claude-dark'][data-layout='calm'] #ptyComposer:focus-within { border-color: rgb(222 220 209 / 30%) !important; }
+:root[data-palette='claude-dark'][data-layout='calm'] .home #homeTitle::before {
+  content: ''; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.32em; vertical-align: -0.04em;
+  background: no-repeat center / contain url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g stroke='%23d97757' stroke-width='2.6' stroke-linecap='round'><path d='M12 2.5v19M2.5 12h19M5.3 5.3l13.4 13.4M18.7 5.3 5.3 18.7'/></g></svg>");
+}
+:root[data-palette='claude-dark'][data-layout='calm'] .home #homeTitle { font-weight: 400; }
+:root:root[data-layout='calm'][data-palette='claude-dark'] { --rf: #e2e0d7; --rf-strong: #faf9f5; --rf-dim: #a9a69c; --rf-hover: rgb(255 255 255 / 6%); --rf-active: rgb(255 255 255 / 10%); }
+
+/* ===================== session composer: agent · model · effort ===================== */
+.composer-meta { display: none; }
+html[data-layout='calm'] #ptyComposer .composer-meta {
+  display: inline-flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 6px;
+  height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ink-soft, var(--muted)); font-size: 13px; font-weight: 500; opacity: 1 !important; cursor: pointer;
+}
+html[data-layout='calm'] #ptyComposer .composer-meta[hidden] { display: none; }
+html[data-layout='calm'] #ptyComposer .composer-meta:hover:not(:disabled) { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); color: var(--ink, var(--text)); }
+html[data-layout='calm'] #ptyComposer .composer-meta:disabled { cursor: default; }
+html[data-layout='calm'] #ptyComposer .composer-meta .meta-agent { color: var(--ink, var(--text)); }
+html[data-layout='calm'] #ptyComposer .composer-meta .meta-effort { color: var(--ink-faint, var(--faint)); font-weight: 400; }
+html[data-layout='calm'] #ptyComposer .composer-row { align-items: center; }
+
+/* the session header keeps the agent visible, quietly, next to the title */
+html[data-layout='calm'] .session-head > .head-agent:not([hidden]) { opacity: 1; color: var(--ink-faint, var(--faint)); font-weight: 500; }
+
+/* ===================== menus ===================== */
+html[data-layout='calm'] .menu {
+  padding: 6px; border: 1px solid var(--line, var(--border)); border-radius: 12px;
+  background: var(--panel, var(--surface-2));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%), 0 12px 32px -8px rgb(0 0 0 / 22%);
+}
+html[data-layout='calm'] .menu-search { height: 32px; border-radius: 8px; border-color: var(--line, var(--border)); background: transparent; }
+html[data-layout='calm'] .menu-head { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; color: var(--ink-faint, var(--faint)); }
+html[data-layout='calm'] .header-menu-item { min-height: 32px; padding: 6px 10px; border-radius: 8px; font-size: 13px; color: var(--ink, var(--text)); }
+html[data-layout='calm'] .header-menu-item:hover:not(:disabled),
+html[data-layout='calm'] .header-menu-item.kbd-focus { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+html[data-layout='calm'] .menu-sep { background: var(--line, var(--border)); }
+
+/* ===================== dialogs ===================== */
+html[data-layout='calm'] dialog.sheet {
+  border: 1px solid var(--line, var(--border)); border-radius: 16px; background: var(--panel, var(--surface));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 6%), 0 24px 64px -16px rgb(0 0 0 / 32%);
+}
+html[data-layout='calm'] dialog.sheet::backdrop { background: rgb(20 18 14 / 36%); backdrop-filter: blur(2px); }
+html[data-layout='calm'] dialog.sheet h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink, var(--text)); }
+html[data-layout='calm'] dialog.sheet h3 { font-size: 13.5px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink, var(--text)); }
+html[data-layout='calm'] dialog.sheet :is(input[type='text'], input[type='search'], input:not([type]), textarea, select) {
+  border-radius: 8px; border: 1px solid var(--line, var(--border));
+}
+
+/* settings: section list on the left */
+#settingsSheet { width: min(880px, 94vw); max-width: none; padding-bottom: 14px; }
+#settingsSheet .settings-layout { display: grid; grid-template-columns: 176px 1fr; gap: 22px; min-height: 0; }
+#settingsSheet .settings-nav { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+#settingsSheet .settings-nav button {
+  height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; text-align: left;
+  color: var(--ink, var(--text)); font-size: 13px; font-weight: 450; cursor: pointer;
+}
+#settingsSheet .settings-nav button:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); color: var(--ink, var(--text)); }
+#settingsSheet .settings-nav button.on { background: color-mix(in srgb, var(--ink, #1f1d19) 9%, transparent); color: var(--ink, var(--text)); }
+#settingsSheet .settings-body { max-height: min(64vh, 620px); overflow-y: auto; padding-right: 6px; scrollbar-width: thin; }
+#settingsSheet .settings-body .settings-section { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line, var(--border)); }
+#settingsSheet .settings-body .settings-section:last-child { border-bottom: 0; }
+#settingsSheet > form { display: flex; justify-content: flex-end; margin-top: 12px; }
+@media (max-width: 700px) {
+  #settingsSheet .settings-layout { grid-template-columns: 1fr; }
+  #settingsSheet .settings-nav { flex-direction: row; flex-wrap: wrap; }
+}
+
+/* theme presets and segmented controls read as plain, flat choices */
+html[data-layout='calm'] .theme-preset-grid button,
+html[data-layout='calm'] .theme-preset { border-radius: 10px; box-shadow: none; }
+html[data-layout='calm'] .segmented { border-radius: 9px; box-shadow: none; }
+html[data-layout='calm'] .segmented .theme-option.on,
+html[data-layout='calm'] .segmented button.on { box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+
+/* ===================== toasts ===================== */
+html[data-layout='calm'] .toast {
+  border: 1px solid var(--line, var(--border)); border-radius: 12px; background: var(--panel, var(--surface));
+  color: var(--ink, var(--text)); box-shadow: 0 12px 32px -10px rgb(0 0 0 / 28%); font-size: 13px;
+}
+
+/* ===================== home: recent sessions as a plain list ===================== */
+html[data-layout='calm'] .home #continueRow.session-table,
+html[data-layout='calm'] .home .dash-table #continueRow {
+  background: transparent !important; box-shadow: none !important; border: 0 !important; padding: 0 !important;
+}
+html[data-layout='calm'] .home #continueRow .session-trow { border-radius: 0; border: 0; box-shadow: none; }
+html[data-layout='calm'] .home #continueRow .session-trow + .session-trow { border-top: 1px solid var(--line, var(--border)); }
+html[data-layout='calm'] .home #continueRow .session-trow:hover { border-radius: 8px; }
+html[data-layout='calm'] .home #continueRow .session-agent,
+html[data-layout='calm'] .home #continueRow .session-when { color: var(--ink-faint, var(--faint)); font-size: 12.5px; }
+
+/* composer helper chips stay flat in every theme and window style */
+:root:root[data-layout='calm'] #ptyComposer .composer-row .chip { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
+:root:root[data-layout='calm'] #ptyComposer .composer-row .chip:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 8%, transparent) !important; }
+
+/* home: folder picker in the composer footer; the floating icon cluster goes away */
+html[data-layout='calm'] .home .dash-head-actions { display: none; }
+html[data-layout='calm'] .home .composer-project {
+  margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; margin-right: 2px;
+  border: 0 !important; border-radius: 8px; background: transparent !important; box-shadow: none !important;
+  color: var(--ink-soft, var(--muted)); font-size: 13px; font-weight: 500;
+}
+html[data-layout='calm'] .home .composer-project:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent) !important; color: var(--ink, var(--text)); }
+html[data-layout='calm'] .home .dash-head { margin-top: 12vh; }

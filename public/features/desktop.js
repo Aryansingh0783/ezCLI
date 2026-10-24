@@ -106,6 +106,7 @@ const ACCENTS = {
  * (data-palette, defined in reference.css) and an accent, in one tap. */
 const THEME_PRESETS = {
   claude: { label: 'Sand', theme: 'light', palette: 'claude', accent: 'coral', swatch: '#f3f0e8' },
+  'claude-dark': { label: 'Sand Dark', theme: 'dark', palette: 'claude-dark', accent: 'coral', swatch: '#262624' },
   daylight: { label: 'Daylight', theme: 'light', palette: 'daylight', accent: 'lime', swatch: '#e7edfa' },
   mist: { label: 'Mist', theme: 'light', palette: 'mist', accent: 'sky', swatch: '#eceff4' },
   grape: { label: 'Grape', theme: 'light', palette: 'grape', accent: 'violet', swatch: '#efeafb' },
