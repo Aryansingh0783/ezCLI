@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.10
+
+- **Sidebar colours follow every theme.** The new sidebar was only tuned for Sand;
+  its text and highlights now adapt to the light and dark themes too, and project
+  names stay readable on light themes.
+
 ### New in 2.9.9
 
 - **Fix:** with the explorer open, the session header could squeeze the title
