@@ -377,3 +377,12 @@ html[data-layout='calm'] .statusbar { font-size: 11.5px; opacity: 0.9; }
 @media (prefers-reduced-motion: reduce) {
   html[data-layout='calm'] * { transition: none !important; }
 }
+
+/* Liquid-glass style adds a wash behind the composer pickers; the calm footer stays plain text either way */
+:root[data-style='glass']:root[data-layout='calm'] .home .pill-pick,
+:root[data-style='glass']:root[data-layout='calm'] .home .composer-tools button:not(.send-btn) {
+  background: transparent !important; box-shadow: none !important; border-color: transparent !important;
+}
+:root[data-style='glass']:root[data-layout='calm'] .home .pill-pick:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent) !important;
+}

@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 3.0.3
+
+- **Fix:** with the Liquid glass window style on (the default for existing installs), the
+  composer pickers on the home screen got a pale wash and looked different from Solid.
+  They are plain text in both now.
+
 ### New in 3.0.2
 
 - **Fix:** the Instructions button was missing from the compact sidebar on narrow
