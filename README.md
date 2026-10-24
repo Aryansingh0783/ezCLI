@@ -133,6 +133,11 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 3.0.2
+
+- **Fix:** the Instructions button was missing from the compact sidebar on narrow
+  windows; it now shows there too.
+
 ### New in 3.0.1
 
 - **Fix: "Vault not found" when opening the second brain in Obsidian.** Obsidian only
