@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.3
+
+- **Wide sidebar in the Sand theme.** Projects show their names beside their
+  initials, with Open folder, Brain, Browser, Settings and Keys as labelled rows,
+  like the Claude desktop app. Windows under 980px wide keep the compact icon rail.
+
 ### New in 2.9.2
 
 - **Light sidebar in the Sand theme.** The project rail is now a soft, borderless

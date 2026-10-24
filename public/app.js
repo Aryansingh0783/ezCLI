@@ -743,7 +743,7 @@ function renderSpaces() {
       const dot = spaceDot(sp.id);
       return `<button class="space ${sp.id === prefs.activeSpace ? 'active' : ''}" data-space="${esc(sp.id)}" title="${esc(
         sp.name
-      )}\n${esc(sp.path)}" aria-label="${esc(sp.name)}">${esc(initials(sp.name))}${
+      )}\n${esc(sp.path)}" aria-label="${esc(sp.name)}"><span class="space-ini">${esc(initials(sp.name))}</span><span class="space-name">${esc(sp.name)}</span>${
         dot ? `<span class="status-dot ${dot}"></span>` : ''
       }</button>`;
     })

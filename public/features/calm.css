@@ -127,3 +127,32 @@ html[data-layout='calm'] .home #continueRow > :nth-child(n+5) { display: none; }
 :root:root[data-palette='claude'] .space:hover { border-color: rgb(60 50 20 / 25%); color: #1f1d19; }
 :root:root[data-palette='claude'] .space.active { background: #fff; color: #1f1d19; box-shadow: 0 1px 3px rgb(60 50 20 / 18%); }
 :root:root[data-palette='claude'] .space .status-dot { border-color: var(--page); }
+
+/* ---------------------- wide sidebar (Claude-desktop style) ----------------------
+ * Project names sit beside their initials. Below 980px it folds back to icons. */
+.space-name { display: none; }
+@media (min-width: 980px) {
+  :root:root[data-layout='calm'] { --rail-w: 232px; }
+  html[data-layout='calm'] .rail { align-items: stretch; padding: 10px 10px; gap: 2px; }
+  html[data-layout='calm'] .spaces { align-items: stretch; width: 100%; gap: 2px; }
+  :root:root[data-layout='calm'] .space {
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    width: 100%; height: 38px; padding: 0 8px; border-radius: 10px;
+    letter-spacing: 0; font-weight: 500; font-size: 13.5px; text-align: left;
+  }
+  html[data-layout='calm'] .space-ini {
+    display: grid; place-items: center; flex: none; width: 24px; height: 24px;
+    border-radius: 7px; background: rgb(60 50 20 / 9%); font-size: 11px; font-weight: 650;
+  }
+  html[data-layout='calm'] .space.active .space-ini { background: rgb(60 50 20 / 12%); }
+  html[data-layout='calm'] .space-name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :root:root[data-layout='calm'] .space .status-dot { position: static; margin-left: auto; flex: none; }
+  :root:root[data-layout='calm'] .space.active::before { left: -10px; }
+  :root:root[data-layout='calm'] .rail-add { display: flex; flex-direction: row; align-items: center; gap: 10px; width: 100%; height: 36px; border-radius: 10px; justify-content: flex-start; padding: 0 12px; margin-top: 4px; }
+  html[data-layout='calm'] .rail-add::after { content: 'Open folder'; font-size: 13px; }
+  :root:root[data-layout='calm'] .rail-btn:not(.rail-add) {
+    display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px;
+    width: 100%; height: 34px; padding: 0 10px; border-radius: 9px;
+  }
+  html[data-layout='calm'] .rail-btn:not(.rail-add) .rail-label { font-size: 13px; }
+}
