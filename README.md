@@ -133,6 +133,12 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 2.9.4
+
+- **Sessions in the sidebar.** The calm sidebar lists the open project's sessions
+  under its name, with a status dot; click one to switch to it. Like the recent
+  chats list in the Claude desktop app.
+
 ### New in 2.9.3
 
 - **Wide sidebar in the Sand theme.** Projects show their names beside their

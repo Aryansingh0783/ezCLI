@@ -156,3 +156,19 @@ html[data-layout='calm'] .home #continueRow > :nth-child(n+5) { display: none; }
   }
   html[data-layout='calm'] .rail-btn:not(.rail-add) .rail-label { font-size: 13px; }
 }
+
+/* sidebar session list (calm.js) */
+.rail-sessions { display: none; }
+@media (min-width: 980px) {
+  html[data-layout='calm'] .rail-sessions { display: flex; flex-direction: column; gap: 1px; width: 100%; margin-top: 14px; overflow-y: auto; min-height: 0; }
+  html[data-layout='calm'] .rail-sessions[hidden] { display: none; }
+  html[data-layout='calm'] .rail-sessions-head { padding: 0 10px 4px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; color: #7a7467; }
+  html[data-layout='calm'] .rail-session {
+    display: flex; align-items: center; gap: 9px; width: 100%; height: 32px; padding: 0 10px;
+    border: 0; border-radius: 9px; background: transparent; color: #3b372f; font-size: 13px; text-align: left; cursor: pointer;
+  }
+  html[data-layout='calm'] .rail-session:hover { background: rgb(60 50 20 / 7%); }
+  html[data-layout='calm'] .rail-session.active { background: rgb(60 50 20 / 11%); color: #1f1d19; font-weight: 550; }
+  html[data-layout='calm'] .rail-session .status-dot { position: static; flex: none; }
+  html[data-layout='calm'] .rail-session-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
