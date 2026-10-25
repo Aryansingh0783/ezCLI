@@ -367,3 +367,17 @@ html[data-layout='calm'] .session-head .head-changes:hover { background: color-m
   display: inline-block; vertical-align: top; color: transparent !important;
   background: linear-gradient(var(--bar), var(--bar)) center / 1px 100% no-repeat;
 }
+
+/* ===================== starter prompts under the home message box (starters.js) ===================== */
+.home-starters { display: none; }
+html[data-layout='calm'] .home-starters {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px 0 0; transition: opacity 0.18s ease, transform 0.18s ease;
+}
+html[data-layout='calm'] .home-starters.away { opacity: 0; transform: translateY(-4px); pointer-events: none; }
+html[data-layout='calm'] .starter {
+  height: 32px; padding: 0 14px; border: 1px solid var(--line, var(--border)); border-radius: 16px; background: transparent;
+  color: var(--ink-soft, var(--muted)); font: inherit; font-size: 13px; cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+html[data-layout='calm'] .starter:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); color: var(--ink, var(--text)); border-color: color-mix(in srgb, var(--ink, #1f1d19) 24%, transparent); }
+html[data-layout='calm'] .starter:active { transform: scale(0.97); }

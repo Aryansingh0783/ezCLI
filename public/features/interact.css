@@ -99,3 +99,16 @@ html[data-layout='calm'] .rail-sessions.fade-t.fade-b { -webkit-mask-image: line
 /* a session with output you have not seen reads as unread */
 html[data-layout='calm'] .rail-session.unread .rail-session-title { font-weight: 650; color: var(--rf-strong); }
 html[data-layout='calm'] .rail-session.unread::after { content: ''; flex: none; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--brand); }
+
+/* the session title opens a menu */
+html[data-layout='calm'] .session-head .head-title[role='button'] {
+  cursor: pointer; border-radius: 8px; padding: 3px 8px; margin-left: -8px; -webkit-app-region: no-drag;
+  transition: background-color 0.12s ease;
+}
+html[data-layout='calm'] .session-head .head-title[role='button']:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+html[data-layout='calm'] .session-head .head-title[role='button']:focus-visible { outline: 2px solid color-mix(in srgb, var(--brand) 60%, transparent); outline-offset: 1px; }
+.head-rename {
+  width: min(320px, 40vw); height: 28px; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--brand) 55%, transparent); border-radius: 7px;
+  background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-weight: 600; outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
+}

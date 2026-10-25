@@ -266,3 +266,81 @@ window.addEventListener(
 );
 registerCommand({ group: 'Session', label: 'Jump to the next session with new output', keys: 'Ctrl Alt J', run: jumpToUnread });
 registerCommand({ group: 'Session', label: 'Search sessions in this project', keys: 'Ctrl Alt O', run: () => RailSearch.open() });
+
+/* ------------------------------------------------ the session title is a menu */
+const HeadTitle = {
+  mount() {
+    const t = $('headTitle');
+    if (!t || t.dataset.menu) return;
+    t.dataset.menu = '1';
+    t.tabIndex = 0;
+    t.setAttribute('role', 'button');
+    t.setAttribute('aria-haspopup', 'menu');
+    t.title = 'Rename, duplicate or close this session';
+    t.addEventListener('click', (e) => {
+      if (e.target.closest('input')) return;
+      this.open();
+    });
+    t.addEventListener('keydown', (e) => {
+      if (e.target.closest('input')) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.open();
+      } else if (e.key === 'F2') this.rename();
+    });
+  },
+  open() {
+    const s = active();
+    const t = $('headTitle');
+    if (!s || !t) return;
+    const others = spaceSessions().filter((o) => o.id !== s.id);
+    openMenu(t, {
+      items: [
+        { label: 'Rename', hint: 'F2', run: () => this.rename() },
+        { label: 'Duplicate', run: () => createSession(s.agentId, { modelId: s.modelId, modeId: s.modeId, effortId: s.effortId, cwd: s.cwd }) },
+        { label: 'Restart', run: () => restartSession(s) },
+        { label: 'Copy folder path', run: () => copy(s.cwd) },
+        ...tabMenuExtras(s),
+        { sep: true },
+        { label: 'Close', hint: 'Ctrl+Alt+W', run: () => closeSession(s.id) },
+        {
+          label: 'Close the others',
+          disabled: !others.length,
+          run: () => {
+            others.forEach((o) => closeSession(o.id, { quiet: true }));
+            toast(`Closed ${others.length} session${others.length === 1 ? '' : 's'}. Reopen them from the Closed tabs menu.`);
+          }
+        }
+      ]
+    });
+  },
+  rename() {
+    const s = active();
+    const t = $('headTitle');
+    if (!s || !t) return;
+    const input = document.createElement('input');
+    input.className = 'head-rename';
+    input.value = s.title;
+    input.setAttribute('aria-label', 'Session name');
+    t.textContent = '';
+    t.append(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      if (commit && input.value.trim()) s.title = input.value.trim().slice(0, 80);
+      renderTabs();
+      renderHead();
+      RailSessions.render();
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') finish(true);
+      if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true), { once: true });
+  }
+};
+hooks.boot.push(() => HeadTitle.mount());

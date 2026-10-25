@@ -174,6 +174,14 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 4.9.0
+
+- **Starter ideas on the home screen.** Under the message box, a few one-click prompts fit the
+  project you are in: "Review my 3 uncommitted changes" appears when git shows work in progress.
+  A starter only fills the box, so you can edit it before sending, and it steps aside once you type.
+- **The session title is a menu.** Click it for rename, duplicate, restart, copy folder path,
+  move to a new window, export and close. `F2` renames the session right in the header.
+
 ### New in 4.8.0
 
 - **See what the agent changed at a glance.** A pill in the session header shows the live count
