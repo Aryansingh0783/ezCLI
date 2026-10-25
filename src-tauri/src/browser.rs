@@ -2,7 +2,7 @@
 //!
 //! One extra webview window (label `pc-browser`) loads real sites. Its label is
 //! deliberately outside the capabilities manifest (which lists only `main` and
-//! `win-*`), so the page it loads has **no** ezCLI command access — it cannot
+//! `win-*`), so the page it loads has **no** ezCLI command access, it cannot
 //! call back into the app. The model therefore works the way a person would:
 //! it navigates, reads a screenshot, and clicks or types by coordinate.
 //!

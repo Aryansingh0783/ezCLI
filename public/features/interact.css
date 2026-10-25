@@ -1,0 +1,64 @@
+/* ===================== interactions (interact.js) ===================== */
+.side-toggle { display: none; }
+html[data-layout='calm'] .side-toggle {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; margin-left: 2px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft, var(--muted)); cursor: pointer; -webkit-app-region: no-drag;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+html[data-layout='calm'] .side-toggle:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 8%, transparent); color: var(--ink, var(--text)); }
+html[data-layout='calm'] .side-toggle[aria-pressed='true'] { color: var(--brand); }
+
+/* the sidebar slides away instead of vanishing */
+@media (min-width: 980px) {
+  html[data-layout='calm'] .rail {
+    transition: width 0.24s cubic-bezier(.3, 0, .2, 1), padding 0.24s cubic-bezier(.3, 0, .2, 1), opacity 0.18s ease, margin 0.24s cubic-bezier(.3, 0, .2, 1);
+    overflow-x: hidden;
+  }
+  :root:root[data-layout='calm'][data-rail='collapsed'] .rail {
+    width: 0 !important; min-width: 0; padding-left: 0 !important; padding-right: 0 !important; opacity: 0; pointer-events: none;
+    margin-left: 0 !important; margin-right: 0 !important; border: 0;
+  }
+  :root:root[data-layout='calm'][data-rail='collapsed'] .app-body { gap: 0 !important; }
+}
+html[data-layout='calm'][data-rail='collapsed'] .rail * { visibility: hidden; }
+
+/* inline rename */
+.rail-rename {
+  flex: 1; min-width: 0; height: 26px; margin: 0 -4px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--brand) 55%, transparent); border-radius: 6px;
+  background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 13px; outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
+}
+
+/* hover preview card */
+.hover-card {
+  position: fixed; z-index: 65; width: 300px; padding: 12px 14px; border: 1px solid var(--line, var(--border)); border-radius: 12px;
+  background: var(--panel, var(--surface)); color: var(--ink, var(--text)); pointer-events: none;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 6%), 0 16px 40px -12px rgb(0 0 0 / 28%); font-size: 12.5px; animation: pop-in 0.14s ease both;
+}
+.hover-card .hc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.hover-card .hc-top b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hover-card .hc-top span { flex: none; color: var(--ink-faint, var(--faint)); font-size: 12px; }
+.hover-card .hc-sub { margin: 3px 0 0; color: var(--ink-faint, var(--faint)); }
+.hover-card .hc-out {
+  margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent);
+  font: 11.5px/1.5 'JetBrains Mono', Consolas, monospace; white-space: pre-wrap; overflow: hidden; color: var(--ink-soft, var(--muted));
+}
+
+/* rows glide in, the view fades in, buttons answer a press */
+@keyframes rail-in { from { opacity: 0; transform: translateX(-6px); } }
+html[data-layout='calm'] .rail-session { animation: rail-in 0.2s ease both; }
+@keyframes view-fade { from { opacity: 0; transform: translateY(5px); } }
+.main.view-in > :not(dialog) { animation: view-fade 0.22s cubic-bezier(.3, 0, .2, 1) both; }
+html[data-layout='calm'] :is(.send-btn, .rail-new, .space, .rail-btn, .rail-session, .btn, .side-toggle, .usage-ring):active:not(:disabled) { transform: scale(0.97); }
+html[data-layout='calm'] .send-btn { transition: transform 0.12s ease, background-color 0.12s ease; }
+html[data-layout='calm'] .send-btn:hover:not(:disabled) { transform: translateY(-1px); }
+html[data-layout='calm'] .home .session-trow { position: relative; cursor: pointer; }
+html[data-layout='calm'] .home .session-trow::after {
+  content: '\203A'; position: absolute; right: 10px; top: 50%; transform: translate(-4px, -52%); opacity: 0; color: var(--ink-faint, var(--faint));
+  font-size: 18px; transition: opacity 0.14s ease, transform 0.14s ease;
+}
+html[data-layout='calm'] .home .session-trow:hover::after { opacity: 1; transform: translate(0, -52%); }
+.rail-session:focus-visible { outline: 2px solid color-mix(in srgb, var(--brand) 60%, transparent); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) {
+  .rail-session, .main.view-in > :not(dialog), .hover-card { animation: none !important; }
+}

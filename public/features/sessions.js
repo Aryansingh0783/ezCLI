@@ -429,7 +429,7 @@ const Sessions = (() => {
       <div class="stat-card stat-b"><span class="stat-label">Time with agents</span>
         <span class="stat-value">${esc(fmtDur(st.ms))}</span><span class="stat-sub">${st.prompts} message${st.prompts === 1 ? '' : 's'} sent</span></div>
       <div class="stat-card stat-c"><span class="stat-label">Most used</span>
-        <span class="stat-value stat-text">${esc(st.top ? st.top.name : '—')}</span><span class="stat-sub">${st.top ? `${st.top.share}% of your sessions` : ''}</span></div>`;
+        <span class="stat-value stat-text">${esc(st.top ? st.top.name : '-')}</span><span class="stat-sub">${st.top ? `${st.top.share}% of your sessions` : ''}</span></div>`;
   }
 
   function renderContinueRow() {

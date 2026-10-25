@@ -1,8 +1,8 @@
 //! Graphify (https://github.com/safishamsi/graphify, PyPI `graphifyy`): a
 //! third-party tool that turns a project into a queryable knowledge graph and
 //! installs itself as a skill into coding agents. ezCLI only runs Graphify's
-//! own documented commands, chosen from a fixed list here — no user text ever
-//! reaches the shell — and the frontend shows each exact command and waits
+//! own documented commands, chosen from a fixed list here, no user text ever
+//! reaches the shell, and the frontend shows each exact command and waits
 //! for a confirming click first.
 
 use crate::{agents, install, AppState};

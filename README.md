@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.png" alt="ezCLI — many agents, one calm place" width="100%">
+  <img src="docs/banner.png" alt="ezCLI: many agents, one calm place" width="100%">
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@ Download from the [Releases page](https://github.com/Aryansingh0783/ezCLI/releas
 | Windows | `ezCLI_x.y.z_x64_en-US.msi` |
 | macOS (Apple silicon) | `ezCLI_x.y.z_aarch64.dmg` |
 | Linux | `ezCLI_x.y.z_amd64.deb` or `ezCLI_x.y.z_amd64.AppImage` |
-| Arch Linux / CachyOS | [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD) — see below |
+| Arch Linux / CachyOS | [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD), see below |
 | VS Code | `ezcli-x.y.z.vsix`, then Extensions › … › Install from VSIX |
 
 The app writes its editable config to `~/.ezcli/agents.json` on first run. After that,
@@ -50,7 +50,7 @@ typing are Windows-only for now.
 ### Arch Linux / CachyOS
 
 There's no AUR package yet, but [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD)
-builds one locally — it downloads the official `.deb` from this repo's releases and
+builds one locally: it downloads the official `.deb` from this repo's releases and
 repackages it for pacman, so there's no Rust/Node toolchain to install:
 
 ```bash
@@ -64,7 +64,7 @@ checksum, install via `pacman -U`, and the installed binary actually starting GT
 WebKit under a virtual display with no missing libraries. CachyOS uses the same
 package format and official repos as Arch, so this works there unchanged. **On
 SteamOS** (Steam Deck or another Steam Machine), use Distrobox instead of installing
-directly — the root filesystem is read-only there — see [`AGENTS.md`](AGENTS.md) for
+directly: the root filesystem is read-only there, see [`AGENTS.md`](AGENTS.md) for
 the exact steps. That file is also written so you can just point an AI coding agent at
 this repo and ask it to install ezCLI for you on an Arch-based system. To use it on
 a newer ezCLI release, bump `pkgver` in the `PKGBUILD` and replace the first
@@ -81,7 +81,7 @@ subscription, balance, or provider account.
 If no ready Claude Code or Codex backend is found, ezCLI recommends the first
 installed free agent instead of sending you to a known paid-plan gate. A
 **Free** badge means that the CLI has a route that does not require a paid
-plan—it does not mean that every model supplied by an optional connected
+plan, it does not mean that every model supplied by an optional connected
 provider is free.
 
 | Backend | Free route | PC control | Install / setup |
@@ -99,15 +99,15 @@ provider is free.
 
 PC control gives the agent a screenshot tool plus real mouse and keyboard
 control (move, click, scroll, type, key combos) and an agent-driven in-app
-browser, all through a local tool server. It is attached at launch — switching
-it on or off restarts the session — and works with **Claude Code**, **Codex**
+browser, all through a local tool server. It is attached at launch, switching
+it on or off restarts the session, and works with **Claude Code**, **Codex**
 and the free **OpenCode**/**DeepSeek** backends. It is off until you turn it on
 per session, and the grant ends when that session exits.
 
 ### Ollama: local capacity versus cloud capacity
 
-ezCLI reads only coarse local facts—logical CPU cores, total RAM, and the
-largest dedicated GPU VRAM—to explain whether a downloaded local model is
+ezCLI reads only coarse local facts, logical CPU cores, total RAM, and the
+largest dedicated GPU VRAM, to explain whether a downloaded local model is
 likely to be practical. Those facts **never** filter or cap the Cloud model
 menu: cloud inference runs remotely. Entries with a published nonzero size
 appear before entries that do not report a comparable size; this is only a
@@ -136,6 +136,22 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 4.4.0
+
+- **Our own mark in the greeting.** The spark that sat before the home greeting is replaced
+  by the ezCLI logo.
+- **The same footer for every agent and model.** In a session the message box now reads like
+  the Claude desktop composer: the mode on the left, the model and effort on the right, then
+  the usage ring and send. It works for every agent: a model left at its default shows the
+  agent's name, and agents with no effort setting leave it out. Click the mode to restart in
+  another mode, or the model to pick a different one.
+- **Sidebar interactions.** Hide or show the sidebar with the button next to the logo or
+  Ctrl+Alt+S. Double-click a session to rename it in place, hover one for a preview of its
+  latest output, and move through the list with the arrow keys (Enter opens, F2 renames,
+  Delete closes). Views fade in, rows glide in, and buttons answer a press.
+- **No em dashes.** They are gone from the interface, the README and the guides, replaced by
+  colons and commas, and a few messages were reworded for clarity.
 
 ### New in 4.3.0
 
@@ -514,7 +530,7 @@ Quality-of-life fixes:
   (Claude Code, Codex, Gemini, OpenCode/DeepSeek, Antigravity), builds a
   project's graph offline (code only, no API key), and opens it. Each exact
   command is shown before it runs.
-- Still without PC control: Antigravity (no per-session MCP config — a global
+- Still without PC control: Antigravity (no per-session MCP config, a global
   entry would expose one session's PC-control access to another), Freebuff
   (only reads MCP from a file inside your project), and Ollama (`ollama run`
   has no tool calling).
@@ -522,32 +538,32 @@ Quality-of-life fixes:
 ### New in 2.1.7
 
 - **Connectors: configure any number of remote MCP servers, not just one.**
-  Settings → **Connectors** replaces the single Strata URL field with a list —
+  Settings → **Connectors** replaces the single Strata URL field with a list,
   add as many custom MCP servers as you want, each with its own name and URL,
   each individually enabled/disabled. All enabled connectors attach to every
   compatible session automatically (still no per-session opt-in); the header
   chip now shows how many are active and lets you opt out for just one tab.
   Existing Strata URLs migrate automatically into the new list. This is still
-  bring-your-own-server only — ezCLI does not add pre-built one-click SaaS
+  bring-your-own-server only: ezCLI does not add pre-built one-click SaaS
   connectors (Notion, Drive, Slack, etc.), since that would mean hosting OAuth
   redirects and holding third-party credentials, which is out of scope; see
   [Connectors (third-party)](#connectors-third-party).
 
 ### New in 2.1.6
 
-- **Arch Linux / CachyOS install support.** A verified `PKGBUILD` — see
+- **Arch Linux / CachyOS install support.** A verified `PKGBUILD`, see
   [Install](#arch-linux--cachyos) above.
 
 ### New in 2.1.5
 
-- **Strata is on by default once configured**, not opt-in per session — see
+- **Strata is on by default once configured**, not opt-in per session, see
   [PC control and its permission model](#pc-control-and-its-permission-model).
 
 ### New in 2.1.4
 
 - **Fixed: OpenCode and DeepSeek sessions wouldn't actually start.** Picking
   any model other than the default just printed OpenCode's own `--help`
-  text instead of launching — `-m` isn't a flag its interactive mode
+  text instead of launching, `-m` isn't a flag its interactive mode
   recognizes. Fixed by passing the model through OpenCode's own config
   mechanism instead.
 - **Fixed: Codex's "Full auto" mode and team chat's edit turns.** Codex
@@ -567,7 +583,7 @@ Quality-of-life fixes:
   onboarding's "What ezCLI found" box now have an **Install** button next to
   each missing free agent's command, not just Copy. It shows the exact
   command first, runs it only after you confirm, and streams the real
-  output live — the same thing you'd see running it yourself in a terminal.
+  output live: the same thing you'd see running it yourself in a terminal.
 
 ### New in 2.1.1
 
@@ -575,14 +591,14 @@ Quality-of-life fixes:
   an agent you grant it to can move the mouse, click, scroll and type, and it now works
   with the free **OpenCode** and **DeepSeek** backends as well as Claude Code and Codex.
 - **An agent-driven in-app browser.** The agent can open a separate ezCLI browser window
-  and navigate, read (by screenshot), click and type in it — a contained browser it
+  and navigate, read (by screenshot), click and type in it, a contained browser it
   controls, not your whole desktop. The page it loads cannot reach back into ezCLI.
 - **Fixes.** The `Ctrl+Alt+G` team-chat shortcut now works, and scroll direction is
   consistent (down is positive).
 - **Strata support.** Paste your own [Strata](https://klavis.ai) MCP server URL in
-  Settings and it's attached to every compatible session automatically — no
+  Settings and it's attached to every compatible session automatically, no
   per-session toggle to remember. ezCLI never creates an account or connects
-  anything on its own — see
+  anything on its own, see
   [PC control and its permission model](#pc-control-and-its-permission-model).
 
 ### Guide: what each feature does
@@ -806,16 +822,16 @@ tokens while off.
 
 **What the agent can do when it is on:**
 
-- `screenshot` — your primary display as a PNG, at most 1280 px wide.
-- `move_mouse`, `click`, `scroll` — move and click the mouse at screen pixels.
-- `type_text`, `press_key` — type text and press keys/combos (e.g. `ctrl+c`).
+- `screenshot`: your primary display as a PNG, at most 1280 px wide.
+- `move_mouse`, `click`, `scroll`: move and click the mouse at screen pixels.
+- `type_text`, `press_key`: type text and press keys/combos (e.g. `ctrl+c`).
 - An in-app browser it drives on its own: `browser_navigate` opens a separate
   ezCLI browser window (not your desktop), and `browser_screenshot` /
   `browser_click` / `browser_type` / `browser_key` / `browser_scroll` /
   `browser_nav` read and operate just that window. The page it loads has no
   access back into ezCLI.
 
-It still cannot run shell commands through ezCLI — only the tools above.
+It still cannot run shell commands through ezCLI, only the tools above.
 
 **How you turn it on:** use the **PC control** chip in the session header. The
 agent only learns about tools when it starts, so turning PC control on restarts
@@ -855,16 +871,16 @@ the same way but have not been run end to end yet.
 ### Connectors (third-party)
 
 Settings → **Connectors** lets you add any number of remote MCP servers you
-already have — [Strata](https://klavis.ai), a self-hosted tool server, or
+already have: [Strata](https://klavis.ai), a self-hosted tool server, or
 anything else that speaks MCP over HTTP. Each entry is just a name and a URL
 you supply. **ezCLI never creates an account, calls a third-party API, or
-installs anything on your behalf** for any connector — you set each one up
+installs anything on your behalf** for any connector, you set each one up
 entirely yourself and hand ezCLI only the URL. This is deliberately the
 bring-your-own-server slice of what a tool like Claude Desktop's Connectors
 page offers, and only that slice: there is no built-in list of pre-wired SaaS
 connectors (Notion, Drive, Slack, …), because wiring those up safely would
 mean ezCLI itself hosting OAuth redirects and holding real third-party
-credentials — out of scope for a desktop app like this.
+credentials: out of scope for a desktop app like this.
 
 Once added and enabled, a connector is **not** opt-in per session: every new
 session for an agent that can receive an MCP server attaches all enabled

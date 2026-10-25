@@ -283,7 +283,7 @@ pub async fn open_web_chat(provider: String, app: AppHandle) -> Result<(), Strin
     }
     let parsed = tauri::Url::parse(url).map_err(|e| e.to_string())?;
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed))
-        .title(format!("{title} — ezCLI web chat"))
+        .title(format!("{title}: ezCLI web chat"))
         .inner_size(1100.0, 820.0)
         .build()
         .map_err(|e| e.to_string())?;
@@ -334,7 +334,7 @@ pub fn group_cancel(run_id: String, runs: State<std::sync::Arc<group::GroupRuns>
 /// Run an agent's documented install command (exactly the string already
 /// shown in the UI) and stream its output as `install-out:<agent_id>`
 /// events. The frontend must have shown that literal command and gotten an
-/// explicit click before calling this — this function does not ask again.
+/// explicit click before calling this, this function does not ask again.
 #[tauri::command]
 pub async fn install_agent(
     agent_id: String,

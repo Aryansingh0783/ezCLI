@@ -60,7 +60,7 @@ The home screen has three labeled pills under the message box:
 | **Model** | Which model that agent should use. Hidden when the agent only has one. |
 | **Mode** | Launch flags such as `--permission-mode plan` or `--approve-for-me`. |
 
-Click any pill to open its menu — the current value is shown right under the caption, so
+Click any pill to open its menu, the current value is shown right under the caption, so
 you always see what will launch. Mode is tucked away for power users; Model is right next
 to Agent because that's the switch people actually flip.
 
@@ -286,9 +286,9 @@ Open **Settings → Open usage view** to see what ezCLI can honestly measure: ho
 sessions you've started per agent, their cumulative active time, and when you last used
 each. Two buttons sit next to it:
 
-- **Anthropic Console** — opens `console.anthropic.com/settings/usage` in your real
+- **Anthropic Console**: opens `console.anthropic.com/settings/usage` in your real
   browser.
-- **OpenAI Dashboard** — opens `platform.openai.com/usage`.
+- **OpenAI Dashboard**: opens `platform.openai.com/usage`.
 
 ezCLI never calls model APIs, so it can't see your real spend. The counters here are
 local and shared only with you; the real totals live with each provider.

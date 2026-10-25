@@ -1,4 +1,4 @@
-//! ezCLI backend — Tauri commands and session state.
+//! ezCLI backend: Tauri commands and session state.
 //!
 //! The frontend (public/) calls these via `window.__TAURI__.core.invoke`
 //! and listens to pty-data/pty-exit events. No HTTP server, no WebSocket.
@@ -92,13 +92,13 @@ struct StartResult {
     /// True only when the session was launched with PC control attached.
     pc_control: bool,
     /// Display names of the user-configured connectors (Settings →
-    /// Connectors) that actually got attached this launch — empty if none
+    /// Connectors) that actually got attached this launch, empty if none
     /// were configured, enabled, or the agent can't receive an MCP server.
     connectors_active: Vec<String>,
 }
 
 /// One user-configured remote MCP server (Settings → Connectors). Strata is
-/// not special-cased — it's just whatever the user names their own entry.
+/// not special-cased: it's just whatever the user names their own entry.
 #[derive(Deserialize, Clone)]
 struct ConnectorIn {
     name: String,

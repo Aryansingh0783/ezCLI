@@ -1,4 +1,4 @@
-/* ezCLI — design tokens follow the current Freebuff desktop shell:
+/* ezCLI: design tokens follow the current Freebuff desktop shell:
    near-black chrome, a lime brand accent, 9px radii, Inter-first type. */
 :root,
 :root[data-theme='dark'] {

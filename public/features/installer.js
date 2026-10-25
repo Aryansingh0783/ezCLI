@@ -4,7 +4,7 @@
  *
  * Nothing installs silently. Every run starts from an explicit click, shows
  * the literal command first, and streams its real output so the user sees
- * exactly what ran — same transparency as PC control's consent dialog. */
+ * exactly what ran: same transparency as PC control's consent dialog. */
 
 const Installer = (() => {
   let sheet = null;
@@ -16,7 +16,7 @@ const Installer = (() => {
     const act = sheet.querySelector('[data-run]');
     const stop = sheet.querySelector('[data-stop]');
     if (state_ === 'confirm') {
-      body.innerHTML = `<p class="note">ezCLI will run this exact command. It downloads and runs a third-party installer (npm or the vendor's own script) — the same thing you'd run yourself in a terminal.</p>
+      body.innerHTML = `<p class="note">ezCLI will run this exact command. It downloads and runs a third-party installer (npm or the vendor's own script), the same thing you'd run yourself in a terminal.</p>
         <pre class="install-cmd">${esc(current.install)}</pre>`;
       act.hidden = false;
       act.disabled = false;

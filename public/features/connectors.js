@@ -1,10 +1,10 @@
 'use strict';
 /* Connectors: custom remote MCP servers the user sets up and configures
- * themselves — Klavis AI's Strata, a self-hosted tool server, or anything
+ * themselves: Klavis AI's Strata, a self-hosted tool server, or anything
  * else that speaks MCP over HTTP. This is the part of what a tool like
  * Claude Desktop's "Connectors" settings offers that ezCLI can actually do
  * safely: ezCLI never creates a third-party account, runs an OAuth flow, or
- * installs anything on the user's behalf — each connector is just a name
+ * installs anything on the user's behalf, each connector is just a name
  * and a URL the user already has, attached to sessions the same way PC
  * control is, on by default once configured (see app.js's launch() and the
  * Connectors header chip, a per-tab opt-OUT). There is no built-in list of
@@ -31,7 +31,7 @@ function renderConnectors() {
     </li>`
         )
         .join('')
-    : '<li class="connector-empty note">No connectors yet. Add one below — paste in a name and the MCP server URL you already set up.</li>';
+    : '<li class="connector-empty note">No connectors yet. Add one below: paste in a name and the MCP server URL you already set up.</li>';
 }
 
 function saveConnectorField(id, field, value) {

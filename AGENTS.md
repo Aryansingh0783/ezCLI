@@ -8,17 +8,17 @@ machine it is running on.
 
 This repo ships a verified `PKGBUILD` at [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD).
 It downloads the official `.deb` from this repo's GitHub Releases and
-repackages it for pacman — there is no Rust/Node toolchain to install, and no
+repackages it for pacman, there is no Rust/Node toolchain to install, and no
 AUR account is involved. Everything it needs (`gtk3`, `webkit2gtk-4.1`,
 `libayatana-appindicator`) is in Arch's official `extra` repo.
 
-**First, detect which of the two cases below applies** — read `/etc/os-release`:
+**First, detect which of the two cases below applies**: read `/etc/os-release`:
 
 ```bash
 cat /etc/os-release
 ```
 
-### Case A — a normal, writable Arch-based system (Arch Linux, CachyOS, Manjaro, EndeavourOS, Garuda, …)
+### Case A: a normal, writable Arch-based system (Arch Linux, CachyOS, Manjaro, EndeavourOS, Garuda, …)
 
 `ID` or `ID_LIKE` contains `arch`, and this is **not** a Steam Deck / SteamOS.
 The root filesystem is writable and pacman works directly. Run:
@@ -32,7 +32,7 @@ makepkg -si --noconfirm
 
 `makepkg -si` builds the package and installs it with `pacman -U` in one step,
 resolving `gtk3`/`webkit2gtk-4.1`/`libayatana-appindicator` automatically.
-**Do not run `makepkg` as root** — if you are already root, create an
+**Do not run `makepkg` as root**: if you are already root, create an
 unprivileged user first (`useradd -m builder && su builder`), because
 `makepkg` refuses to run as root by design (it builds under `fakeroot`
 instead). `sudo` must be available and able to prompt (or be pre-authorized)
@@ -44,11 +44,11 @@ Verify the install:
 command -v ezcli && echo "ezCLI installed: $(command -v ezcli)"
 ```
 
-### Case B — SteamOS (Steam Deck or another Steam Machine)
+### Case B: SteamOS (Steam Deck or another Steam Machine)
 
 SteamOS's root filesystem is **read-only by design**, and changes made by
 disabling that (`steamos-readonly disable`) are reverted by the next system
-update — don't use that approach, and don't suggest it to the user as a fix.
+update: don't use that approach, and don't suggest it to the user as a fix.
 The durable, Valve-sanctioned way to run third-party CLI/desktop software on
 SteamOS is **Distrobox**, which ships pre-installed and runs as a container
 layered on top of the OS, so it survives OS updates untouched. (Flatpak is
@@ -69,7 +69,7 @@ distrobox-export --app ezcli
 
 `distrobox-export --app ezcli` copies ezCLI's `.desktop` entry out to the
 **host's** `~/.local/share/applications/`, rewritten to launch through the
-container — so it shows up in the SteamOS app menu / Desktop Mode launcher
+container: so it shows up in the SteamOS app menu / Desktop Mode launcher
 like any native app, without ever touching the read-only root.
 
 Verify the install:
@@ -81,7 +81,7 @@ ls ~/.local/share/applications/ | grep -i ezcli
 
 ### If something goes wrong
 
-- **`base-devel` or `sudo` isn't available / can't prompt**: tell the user —
+- **`base-devel` or `sudo` isn't available / can't prompt**: tell the user,
   don't try to work around a missing `sudo` by running `makepkg` as root;
   it will refuse.
 - **`distrobox: command not found` on SteamOS**: unusual, since it ships
@@ -89,7 +89,7 @@ ls ~/.local/share/applications/ | grep -i ezcli
   missing rather than installing a different container tool yourself.
 - **A newer ezCLI version is out and the PKGBUILD's pinned `pkgver`/`sha256sums`
   are stale**: the PKGBUILD documents how to bump itself in its own header
-  comment — update `pkgver`, reset `pkgrel=1`, and replace the first
+  comment: update `pkgver`, reset `pkgrel=1`, and replace the first
   `sha256sums` entry with the value from that release's
   `ezCLI_<version>_amd64.deb.sha256` asset on the
   [Releases page](https://github.com/Aryansingh0783/ezCLI/releases).

@@ -1,6 +1,6 @@
 'use strict';
 
-/* ezCLI frontend — talks to the Rust backend over the Tauri IPC bridge.
+/* ezCLI frontend: talks to the Rust backend over the Tauri IPC bridge.
  *
  * Layout follows the Freebuff desktop shell: a rail of spaces (one per
  * project folder), a frameless titlebar of session tabs, a home screen for
@@ -587,7 +587,7 @@ function normalizeSavedContinuationModes() {
     p.mode = freshModeId(a, p.mode);
     changed = true;
   }
-  // A parked tab has no provider-side conversation identifier—only a generic
+  // A parked tab has no provider-side conversation identifier, only a generic
   // `resume latest` argument. Reusing it after an app restart would therefore
   // attach it to whatever unrelated conversation the CLI considers latest.
   for (const sn of prefs.parked || []) {
@@ -890,7 +890,7 @@ function renderTabs() {
     .map((s) => {
       const a = agent(s.agentId);
       return `<div class="tab ${s.id === state.activeId ? 'active' : ''}" data-tab="${s.id}" role="tab" draggable="true"
-          aria-selected="${s.id === state.activeId}" title="${esc(s.title)} — ${esc(s.cwd)}">
+          aria-selected="${s.id === state.activeId}" title="${esc(s.title)}, ${esc(s.cwd)}">
         <div class="tab-row"><span class="tab-icon">${ICONS[a && a.icon] || ICONS.term}</span>
           <span class="tab-title">${esc(s.title)}</span></div>
         <div class="tab-meta" data-meta="${s.id}">${tabMeta(s)}</div>
@@ -1237,7 +1237,7 @@ async function launch(s) {
       rows: s.term.rows,
       pcControl: Boolean(s.wantPcControl),
       // Every enabled connector is on by default whenever configured in
-      // Settings — no per-session opt-in. s.connectorsOff is an explicit
+      // Settings: no per-session opt-in. s.connectorsOff is an explicit
       // opt-OUT for one tab.
       connectors:
         !s.connectorsOff && (prefs.connectors || []).some((c) => c.enabled && c.url)
@@ -1731,7 +1731,7 @@ function renderHead() {
       : 'Restart this session with PC control (screenshot, mouse and keyboard)';
   // Connectors (Settings → Connectors) are custom remote MCP servers the
   // user configured themselves: on by default for every compatible session
-  // once at least one is enabled there — no per-session opt-in. The chip
+  // once at least one is enabled there, no per-session opt-in. The chip
   // only exists once one is configured, and lets you opt OUT for just this
   // one tab if you don't want them attached.
   const connectorsChip = $('headConnectors');
@@ -1807,8 +1807,8 @@ function renderLiveUsage(s) {
   strip.hidden = false;
   strip.classList.remove('unavailable');
   const hasTokens = (values) => ['input', 'output', 'cached'].some((key) => values[key] != null);
-  const turn = hasTokens(usage.turn) ? Usage.formatTokens(Usage.tokenTotal(usage.turn)) : '—';
-  const total = hasTokens(usage.total) ? Usage.formatTokens(Usage.tokenTotal(usage.total)) : '—';
+  const turn = hasTokens(usage.turn) ? Usage.formatTokens(Usage.tokenTotal(usage.turn)) : '-';
+  const total = hasTokens(usage.total) ? Usage.formatTokens(Usage.tokenTotal(usage.total)) : '-';
   const field = (key, label, value) =>
     `<span class="live-usage-item" data-usage="${key}"><b>${label}</b>${value}</span>`;
   const cost = usage.total.cost == null ? '' : field('cost', 'cost', Usage.formatCost(usage.total.cost));
@@ -1968,7 +1968,7 @@ async function addAttachments(paths, s = active()) {
       }
     } catch (err) {
       if (String(err).includes('FFMPEG_MISSING')) {
-        toast(`Videos need ffmpeg to sample frames for ${a.label}. Install it with: ${FFMPEG_INSTALL} — then try again. Click to copy.`, 'error', () => copy(FFMPEG_INSTALL));
+        toast(`Videos need ffmpeg to sample frames for ${a.label}. Install it with: ${FFMPEG_INSTALL}, then try again. Click to copy.`, 'error', () => copy(FFMPEG_INSTALL));
       } else {
         toast(`Couldn’t attach ${basename(original)}: ${String(err)}`, 'error');
       }
@@ -2940,7 +2940,7 @@ function toast(msg, kind = '', onClick, actionLabel) {
 function notInstalledToast(a) {
   const cmd = a.command ? `"${a.command}"` : 'its command';
   if (a.install) {
-    toast(`${a.label} CLI not found (${cmd}). A desktop app is not the CLI. Install it with: ${a.install} — then Reload agents in Settings. Click to copy.`, 'error', () => copy(a.install));
+    toast(`${a.label} CLI not found (${cmd}). A desktop app is not the CLI. Install it with: ${a.install}, then Reload agents in Settings. Click to copy.`, 'error', () => copy(a.install));
   } else {
     toast(`${a.label} CLI not found (${cmd}). Install the CLI so ${cmd} runs in a terminal, then Reload agents in Settings.`, 'error');
   }
@@ -2955,7 +2955,7 @@ function renderUsage() {
     return { agent: a, live, past: u.sessions, seconds: u.seconds, lastAt: u.lastAt };
   });
   const fmtHMS = (s) => {
-    if (!s) return '—';
+    if (!s) return '-';
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60);
     if (m < 60) return `${m}m`;
@@ -2970,10 +2970,10 @@ function renderUsage() {
       .map(
         (r) => `<div class="usage-row">
           <span class="usage-agent">${ICONS[r.agent.icon] || ICONS.term}${esc(r.agent.label)}</span>
-          <span>${r.live || '—'}</span>
-          <span>${r.past || '—'}</span>
+          <span>${r.live || '-'}</span>
+          <span>${r.past || '-'}</span>
           <span>${fmtHMS(r.seconds)}</span>
-          <span>${r.lastAt ? fmtAgo(r.lastAt) : '—'}</span>
+          <span>${r.lastAt ? fmtAgo(r.lastAt) : '-'}</span>
         </div>`
       )
       .join('')}`;

@@ -1,4 +1,4 @@
-/* Reference restyle: a light, airy, card-based dashboard — soft blue-grey
+/* Reference restyle: a light, airy, card-based dashboard, soft blue-grey
  * page, white rounded panels floating with a gap, a dark rounded rail, pastel
  * tinted cards, soft shadows and friendly bold type. Loaded last. The terminal
  * pane and the rail stay dark in both themes, the way the reference keeps its
@@ -41,7 +41,7 @@
   padding-left: 12px;
 }
 
-/* dark, rounded rail — floats like the reference sidebar */
+/* dark, rounded rail, floats like the reference sidebar */
 :root:root .rail {
   margin: 0;
   border: 0;

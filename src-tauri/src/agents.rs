@@ -703,12 +703,12 @@ fn parse_ollama_catalog(stdout: &str) -> Vec<String> {
 
 /// `opencode models` prints one `provider/model` id per line. OpenCode
 /// dropped the `--verbose` flag this parser used to rely on for per-model
-/// JSON metadata (`cost`, `capabilities.output.text`) — a live run now
+/// JSON metadata (`cost`, `capabilities.output.text`), a live run now
 /// exits 1 on an unrecognised flag, so there is no structured cost data to
 /// read at all any more. OpenCode's own naming convention is the only signal
 /// left: every model it prices at zero ends its id in `-free` (verified
 /// against a live catalog: 9 of 49 ids, all plain text models, all under the
-/// `opencode/` provider — no image/video/embedding model carried the suffix).
+/// `opencode/` provider: no image/video/embedding model carried the suffix).
 fn parse_opencode_free(stdout: &str) -> Vec<String> {
     fn is_model_line(line: &str) -> bool {
         let mut parts = line.splitn(2, '/');
@@ -1065,7 +1065,7 @@ pub fn build_argv(
     out
 }
 
-/// OpenCode's interactive launch has no CLI flag for selecting a model —
+/// OpenCode's interactive launch has no CLI flag for selecting a model,
 /// `-m`/`--model` only exists on `opencode run` (headless). Every static
 /// model entry and the live catalog still describe a model the conventional
 /// way (`["-m", "<id>"]`), the same as every other agent, so this pulls that
@@ -1073,7 +1073,7 @@ pub fn build_argv(
 /// leaving the rest of argv untouched. The caller carries the id through
 /// `OPENCODE_CONFIG_CONTENT`'s `model` key instead (the documented top-level
 /// config key: "Default model to use when no session or agent model is
-/// selected" — confirmed against `https://opencode.ai/config.json`).
+/// selected": confirmed against `https://opencode.ai/config.json`).
 pub fn extract_opencode_model_flag(command: &str, argv: &mut Vec<String>) -> Option<String> {
     let is_opencode = Path::new(command).file_stem().and_then(OsStr::to_str).is_some_and(|s| s.eq_ignore_ascii_case("opencode"));
     if !is_opencode {
@@ -1130,7 +1130,7 @@ fn cmd_safe_token(_: &str) -> bool {
 /// Codex's npm-installed `.cmd` shim on Windows just forwards to the
 /// package's own `bin/codex.js`, which re-spawns the native binary with
 /// `process.argv.slice(2)` as an argv array (`spawn(binaryPath, args, {
-/// stdio: "inherit" })`) — confirmed by reading the actual installed
+/// stdio: "inherit" })`), confirmed by reading the actual installed
 /// `codex.js`. Running that JS entry directly through node.exe, with every
 /// argument as its own CreateProcessW argv entry, skips cmd.exe's parser
 /// entirely, so a quoted Codex effort argument like
@@ -1269,7 +1269,7 @@ mod tests {
         assert!(out.contains("EZCLI_SHIM_RAN [--model] [opus]"), "{out}");
     }
 
-    /// Build a fake `<dir_name>/codex.cmd` (never actually run — the whole
+    /// Build a fake `<dir_name>/codex.cmd` (never actually run, the whole
     /// point is that codex_node_launch bypasses it) alongside a fake
     /// `node_modules/@openai/codex/bin/codex.js` stub that just prints its
     /// own argv, one bracketed token per line, then launches it through the
@@ -1708,7 +1708,7 @@ mod tests {
 
     #[test]
     fn opencode_catalog_keeps_only_dash_free_suffixed_ids() {
-        // `opencode models` (plain — OpenCode dropped --verbose, which used to
+        // `opencode models` (plain, OpenCode dropped --verbose, which used to
         // carry per-model cost JSON this parser read) prints one id per line.
         let raw = "opencode/beam-free\n\
                    google/gemini-2.5-pro\n\

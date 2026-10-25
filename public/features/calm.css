@@ -430,10 +430,10 @@ html[data-layout='calm'] .statusbar { font-size: 11.5px; opacity: 0.9; }
   border-color: rgb(31 30 29 / 30%) !important; box-shadow: 0 4px 24px rgb(0 0 0 / 7%) !important;
 }
 
-/* greeting: the terracotta spark before a serif line, like Claude's home */
+/* greeting: the ezCLI mark before a serif line */
 :root[data-palette='claude'][data-layout='calm'] .home #homeTitle::before {
-  content: ''; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.32em; vertical-align: -0.04em;
-  background: no-repeat center / contain url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g stroke='%23d97757' stroke-width='2.6' stroke-linecap='round'><path d='M12 2.5v19M2.5 12h19M5.3 5.3l13.4 13.4M18.7 5.3 5.3 18.7'/></g></svg>");
+  content: ''; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.3em; vertical-align: -0.06em; border-radius: 22%;
+  background: no-repeat center / contain url('/brand/ezcli-mark.png');
 }
 :root[data-palette='claude'][data-layout='calm'] .home #homeTitle { font-weight: 400; }
 :root[data-palette='claude'][data-layout='calm'] .home .session-trow:hover { background: rgb(31 30 29 / 5%); }

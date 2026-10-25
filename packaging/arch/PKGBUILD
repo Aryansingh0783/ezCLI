@@ -2,7 +2,7 @@
 #
 # Binary package: downloads the official .deb from this repo's GitHub
 # Releases and repackages it for pacman. Works on Arch Linux and
-# Arch-based distros (CachyOS included — same package format and repos).
+# Arch-based distros (CachyOS included, same package format and repos).
 #
 # To bump for a new release: update pkgver, reset pkgrel to 1, and replace
 # sha256sums with the value from the matching
@@ -18,7 +18,7 @@ license=('MIT')
 # Verified against the real upstream .deb's own dependency list (dpkg-deb
 # -f control Depends), then confirmed by actually running the extracted
 # binary under Xvfb in a clean Arch container with only these three
-# packages installed — it initialized GTK/WebKit fully.
+# packages installed: it initialized GTK/WebKit fully.
 depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator')
 provides=('ezcli')
 conflicts=('ezcli')

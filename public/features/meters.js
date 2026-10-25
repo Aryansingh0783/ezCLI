@@ -83,7 +83,7 @@ const Meters = (() => {
     btn.hidden = true;
     btn.addEventListener('click', () => togglePopover());
     const meta = $('ptyMeta');
-    if (meta) meta.before(btn);
+    if (meta) meta.after(btn);
     else row.insertBefore(btn, row.querySelector('.send-btn') || null);
   }
 

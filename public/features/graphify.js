@@ -49,7 +49,7 @@ const Graphify = {
     el.textContent = !st.installed
       ? st.installer
         ? 'Not installed yet.'
-        : 'Not installed. Graphify needs Python — install uv or Python 3 first.'
+        : 'Not installed. Graphify needs Python: install uv or Python 3 first.'
       : `Installed. ${st.agents.length ? `Can be added to: ${st.agents.join(', ')}.` : 'No installed agent supports it.'} ${
           where ? (st.graphHtml ? 'This project has a graph.' : 'This project has no graph yet.') : 'Open a project folder to build a graph.'
         }`;
@@ -86,7 +86,7 @@ const Graphify = {
       if (done.outputTail && !log.textContent.includes(done.outputTail.trim().slice(-200))) log.textContent += `\n${done.outputTail}`;
       const ok = done.code === 0 && !done.cancelled && !done.timedOut;
       log.textContent += ok ? '\n✓ Done.' : `\n✗ Finished with exit code ${done.code ?? 'none'}${done.timedOut ? ' (timed out)' : ''}.`;
-      toast(ok ? `${title}: done.` : `${title} failed — see the log in Settings.`, ok ? undefined : 'error');
+      toast(ok ? `${title}: done.` : `${title} failed, see the log in Settings.`, ok ? undefined : 'error');
     } catch (e) {
       log.textContent += `\n✗ ${e}`;
       toast(String(e), 'error');

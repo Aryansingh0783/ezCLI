@@ -229,24 +229,55 @@ hooks.boot.push(() => {
 
 /* ---------------------------------------------------------------- 4.0 */
 
-/* Session composer footer: which agent, model and effort this tab runs, on the right,
- * like the model line in the Claude desktop composer. Click to change the model. */
+/* Session composer footer, laid out like the Claude desktop composer: the mode on the left,
+ * the model and effort on the right (then the usage ring and send). Works for every agent: a
+ * model left at its default shows the agent's name, and the effort is left out when the agent
+ * has none. Click the mode to restart in another mode, or the model to pick a different one. */
 const ComposerMeta = {
   el: null,
+  mode: null,
   mount() {
     const row = document.querySelector('#ptyComposer .composer-row');
     if (!row || this.el) return;
+    const m = document.createElement('button');
+    m.type = 'button';
+    m.id = 'ptyMode';
+    m.className = 'composer-mode';
+    m.hidden = true;
+    m.addEventListener('click', () => this.modeMenu(m));
+    const plus = row.querySelector('.plus-btn');
+    if (plus) plus.after(m);
+    else row.prepend(m);
+    this.mode = m;
     const b = document.createElement('button');
     b.type = 'button';
     b.id = 'ptyMeta';
     b.className = 'composer-meta';
     b.addEventListener('click', () => {
-      const m = $('headModel');
-      if (m && !m.hidden) m.click();
+      const h = $('headModel');
+      if (h && !h.hidden) h.click();
     });
     const send = row.querySelector('.send-btn') || row.lastElementChild;
     row.insertBefore(b, send);
     this.el = b;
+  },
+  modeMenu(anchor) {
+    const s = active();
+    const a = s && agent(s.agentId);
+    if (!a || (a.modes || []).length < 2) return;
+    openMenu(anchor, {
+      title: `${a.label} · Mode`,
+      items: a.modes.map((md) => ({
+        label: md.label,
+        hint: md.id === s.modeId ? '' : 'restarts this session',
+        on: md.id === s.modeId,
+        run: () => {
+          if (md.id === s.modeId) return;
+          s.modeId = md.id;
+          restartSession(s);
+        }
+      }))
+    });
   },
   render() {
     if (!this.el) return;
@@ -254,17 +285,28 @@ const ComposerMeta = {
     const a = s && agent(s.agentId);
     if (!a) {
       this.el.hidden = true;
+      this.mode.hidden = true;
       return;
     }
-    // "Default" says nothing the agent's name doesn't; show only real choices.
-    const real = (v) => (v && !/^(agent )?default$/i.test(String(v).trim()) ? v : '');
-    const model = real(modelLabel(a, s.modelId));
+    // "Default" says nothing the agent's name does not; show only real choices.
+    const real = (v) => (v && !/(^|\s)default$/i.test(String(v).trim()) ? v : '');
+    const model = real(modelLabel(a, s.modelId)) || a.label;
     const effort = (a.efforts || []).length > 1 ? real(effortLabel(a, s.effortId)) : '';
     this.el.hidden = false;
-    this.el.innerHTML = `<span class="meta-agent">${esc(a.label)}</span>${model ? `<span class="meta-model">${esc(model)}</span>` : ''}${effort ? `<span class="meta-effort">${esc(effort)}</span>` : ''}`;
+    this.el.innerHTML = `<span class="meta-model">${esc(model)}</span>${effort ? `<span class="meta-effort">${esc(effort)}</span>` : ''}`;
     const canPick = Boolean($('headModel') && !$('headModel').hidden);
     this.el.disabled = !canPick;
-    this.el.title = canPick ? 'Change the model (starts a fresh session)' : `${a.label}${model ? ' · ' + model : ''}`;
+    this.el.title = canPick ? 'Change the model (starts a fresh session)' : `${a.label}${model !== a.label ? ' · ' + model : ''}`;
+    const modes = a.modes || [];
+    if (modes.length) {
+      const modeName = label(modes, s.modeId);
+      this.mode.hidden = false;
+      this.mode.textContent = modeName;
+      this.mode.disabled = modes.length < 2;
+      this.mode.title = modes.length < 2 ? `${a.label} has one mode` : 'Change the mode (restarts this session)';
+    } else {
+      this.mode.hidden = true;
+    }
   }
 };
 hooks.boot.push(() => {
@@ -372,8 +414,8 @@ const WorkingIndicator = {
     w.hidden = true;
     w.setAttribute('role', 'status');
     w.innerHTML = `${dotsHtml}<span class="working-time"></span>`;
-    const plus = row.querySelector('.plus-btn');
-    if (plus) plus.after(w);
+    const anchor = row.querySelector('.composer-mode') || row.querySelector('.plus-btn');
+    if (anchor) anchor.after(w);
     else row.prepend(w);
     this.el = w;
   },

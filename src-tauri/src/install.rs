@@ -1,8 +1,8 @@
 //! Runs an agent's documented install command (the same string shown in the
 //! UI and in README's install column) and streams its output back live.
 //!
-//! Only `agents.json`'s own `install` field reaches this module — never
-//! arbitrary user text — but the command itself is still a real download and
+//! Only `agents.json`'s own `install` field reaches this module, never
+//! arbitrary user text, but the command itself is still a real download and
 //! execution of a third-party installer (npm, or a vendor's own script), so
 //! every run is explicit: the frontend shows the literal command and asks for
 //! a confirming click before calling `install_agent`.
@@ -40,7 +40,7 @@ pub struct InstallDone {
     /// Combined stdout+stderr tail, for showing why an install failed.
     pub output_tail: String,
     /// Re-checked after the command finishes: is the agent's CLI now
-    /// resolvable? This is the real success signal, not just exit code 0 —
+    /// resolvable? This is the real success signal, not just exit code 0,
     /// some installers (notably Antigravity's) exit 0 when already installed
     /// and also exit 0 after a successful fresh install, but a model's exit
     /// code conventions can't always be trusted either way.

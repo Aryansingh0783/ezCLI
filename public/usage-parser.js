@@ -1,4 +1,4 @@
-/* ezCLI usage parser — a tiny, dependency-free reader for explicit usage
+/* ezCLI usage parser, a tiny, dependency-free reader for explicit usage
  * records printed by local CLIs. It never estimates unreported tokens/costs. */
 (function attachUsageParser(root, factory) {
   const api = factory();
@@ -225,14 +225,14 @@
   }
 
   function formatTokens(value) {
-    if (value == null) return '—';
+    if (value == null) return '-';
     if (value >= 1e6) return (value / 1e6).toFixed(value % 1e6 ? 1 : 0) + 'm';
     if (value >= 1e3) return (value / 1e3).toFixed(value % 1e3 ? 1 : 0) + 'k';
     return String(Math.round(value));
   }
 
   function formatCost(value) {
-    if (value == null) return '—';
+    if (value == null) return '-';
     if (value < 0.01) return '$' + value.toFixed(3);
     return '$' + value.toFixed(2);
   }
