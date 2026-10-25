@@ -187,3 +187,82 @@ hooks.boot.push(() => {
   new ResizeObserver(markListEdges).observe(box);
   markListEdges();
 });
+
+/* ------------------------------------------------ search the sidebar */
+const RailSearch = {
+  row: null,
+  input: null,
+  mount() {
+    const anchor = $('railNew');
+    if (!anchor || this.row) return;
+    const row = document.createElement('div');
+    row.className = 'rail-search';
+    row.innerHTML = `<button type="button" class="rail-search-btn" aria-label="Search sessions in this project">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.6-3.6"/></svg><span>Search</span></button>
+      <input type="search" class="rail-search-in" placeholder="Search this project" aria-label="Search sessions in this project" autocomplete="off" spellcheck="false" hidden />`;
+    anchor.after(row);
+    this.row = row;
+    this.input = row.querySelector('input');
+    row.querySelector('button').addEventListener('click', () => this.open());
+    this.input.addEventListener('input', () => {
+      RailSessions.query = this.input.value;
+      RailSessions.render();
+    });
+    this.input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      const first = $('railSessions').querySelector('.rail-session');
+      if (e.key === 'Escape') this.close(true);
+      else if (e.key === 'Enter' && first) first.click();
+      else if (e.key === 'ArrowDown' && first) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+    this.input.addEventListener('blur', () => {
+      if (!this.input.value) this.close(false);
+    });
+  },
+  open() {
+    if (!this.row) return;
+    if (document.documentElement.dataset.rail === 'collapsed') SideToggle.set(false);
+    this.row.classList.add('open');
+    this.input.hidden = false;
+    this.input.focus();
+  },
+  close(clear) {
+    if (!this.row) return;
+    if (clear) {
+      this.input.value = '';
+      RailSessions.query = '';
+      RailSessions.render();
+    }
+    this.row.classList.remove('open');
+    this.input.hidden = true;
+  }
+};
+hooks.boot.push(() => RailSearch.mount());
+
+/* ------------------------------------------------ sessions that need you */
+function jumpToUnread() {
+  const list = spaceSessions().filter((s) => s.unseen && s.id !== state.activeId);
+  if (!list.length) return toast('Nothing new in this project.');
+  selectSession(list[0].id);
+}
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) return;
+    if (e.code === 'KeyJ') {
+      e.preventDefault();
+      e.stopPropagation();
+      jumpToUnread();
+    } else if (e.code === 'KeyO' && document.documentElement.dataset.layout === 'calm') {
+      e.preventDefault();
+      e.stopPropagation();
+      RailSearch.open();
+    }
+  },
+  true
+);
+registerCommand({ group: 'Session', label: 'Jump to the next session with new output', keys: 'Ctrl Alt J', run: jumpToUnread });
+registerCommand({ group: 'Session', label: 'Search sessions in this project', keys: 'Ctrl Alt O', run: () => RailSearch.open() });

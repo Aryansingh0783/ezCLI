@@ -67,3 +67,35 @@ html[data-layout='calm'] .home .session-trow:hover::after { opacity: 1; transfor
 html[data-layout='calm'] .rail-sessions.fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); }
 html[data-layout='calm'] .rail-sessions.fade-t { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 26px); mask-image: linear-gradient(to bottom, transparent, #000 26px); }
 html[data-layout='calm'] .rail-sessions.fade-t.fade-b { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent); }
+
+/* ===================== search the sidebar ===================== */
+.rail-search { display: none; }
+@media (min-width: 980px) {
+  html[data-layout='calm'] .rail-search { display: block; margin: 0 0 10px; }
+  html[data-layout='calm'] .rail-search-btn {
+    display: flex; align-items: center; gap: 12px; width: 100%; height: 36px; padding: 0 12px; border: 0; border-radius: 9px;
+    background: transparent; color: var(--rf, var(--ink-soft)); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer;
+    transition: background-color 0.12s ease;
+  }
+  html[data-layout='calm'] .rail-search-btn svg { flex: none; width: 22px; height: 22px; padding: 3px; box-sizing: border-box; }
+  html[data-layout='calm'] .rail-search-btn:hover { background: var(--rf-hover); }
+  html[data-layout='calm'] .rail-search.open .rail-search-btn { display: none; }
+  html[data-layout='calm'] .rail-search-in {
+    display: block; width: 100%; height: 36px; box-sizing: border-box; padding: 0 12px; border: 1px solid color-mix(in srgb, var(--brand) 50%, transparent);
+    border-radius: 9px; background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 13.5px; outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
+  }
+  html[data-layout='calm'] .rail-search-in[hidden] { display: none; }
+  html[data-layout='calm'] .rail-search-in::placeholder { color: var(--rf-dim); opacity: 1; }
+  html[data-layout='calm'] .rail-search-in::-webkit-search-cancel-button {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin: 0 -2px 0 6px; cursor: pointer; background: var(--rf-dim);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  html[data-layout='calm'] .rail-search-in::-webkit-search-cancel-button:hover { background: var(--rf-strong); }
+  .rail-none { margin: 10px 12px; font-size: 12.5px; line-height: 1.5; color: var(--rf-dim); }
+}
+
+/* a session with output you have not seen reads as unread */
+html[data-layout='calm'] .rail-session.unread .rail-session-title { font-weight: 650; color: var(--rf-strong); }
+html[data-layout='calm'] .rail-session.unread::after { content: ''; flex: none; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--brand); }

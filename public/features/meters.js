@@ -164,9 +164,17 @@ const Meters = (() => {
   document.addEventListener('mousedown', (e) => {
     if (pop && !pop.contains(e.target) && !(btn && btn.contains(e.target))) closePopover();
   });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && pop) closePopover();
-  });
+  // capture phase: the terminal would otherwise take the key and send it to the CLI
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key === 'Escape' && pop) {
+        e.stopPropagation();
+        closePopover();
+      }
+    },
+    true
+  );
 
   /* ------------------------------------------------------ all agents (dialog) */
   function agentCards() {

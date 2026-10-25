@@ -332,3 +332,38 @@ html[data-layout='calm'] #ptyComposer .composer-right .usage-ring:not([hidden]) 
 }
 html[data-layout='calm'] #ptyComposer .composer-right .usage-ring svg { width: 14px; height: 14px; }
 html[data-layout='calm'] #ptyComposer .composer-right .usage-ring:hover { color: var(--ink, var(--text)); }
+
+/* ===================== the changes pill (review.js) ===================== */
+.head-changes { display: none; }
+html[data-layout='calm'] .session-head .head-changes:not([hidden]) {
+  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 9px; margin-left: 4px; border: 0; border-radius: 8px;
+  background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); color: var(--ink-soft, var(--muted)); font-size: 12.5px; font-weight: 500;
+  font-variant-numeric: tabular-nums; cursor: pointer; opacity: 1 !important; flex: none;
+}
+html[data-layout='calm'] .session-head .head-changes:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 11%, transparent); color: var(--ink, var(--text)); }
+.hc-add { color: #2f7d3d; font-weight: 600; }
+.hc-del { color: #b23a2a; font-weight: 600; }
+:root[data-theme='dark'] .hc-add { color: #6fcf86; }
+:root[data-theme='dark'] .hc-del { color: #f08a7a; }
+.review-pop .pop-title { align-items: center; }
+.review-pop .rv-total { margin-left: auto; display: inline-flex; gap: 8px; font-size: 12.5px; }
+.rv-list { display: grid; gap: 1px; margin: 8px -6px 4px; max-height: 320px; overflow-y: auto; }
+.rv-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.rv-row:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+.rv-k { flex: none; width: 18px; text-align: center; font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', Consolas, monospace; }
+.rv-k.added { color: #2f7d3d; } .rv-k.modified { color: #a1670e; } .rv-k.deleted { color: #b23a2a; }
+:root[data-theme='dark'] .rv-k.added { color: #6fcf86; } :root[data-theme='dark'] .rv-k.modified { color: #e0b15a; } :root[data-theme='dark'] .rv-k.deleted { color: #f08a7a; }
+.rv-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; overflow: hidden; }
+.rv-name b { font-weight: 550; white-space: nowrap; }
+.rv-name i { font-style: normal; color: var(--ink-faint, var(--faint)); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-nums { flex: none; display: inline-flex; gap: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.rv-nums em { font-style: normal; color: var(--ink-faint, var(--faint)); }
+
+/* box-drawing bars in the terminal read as one stroke (termfix.js) */
+.xterm-rows span.tl-bar {
+  display: inline-block; vertical-align: top; color: transparent !important;
+  background: linear-gradient(var(--bar), var(--bar)) center / 1px 100% no-repeat;
+}

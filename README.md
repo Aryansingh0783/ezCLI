@@ -174,6 +174,21 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 4.8.0
+
+- **See what the agent changed at a glance.** A pill in the session header shows the live count
+  of changed files and lines ("3 files +42 -7") for the project's git repository. Click it for
+  the list, and click a file to open its diff in the explorer. It refreshes while the agent works.
+- **Search the sidebar.** The Search row under "New session" filters this project's open and
+  saved sessions as you type. `Ctrl+Alt+O` opens it, Esc clears it.
+- **Sessions that need you stand out.** A session with output you have not seen turns bold with
+  an accent dot, stays visible even when the list is long, and `Ctrl+Alt+J` jumps to the next one.
+- **Terminal frames and logos read on light themes.** Box lines and block art that a CLI draws in
+  white or pale green (Gemini's welcome box and logo) are darkened until they are readable, and
+  vertical frame lines are joined instead of dashed.
+- **Esc closes the usage and changes panels** even while the terminal has focus, without sending
+  the key to the CLI.
+
 ### New in 4.7.0
 
 - **The usage ring sits under the model name.** In a session's message box the model and effort
@@ -809,6 +824,8 @@ The window claims only `Ctrl+Alt` combinations, so the agent's own terminal shor
 | `Ctrl+Alt+N` | New session |
 | `Ctrl+Alt+W` | Close session |
 | `Ctrl+Alt+S` | Show or hide the sidebar |
+| `Ctrl+Alt+O` | Search sessions in this project |
+| `Ctrl+Alt+J` | Jump to the next session with new output |
 | `Ctrl+Alt+B` | Show or hide the file explorer |
 | `Ctrl+Shift+F` | Find in the terminal output |
 | `Ctrl` + mouse wheel | Terminal text size |

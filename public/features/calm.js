@@ -6,6 +6,7 @@ const dotsHtml = '<span class="cdots" aria-hidden="true"><i></i><i></i><i></i></
 
 const RailSessions = {
   box: null,
+  query: '',
 
   mount() {
     const spaces = $('spaces');
@@ -33,11 +34,20 @@ const RailSessions = {
 
   render() {
     if (!this.box) return;
-    const list = spaceSessions().slice().reverse().slice(0, 12);
+    const q = this.query.trim().toLowerCase();
+    let list = spaceSessions().slice().reverse();
+    list = q ? list.filter((s) => (s.title || '').toLowerCase().includes(q)) : list.filter((s, i) => i < 12 || s.unseen || s.id === state.activeId);
     const earlier = this.earlier(list);
-    this.box.hidden = list.length === 0 && earlier.length === 0;
+    this.box.hidden = list.length === 0 && earlier.length === 0 && !q;
     this.box.textContent = '';
     if (this.box.hidden) return;
+    if (q && !list.length && !earlier.length) {
+      const none = document.createElement('p');
+      none.className = 'rail-none';
+      none.textContent = `Nothing in this project matches "${this.query.trim()}".`;
+      this.box.append(none);
+      return;
+    }
     if (list.length) {
       const head = document.createElement('div');
       head.className = 'rail-sessions-head';
@@ -48,7 +58,7 @@ const RailSessions = {
       const row = document.createElement('div');
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
-      row.className = 'rail-session' + (s.id === state.activeId ? ' active' : '');
+      row.className = 'rail-session' + (s.id === state.activeId ? ' active' : '') + (s.unseen && s.id !== state.activeId ? ' unread' : '');
       row.dataset.railSession = s.id;
       const dot = sessionDot(s);
       const d = document.createElement('span');
@@ -104,13 +114,15 @@ const RailSessions = {
     if (typeof Sessions === 'undefined' || !Sessions.recentSaved) return [];
     const sp = space();
     if (!sp) return [];
-    const root = sp.path.toLowerCase().replace(/[\/]+$/, '');
+    const root = sp.path.toLowerCase().replace(/[\\/]+$/, '');
     const open = new Set(live.map((s) => (s.title || '').toLowerCase()));
     const pinned = new Set(prefs.pinnedSessions || []);
-    const here = Sessions.recentSaved().filter((m) => m.title && m.cwd && m.cwd.toLowerCase().replace(/[\/]+$/, '').startsWith(root) && !open.has(m.title.toLowerCase()));
+    const q = this.query.trim().toLowerCase();
+    const here = Sessions.recentSaved().filter((m) => m.title && (!q || m.title.toLowerCase().includes(q)) && m.cwd && m.cwd.toLowerCase().replace(/[\\/]+$/, '').startsWith(root) && !open.has(m.title.toLowerCase()));
     const seen = new Set();
     const uniq = here.filter((m) => (seen.has(m.title) ? false : seen.add(m.title)));
-    return [...uniq.filter((m) => pinned.has(m.id)), ...uniq.filter((m) => !pinned.has(m.id))].slice(0, 6);
+    return [...uniq.filter((m) => pinned.has(m.id)), ...uniq.filter((m) => !pinned.has(m.id))]
+      .slice(0, q ? 30 : 6);
   }
 };
 
@@ -188,7 +200,7 @@ const ProjectInstructions = {
     if (!sp) return toast('Open a folder first.', 'error');
     this.build();
     this.file = this.fileFor();
-    const path = `${sp.path.replace(/[\/]+$/, '')}/${this.file}`;
+    const path = `${sp.path.replace(/[\\/]+$/, '')}/${this.file}`;
     this.path = path;
     let text = '';
     try {
