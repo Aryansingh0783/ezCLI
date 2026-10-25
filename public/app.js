@@ -335,10 +335,23 @@ function remeasureTerminals() {
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
 const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme);
 
+/** Palettes are either light or dark. The Light / Dark / Match system switch is a mode, and a
+ *  palette from the other mode would leave light text on a white window (or the reverse), so
+ *  the matching palette is used instead. The saved choice is kept and returns with its mode. */
+const DARK_PALETTES = new Set(['midnight', 'nebula', 'ocean', 'claude-dark']);
+function effectivePalette() {
+  const p = prefs.palette || 'claude';
+  const dark = DARK_PALETTES.has(p);
+  const t = resolvedTheme();
+  if (t === 'dark' && !dark) return p === 'claude' ? 'claude-dark' : 'midnight';
+  if (t === 'light' && dark) return p === 'claude-dark' ? 'claude' : 'daylight';
+  return p;
+}
+
 function applyTheme() {
   const t = resolvedTheme();
   document.documentElement.dataset.theme = t;
-  document.documentElement.dataset.palette = prefs.palette || 'claude';
+  document.documentElement.dataset.palette = effectivePalette();
   document.documentElement.dataset.layout = prefs.calm === false ? 'dashboard' : 'calm';
   syncTermBackground();
   for (const s of state.sessions) s.term.options.theme = TERM_THEMES[t];

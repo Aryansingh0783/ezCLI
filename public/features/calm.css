@@ -328,7 +328,7 @@ html[data-layout='calm'] .home .dash-hero { width: 100%; box-sizing: border-box;
 :root[data-theme='light']:not([data-palette='claude']):root[data-layout='dashboard'] .space.active { color: #1d2028; }
 :root[data-theme='light']:not([data-palette='claude']):root[data-layout='calm'] .space.active .space-name,
 :root[data-theme='light']:not([data-palette='claude']):root[data-layout='calm'] .space.active .space-ini { color: #1d2028; }
-:root[data-theme='light']:not([data-palette='claude']):root[data-layout='dashboard'] .space:not(.active) .space-ini { color: #2a2d36; }
+:root[data-theme='light'][data-style='glass']:not([data-palette='claude']):root[data-layout='dashboard'] .space:not(.active) .space-ini { color: #2a2d36; }
 @media (min-width: 980px) {
   html[data-layout='calm']:not([data-palette='claude'])[data-theme='light'] .space.active { background: #fff !important; }
 }

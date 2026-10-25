@@ -143,6 +143,28 @@ catalog entry.
   replacing the two bars. It is the app icon on Windows, macOS and Linux, the installer
   and tray icon, the mark in the title bar and the browser icon, and the README banner.
 
+### New in 4.2.0
+
+- **Usage meters, like the Claude desktop app.** A small ring in a session's message box
+  shows how full the conversation's context window is. Click it for a panel with the context
+  window and **Plan usage limits** as thin bars ("Current session, resets in 2 hr 4 min,
+  29% used"), plus input, output, cached tokens, turns and cost. The numbers come from the
+  CLI's own files and ezCLI makes no network request: context size for Claude Code, Codex
+  and OpenCode, and Codex's real plan limits with reset times. A CLI that keeps nothing
+  readable (Gemini, Ollama, Freebuff, Antigravity) shows a clearly marked estimate instead
+  of an invented percentage. **All agents** opens a Usage view with one card per agent,
+  remembering each agent's last reading. Claude Code does not record plan limits where
+  ezCLI can read them, so it shows context and token numbers only.
+- **Sidebar spacing.** One rhythm for every row: even insets so nothing touches the
+  sidebar's rounded corners, a fixed leading slot so every label lines up, and clear gaps
+  between groups.
+- **Fix: Light / Dark with a palette of the other kind.** Picking Dark mode with a light
+  palette (or the reverse) left light text on a white window in Settings and other dialogs.
+  The matching palette is used instead, and your saved choice returns with its mode.
+- **Fix:** links in dialogs use the accent colour instead of browser blue; a limit near its
+  cap in the status bar is readable on light windows; project initials are readable in every
+  theme and window style. Every theme, mode, accent and window style was scanned for contrast.
+
 ### New in 4.1.0
 
 - **The working animation.** While an agent is working, three terracotta dots pass each
