@@ -1624,6 +1624,43 @@ function renderSessionAgentNotice(s = active()) {
       : '';
 }
 
+/* The home greeting changes the way Claude's does: a line for the time of day, now and then a
+ * friendlier one, with your name. One line is chosen per launch (and re-chosen when the part of
+ * the day changes), so it never flickers when the screen redraws. The name is the one set in
+ * Settings, else the folder name of your user account. */
+const GREETINGS = {
+  early: ['Working late, {n}?', 'Burning the midnight oil, {n}?', 'Still up, {n}?', 'Night owl hours, {n}', 'Late one, {n}?'],
+  morning: ['Good morning, {n}', 'Morning, {n}', 'Early start, {n}?', 'Ready for a good one, {n}?', 'Hi {n}, fresh start'],
+  afternoon: ['Good afternoon, {n}', 'Afternoon, {n}', 'Back at it, {n}', 'How is the day going, {n}?', 'Hi {n}, keep it rolling'],
+  evening: ['Good evening, {n}', 'Evening, {n}', 'Still building, {n}?', 'Winding down, {n}?', 'Hi {n}, one more thing?'],
+  any: ['Welcome back, {n}', 'Hello, {n}', "What's on your mind, {n}?", 'Ready when you are, {n}', 'What shall we make, {n}?']
+};
+function homeName() {
+  const typed = String(prefs.displayName || '').trim();
+  if (typed) return typed.slice(0, 24);
+  const base = String(state.homeCwd || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
+  const clean = base.replace(/[^\p{L}\p{N} ._-]/gu, '');
+  if (!clean || clean.length > 20 || /^(user|users|admin|administrator|owner|home|root|default)$/i.test(clean) || /\d{3,}/.test(clean)) return '';
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+const greetingCache = { key: '', text: '' };
+function homeGreeting() {
+  const h = new Date().getHours();
+  const part = h < 5 ? 'early' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+  const name = homeName();
+  const key = `${part}|${name}`;
+  if (greetingCache.key !== key) {
+    // the time-of-day lines are twice as likely as the general ones
+    const pool = [...GREETINGS[part], ...GREETINGS[part], ...GREETINGS.any];
+    let line = pool[Math.floor(Math.random() * pool.length)];
+    if (!name) line = line.replace('Hi {n}, ', '').replace(/,? \{n\}/g, '').replace('{n}', '');
+    greetingCache.key = key;
+    greetingCache.text = line.replace(/\{n\}/g, name).replace(/\s+([?,])/g, '$1').trim();
+    greetingCache.text = greetingCache.text.charAt(0).toUpperCase() + greetingCache.text.slice(1);
+  }
+  return greetingCache.text;
+}
+
 function renderHome() {
   const sp = space();
   const a = agent(prefs.agentId);
@@ -1631,7 +1668,7 @@ function renderHome() {
   const hello = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
   const calm = prefs.calm !== false;
-  $('homeTitle').textContent = calm ? hello : 'Overview';
+  $('homeTitle').textContent = calm ? homeGreeting() : 'Overview';
   $('homeGreeting').textContent = calm ? today : `${hello} · ${today}`;
   $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
   const projEl = $('homeProject');

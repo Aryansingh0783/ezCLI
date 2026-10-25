@@ -428,14 +428,7 @@ html[data-layout='calm'] .statusbar { font-size: 11.5px; opacity: 0.9; }
 :root[data-palette='claude'][data-layout='calm'] .home .dash-hero .composer-box:focus-within,
 :root[data-palette='claude'][data-layout='calm'] #ptyComposer:focus-within {
   border-color: rgb(31 30 29 / 30%) !important; box-shadow: 0 4px 24px rgb(0 0 0 / 7%) !important;
-}
-
-/* greeting: the ezCLI mark before a serif line */
-:root[data-palette='claude'][data-layout='calm'] .home #homeTitle::before {
-  content: ''; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.3em; vertical-align: -0.06em; border-radius: 22%;
-  background: no-repeat center / contain url('/brand/ezcli-mark.png');
-}
-:root[data-palette='claude'][data-layout='calm'] .home #homeTitle { font-weight: 400; }
+}:root[data-palette='claude'][data-layout='calm'] .home #homeTitle { font-weight: 400; }
 :root[data-palette='claude'][data-layout='calm'] .home .session-trow:hover { background: rgb(31 30 29 / 5%); }
 
 @media (min-width: 980px) {

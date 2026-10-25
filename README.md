@@ -174,6 +174,15 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 4.6.0
+
+- **A greeting that changes, like Claude's.** The home screen says something different for the
+  time of day ("Good morning, Aryan", "Back at it, Aryan", "Still up, Aryan?") and sometimes a
+  general line ("Welcome back", "What's on your mind?"). One line is chosen per launch and
+  stays put while you work. The name comes from **Settings, General, Your name**, else your
+  account's folder name; with neither, the line simply drops the name.
+- The ezCLI mark that sat before the greeting is gone.
+
 ### New in 4.5.0
 
 - **README refresh.** A Highlights section near the top describes the new look and features,

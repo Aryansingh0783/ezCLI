@@ -37,10 +37,6 @@
 }
 :root[data-palette='claude-dark'][data-layout='calm'] .home .dash-hero .composer-box:focus-within,
 :root[data-palette='claude-dark'][data-layout='calm'] #ptyComposer:focus-within { border-color: rgb(222 220 209 / 30%) !important; }
-:root[data-palette='claude-dark'][data-layout='calm'] .home #homeTitle::before {
-  content: ''; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.3em; vertical-align: -0.06em; border-radius: 22%;
-  background: no-repeat center / contain url('/brand/ezcli-mark.png');
-}
 :root[data-palette='claude-dark'][data-layout='calm'] .home #homeTitle { font-weight: 400; }
 :root:root[data-layout='calm'][data-palette='claude-dark'] { --rf: #e2e0d7; --rf-strong: #faf9f5; --rf-dim: #a9a69c; --rf-hover: rgb(255 255 255 / 6%); --rf-active: rgb(255 255 255 / 10%); }
 

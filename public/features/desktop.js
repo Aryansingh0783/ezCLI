@@ -319,6 +319,15 @@ hooks.boot.push(() => {
       }
     });
   }
+  const nameBox = $('prefName');
+  if (nameBox) {
+    nameBox.value = prefs.displayName || '';
+    nameBox.addEventListener('input', () => {
+      prefs.displayName = nameBox.value.trim();
+      savePrefs();
+      renderHome();
+    });
+  }
   applyAccent();
 });
 
