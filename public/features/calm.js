@@ -2,6 +2,8 @@
 /* Calm layout: the sidebar lists the active project's sessions, the way the
  * Claude desktop app lists recent chats. Only shown in the wide, calm sidebar. */
 
+const dotsHtml = '<span class="cdots" aria-hidden="true"><i></i><i></i><i></i></span>';
+
 const RailSessions = {
   box: null,
 
@@ -50,7 +52,12 @@ const RailSessions = {
       row.dataset.railSession = s.id;
       const dot = sessionDot(s);
       const d = document.createElement('span');
-      d.className = 'status-dot' + (dot ? ' ' + dot : '');
+      if (dot === 'working') {
+        d.innerHTML = dotsHtml;
+        d.className = 'rail-working';
+      } else {
+        d.className = 'status-dot' + (dot ? ' ' + dot : '');
+      }
       const t = document.createElement('span');
       t.className = 'rail-session-title';
       t.textContent = s.title || 'Untitled';
@@ -348,3 +355,45 @@ hooks.boot.push(placeProjectPicker);
     return r;
   };
 }
+
+/* ------------------------------------------------- working indicator */
+
+/* Three terracotta dots that pass each other, with the elapsed time beside them, shown while
+ * the agent in the open session is working: the same indicator Claude Code shows. */
+
+const WorkingIndicator = {
+  el: null,
+  mount() {
+    const row = document.querySelector('#ptyComposer .composer-row');
+    if (!row || this.el) return;
+    const w = document.createElement('div');
+    w.id = 'ptyWorking';
+    w.className = 'working-ind';
+    w.hidden = true;
+    w.setAttribute('role', 'status');
+    w.innerHTML = `${dotsHtml}<span class="working-time"></span>`;
+    const plus = row.querySelector('.plus-btn');
+    if (plus) plus.after(w);
+    else row.prepend(w);
+    this.el = w;
+  },
+  fmt(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  },
+  render() {
+    if (!this.el) return;
+    const s = active();
+    const busy = Boolean(s && s.status === 'running' && s.working);
+    this.el.hidden = !busy;
+    if (busy) this.el.querySelector('.working-time').textContent = this.fmt(Date.now() - (s.busySince || Date.now()));
+  }
+};
+hooks.boot.push(() => {
+  WorkingIndicator.mount();
+  WorkingIndicator.render();
+  setInterval(() => WorkingIndicator.render(), 500);
+});
+hooks.view.push(() => WorkingIndicator.render());
+hooks.output.push(() => WorkingIndicator.render());
+hooks.idle.push(() => WorkingIndicator.render());

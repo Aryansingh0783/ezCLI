@@ -142,3 +142,43 @@ html[data-layout='calm'] .home .composer-project {
 }
 html[data-layout='calm'] .home .composer-project:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent) !important; color: var(--ink, var(--text)); }
 html[data-layout='calm'] .home .dash-head { margin-top: 12vh; }
+
+/* ===================== the working indicator =====================
+ * Three dots that pass each other: two slide along the baseline while the third arcs over the top. */
+.cdots { --d: 6px; --step: 9px; position: relative; display: inline-block; flex: none; width: calc(var(--step) * 2 + var(--d)); height: calc(var(--d) + 12px); vertical-align: middle; }
+.cdots i {
+  position: absolute; left: 0; bottom: 2px; width: var(--d); height: var(--d); border-radius: 50%; background: #d97757;
+  animation: cdots-x 1.35s linear infinite, cdots-y 1.35s linear infinite;
+}
+.cdots i:nth-child(2) { animation-delay: -0.45s; }
+.cdots i:nth-child(3) { animation-delay: -0.9s; }
+@keyframes cdots-x {
+  0%      { transform: translateX(0);                       animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+  33.33%  { transform: translateX(var(--step));             animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+  66.66%  { transform: translateX(calc(var(--step) * 2));   animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+  100%    { transform: translateX(0); }
+}
+@keyframes cdots-y {
+  0%, 66.66% { translate: 0 0;     animation-timing-function: cubic-bezier(.3, 0, .2, 1); }
+  83%        { translate: 0 -9px;  animation-timing-function: cubic-bezier(.8, 0, .7, 1); }
+  100%       { translate: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdots i { animation: none; }
+  .cdots i:nth-child(2) { transform: translateX(var(--step)); }
+  .cdots i:nth-child(3) { transform: translateX(calc(var(--step) * 2)); }
+}
+
+.working-ind { display: none; }
+html[data-layout='calm'] #ptyComposer .working-ind:not([hidden]) {
+  display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; margin-left: 2px; opacity: 1 !important;
+  color: var(--ink-faint, var(--faint)); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.working-ind[hidden] { display: none !important; }
+
+/* sidebar: a working session shows the dots, a smaller copy of the same indicator */
+.rail-working { display: inline-flex; flex: none; align-items: center; }
+.rail-working .cdots { --d: 4px; --step: 6px; height: 12px; }
+.rail-working .cdots i { bottom: 1px; }
+.rail-session .rail-working { width: 16px; justify-content: center; }
+html[data-layout='calm'] .rail-session .rail-working .cdots { transform: translateX(-1px); }

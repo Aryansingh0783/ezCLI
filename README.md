@@ -137,6 +137,13 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 4.1.0
+
+- **The working animation.** While an agent is working, three terracotta dots pass each
+  other (two slide along while the third arcs over) with the elapsed time beside them,
+  in the session's message box. A smaller copy replaces the status dot in the sidebar
+  for any session that is working. Reduced-motion settings get still dots.
+
 ### New in 4.0.0
 
 A big pass on the interface, modelled on the Claude desktop app.
