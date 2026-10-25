@@ -6,6 +6,8 @@
 mod agents;
 mod backends;
 mod capture;
+mod chat_feed;
+mod chat_sources;
 mod features;
 mod health;
 mod files_api;
@@ -692,6 +694,18 @@ async fn session_usage(agent_id: String, session_id: String) -> Option<usage_liv
     tauri::async_runtime::spawn_blocking(move || usage_live::read(&agent_id, &session_id)).await.ok().flatten()
 }
 
+/// New conversation events for the chat view, read from the CLI's own session file.
+#[tauri::command]
+async fn chat_feed(agent_id: String, session_id: String, offset: u64, since_ms: Option<u64>) -> Option<chat_feed::ChatPage> {
+    tauri::async_runtime::spawn_blocking(move || chat_feed::read(&agent_id, &session_id, offset, since_ms.unwrap_or(0))).await.ok().flatten()
+}
+
+/// Whether the chat view can read this agent's conversation.
+#[tauri::command]
+fn chat_feed_supported(agent_id: String) -> bool {
+    chat_feed::supported(&agent_id)
+}
+
 /// Does the CLI still have a stored conversation with this id?
 #[tauri::command]
 async fn provider_session_exists(agent_id: String, session_id: String) -> bool {
@@ -936,6 +950,8 @@ pub fn run() {
             find_provider_session,
             provider_session_exists,
             session_usage,
+            chat_feed,
+            chat_feed_supported,
             set_pc_control,
             open_targets,
             open_in,

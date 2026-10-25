@@ -407,7 +407,7 @@ const state = {
  * the core. Each handler runs in isolation: one failing feature never breaks
  * the session plumbing. */
 
-const hooks = { boot: [], output: [], idle: [], exit: [], launched: [], closing: [], tabs: [], view: [], shortcut: [] };
+const hooks = { boot: [], output: [], idle: [], exit: [], launched: [], closing: [], tabs: [], view: [], shortcut: [], sent: [] };
 function emit(name, ...args) {
   for (const fn of hooks[name] || []) {
     try {
@@ -2192,6 +2192,7 @@ function relativeTo(p, base) {
  *  Per-agent overrides live in agents.json under "submit". */
 function sendText(s, text) {
   if (!s.ptyId) return Promise.resolve(false);
+  emit('sent', s, text);
   const cfg = (agent(s.agentId) || {}).submit || {};
   const bracketed = Boolean(s.term.modes && s.term.modes.bracketedPasteMode);
   const usePaste = cfg.paste === 'always' || (cfg.paste !== 'never' && bracketed);

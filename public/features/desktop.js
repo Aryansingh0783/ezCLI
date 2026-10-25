@@ -303,7 +303,8 @@ hooks.boot.push(() => {
     prefTranscripts: ['keepTranscripts', true],
     prefProjectDefaults: ['projectDefaultsOff', false, true],
     prefShowPaid: ['showPaidModels', false],
-    prefCalm: ['calm', true]
+    prefCalm: ['calm', true],
+    prefChat: ['chatView', true]
   };
   for (const [id, [key, fallback, inverted]] of Object.entries(toggles)) {
     const box = $(id);
@@ -317,6 +318,7 @@ hooks.boot.push(() => {
         applyTheme();
         renderHome();
       }
+      if (key === 'chatView' && typeof ChatView !== 'undefined') ChatView.apply(true);
     });
   }
   const nameBox = $('prefName');

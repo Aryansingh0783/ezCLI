@@ -58,7 +58,7 @@ struct ClaudeAcc {
 
 static CLAUDE: Mutex<Option<HashMap<PathBuf, ClaudeAcc>>> = Mutex::new(None);
 
-fn claude_file(session_id: &str) -> Option<PathBuf> {
+pub(crate) fn claude_file(session_id: &str) -> Option<PathBuf> {
     let root = dirs::home_dir()?.join(".claude").join("projects");
     for entry in fs::read_dir(root).ok()?.flatten() {
         let p = entry.path().join(format!("{session_id}.jsonl"));

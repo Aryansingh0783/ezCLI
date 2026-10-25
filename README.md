@@ -174,6 +174,25 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.0.0
+
+- **Sessions are a chat, not a terminal.** Your messages appear as bubbles, the agent's replies as
+  formatted text (headings, lists, tables, code blocks with a Copy button, links), and its tool
+  calls fold into one line you can open ("Ran 3 commands, Read 2 files"). The terminal window
+  around it is gone. It keeps running underneath, and a **Chat | Terminal** switch in the header
+  (`Ctrl+Alt+T`) shows it whenever you want, for sign-in screens, trust questions and anything a
+  CLI asks that only the terminal can answer.
+- **Exact for Claude Code, Codex, OpenCode and Freebuff.** ezCLI reads the conversation these
+  CLIs already keep on this PC (Claude Code and Codex session files, `opencode export`, Freebuff's
+  chat file), so tool calls and results are real, and the agent's private reasoning is left out.
+  It only reads those files; nothing is written or sent.
+- **Every other agent too.** Gemini CLI, Antigravity CLI, Ollama and the rest are shown from what
+  you sent and what the agent printed, with borders, spinners and key hints removed. This is
+  best effort: a full-screen app that draws its own screen stays in the terminal until it has a
+  readable history, and a question the agent is waiting on is flagged with an "Open the terminal"
+  button.
+- Turn it off under Settings, General, "Show sessions as a chat".
+
 ### New in 4.10.0
 
 - **Settings buttons look like buttons.** The action buttons in Settings (Sessions, Usage, Open
@@ -841,6 +860,7 @@ The window claims only `Ctrl+Alt` combinations, so the agent's own terminal shor
 | `Ctrl+Alt+N` | New session |
 | `Ctrl+Alt+W` | Close session |
 | `Ctrl+Alt+S` | Show or hide the sidebar |
+| `Ctrl+Alt+T` | Switch between chat and terminal |
 | `Ctrl+Alt+O` | Search sessions in this project |
 | `Ctrl+Alt+J` | Jump to the next session with new output |
 | `Ctrl+Alt+B` | Show or hide the file explorer |
