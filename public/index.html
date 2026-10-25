@@ -27,6 +27,8 @@
     <link rel="stylesheet" href="/features/reference.css" />
     <link rel="stylesheet" href="/features/calm.css" />
     <link rel="stylesheet" href="/features/v4.css" />
+    <link rel="stylesheet" href="/features/brand.css" />
+    <link rel="icon" type="image/png" href="/brand/favicon.png" />
   </head>
   <body>
     <!-- Shown only if app.js never mounts (missing asset, script error at load). -->
@@ -42,7 +44,7 @@
       <!-- titlebar: brand, session tabs, window controls. The whole bar drags the window. -->
       <header class="tabbar" data-tauri-drag-region>
         <button class="brand-btn" id="brandBtn" title="Home" aria-label="Home">
-          <span class="mark"><i></i><i></i></span>
+          <img class="mark-img" src="/brand/ezcli-mark.png" alt="" width="22" height="22" draggable="false" />
         </button>
         <div class="tabs" id="tabs" role="tablist" aria-label="Open tabs" data-tauri-drag-region></div>
         <button class="tab-new" id="tabNew" title="New session (Ctrl+Alt+N)" aria-label="New session">

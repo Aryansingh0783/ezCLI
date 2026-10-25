@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/hero.svg" alt="ezCLI — run every coding CLI in one window" width="100%">
+  <img src="docs/banner.png" alt="ezCLI — many agents, one calm place" width="100%">
 </p>
 
 <p align="center">
@@ -136,6 +136,12 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 4.2.0
+
+- **The new ezCLI logo.** A rounded charcoal tile with a cream "e" and a terracotta "z",
+  replacing the two bars. It is the app icon on Windows, macOS and Linux, the installer
+  and tray icon, the mark in the title bar and the browser icon, and the README banner.
 
 ### New in 4.1.0
 
