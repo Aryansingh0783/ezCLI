@@ -174,6 +174,17 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 4.7.0
+
+- **The usage ring sits under the model name.** In a session's message box the model and effort
+  are on the right with the ring directly below, labelled with what it shows ("33% context", or
+  "estimated" for a CLI that reports nothing). Click either to open the usage panel or switch
+  model.
+- **A calmer message box.** Ctrl+C, Esc, History, Prompts and dictation are folded into one
+  "more" button beside the mode, so the footer is no longer a row of small chips. Everything is
+  still one click away.
+- **The sidebar list fades where it scrolls** instead of cutting a row in half.
+
 ### New in 4.6.0
 
 - **A greeting that changes, like Claude's.** The home screen says something different for the

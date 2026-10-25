@@ -170,3 +170,20 @@ hooks.view.push(() => {
 });
 
 registerCommand({ group: 'App', label: 'Toggle sidebar', keys: 'Ctrl Alt S', run: () => SideToggle.set(!prefs.railCollapsed) });
+
+/* A list that scrolls fades its edge instead of cutting a row in half. */
+function markListEdges() {
+  const box = $('railSessions');
+  if (!box) return;
+  const more = box.scrollHeight - box.clientHeight - box.scrollTop > 4;
+  box.classList.toggle('fade-b', more);
+  box.classList.toggle('fade-t', box.scrollTop > 4);
+}
+hooks.boot.push(() => {
+  const box = $('railSessions');
+  if (!box) return;
+  box.addEventListener('scroll', markListEdges, { passive: true });
+  new MutationObserver(markListEdges).observe(box, { childList: true });
+  new ResizeObserver(markListEdges).observe(box);
+  markListEdges();
+});

@@ -82,8 +82,8 @@ const Meters = (() => {
     btn.className = 'usage-ring';
     btn.hidden = true;
     btn.addEventListener('click', () => togglePopover());
-    const meta = $('ptyMeta');
-    if (meta) meta.after(btn);
+    const stack = $('ptyRight');
+    if (stack) stack.append(btn);
     else row.insertBefore(btn, row.querySelector('.send-btn') || null);
   }
 
@@ -97,7 +97,8 @@ const Meters = (() => {
     }
     const d = read(s);
     btn.hidden = false;
-    btn.innerHTML = ring(d.ctxPct, !d.real);
+    const word = d.real ? (d.ctxPct == null ? 'usage' : `${Math.round(d.ctxPct)}% context`) : 'estimated';
+    btn.innerHTML = `${ring(d.ctxPct, !d.real)}<span>${word}</span>`;
     btn.title = d.real ? (d.ctxPct == null ? 'Usage' : `Context ${Math.round(d.ctxPct)}% used`) : 'Usage (estimated)';
     btn.setAttribute('aria-label', btn.title);
     if (pop) drawPopover();

@@ -62,3 +62,8 @@ html[data-layout='calm'] .home .session-trow:hover::after { opacity: 1; transfor
 @media (prefers-reduced-motion: reduce) {
   .rail-session, .main.view-in > :not(dialog), .hover-card { animation: none !important; }
 }
+
+/* the sidebar list fades where it scrolls */
+html[data-layout='calm'] .rail-sessions.fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); }
+html[data-layout='calm'] .rail-sessions.fade-t { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 26px); mask-image: linear-gradient(to bottom, transparent, #000 26px); }
+html[data-layout='calm'] .rail-sessions.fade-t.fade-b { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 26px, #000 calc(100% - 26px), transparent); }

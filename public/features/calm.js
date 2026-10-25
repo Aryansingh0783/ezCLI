@@ -257,9 +257,14 @@ const ComposerMeta = {
       const h = $('headModel');
       if (h && !h.hidden) h.click();
     });
+    const stack = document.createElement('div');
+    stack.id = 'ptyRight';
+    stack.className = 'composer-right';
+    stack.append(b);
     const send = row.querySelector('.send-btn') || row.lastElementChild;
-    row.insertBefore(b, send);
+    row.insertBefore(stack, send);
     this.el = b;
+    this.stack = stack;
   },
   modeMenu(anchor) {
     const s = active();
@@ -439,3 +444,41 @@ hooks.boot.push(() => {
 hooks.view.push(() => WorkingIndicator.render());
 hooks.output.push(() => WorkingIndicator.render());
 hooks.idle.push(() => WorkingIndicator.render());
+
+/* ---------------------------------------------- quieter composer: one menu */
+
+/* Ctrl+C, Esc, History, Prompts and dictation are all still there, behind one "more" button,
+ * so the message box is not a row of small chips. Each menu item presses the original button. */
+const ComposerMore = {
+  mount() {
+    const row = document.querySelector('#ptyComposer .composer-row');
+    if (!row || $('ptyMore')) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'ptyMore';
+    b.className = 'composer-more';
+    b.title = 'More: interrupt, history, prompts, dictation';
+    b.setAttribute('aria-label', 'More message options');
+    b.setAttribute('aria-haspopup', 'menu');
+    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>';
+    b.addEventListener('click', () => this.open(b));
+    const anchor = row.querySelector('.composer-mode') || row.querySelector('.plus-btn');
+    anchor.after(b);
+  },
+  open(anchor) {
+    const press = (id) => () => {
+      const el = $(id);
+      if (el && !el.disabled) el.click();
+    };
+    const items = [
+      { label: 'Interrupt', hint: 'Ctrl+C', run: press('btnInterrupt') },
+      { label: 'Escape', hint: 'Esc', run: press('btnEsc') },
+      { sep: true },
+      { label: 'Prompt history', run: press('btnHistory') },
+      { label: 'Prompt library', run: press('btnPrompts') },
+      { label: 'Dictate', hint: 'Ctrl+Alt+D', run: press('btnDictate') }
+    ];
+    openMenu(anchor, { items });
+  }
+};
+hooks.boot.push(() => ComposerMore.mount());
