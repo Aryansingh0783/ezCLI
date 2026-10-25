@@ -137,7 +137,7 @@ catalog entry.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
-### New in 4.2.0
+### New in 4.3.0
 
 - **The new ezCLI logo.** A rounded charcoal tile with a cream "e" and a terracotta "z",
   replacing the two bars. It is the app icon on Windows, macOS and Linux, the installer
