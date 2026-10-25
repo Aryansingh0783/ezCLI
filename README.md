@@ -174,6 +174,15 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.6.0
+
+- **When a turn stops, the chat says so plainly.** A stop reason (for example "Free usage limit
+  reached") is shown as a clear notice instead of ordinary text, with a button that puts your last
+  message back in the box so you can retry after switching model or waiting.
+- **See how long the agent has been working.** The working indicator now counts the time since
+  you sent your message. The count updates in place, so text you have selected in the chat stays
+  selected while the agent works.
+
 ### New in 5.5.1
 
 - **OpenCode now shows as a chat.** OpenCode 2 no longer has the `export` command ezCLI relied

@@ -407,6 +407,17 @@ const ChatView = {
     return `<code class="cm-path" role="link" tabindex="0" data-path="${esc(t)}" title="Open in the explorer">${esc(t)}</code>`;
   },
 
+  /** How long the agent has been on this message, from when you sent it. */
+  elapsed(s) {
+    const c = this.st(s);
+    const last = c.turns[c.turns.length - 1];
+    const from = last ? last.at : 0;
+    if (!from) return '';
+    const sec = Math.max(0, Math.round((Date.now() - from) / 1000));
+    if (sec < 4 || sec > 6 * 3600) return '';
+    return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`;
+  },
+
   /** The time a message was sent, for the row of actions under it. */
   when(ts) {
     const d = new Date(ts);
@@ -431,10 +442,11 @@ const ChatView = {
     for (const it of items) {
       const when = this.when(it.ts);
       if (it.k === 'user') h += `<div class="cm cm-user"><div class="cm-bubble">${esc(it.text)}</div><div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
+      else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
       else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
       else if (it.k === 'tools') h += this.toolsHtml(it);
     }
-    if (s.working) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}</div>`;
+    if (s.working) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
     else if (this.waiting(s)) h += '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>';
     return h;
   },
@@ -460,6 +472,18 @@ const ChatView = {
       }
       const act = e.target.closest('[data-act]');
       if (act) {
+        if (act.dataset.act === 'retry') {
+          const users = (this.cur || []).filter((x) => x.k === 'user');
+          const last = users[users.length - 1];
+          if (last) {
+            const box = $('ptyInput');
+            box.value = last.text;
+            autoGrow(box);
+            box.focus();
+            box.setSelectionRange(box.value.length, box.value.length);
+          }
+          return;
+        }
         const it = (this.cur || []).find((x) => x.key === act.dataset.key);
         if (!it) return;
         if (act.dataset.act === 'copy') {
@@ -575,7 +599,12 @@ const ChatView = {
     const surface = getComputedStyle(document.querySelector('.main')).backgroundColor;
     if (surface && !/rgba\(.*,\s*0\)$/.test(surface) && surface !== 'transparent') this.el.style.background = surface;
     const html = this.html(s, items);
-    const sig = `${s.id}|${html.length}|${html.slice(-200)}|${s.working}`;
+    // The elapsed-time text changes every second; it is patched in place so the page is not
+    // redrawn (which would clear a selection) just because a clock moved.
+    const stable = html.replace(/<span class="cm-elapsed">[^<]*<\/span>/, '');
+    const sig = `${s.id}|${stable.length}|${stable.slice(-200)}|${s.working}`;
+    const clock = this.el.querySelector('.cm-elapsed');
+    if (clock) clock.textContent = this.elapsed(s);
     if (!force && sig === this.sig) return;
     this.sig = sig;
     const near = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 90;
