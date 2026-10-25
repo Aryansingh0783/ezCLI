@@ -233,9 +233,10 @@ async function openTerminalPath(raw) {
   } catch {
     return toast(`Couldn’t open ${path}`, 'error');
   }
+  // Open first: opening the explorer resets it to the file list.
+  setExplorerOpen(true);
   state.explorer.view = 'file';
   state.explorer.file = abs;
-  setExplorerOpen(true);
   renderExplorer();
 }
 

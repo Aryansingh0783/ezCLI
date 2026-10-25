@@ -174,6 +174,16 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.3.0
+
+- **See what each edit changed.** When the agent edits a file, the folded tool line counts the
+  lines it added and removed ("Edited 2 files +12 -3"), and opening it shows the change as a small
+  coloured diff. This works for Claude Code, Codex (apply_patch), OpenCode and Freebuff.
+- **File names are links.** A path in a reply (`src/app.js:42`) or in a tool line opens the file
+  in the explorer. Ordinary code such as `console.log` stays plain.
+- Fixed: a file path clicked in the terminal opened the explorer on the file list instead of
+  the file.
+
 ### New in 5.2.0
 
 - **Export is a clean conversation.** Export as Markdown or HTML now writes what you and the agent

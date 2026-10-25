@@ -147,7 +147,7 @@ const ChatView = {
           items.push(tools);
         }
         const r = c.results.get(e.id);
-        tools.list.push({ tool: e.tool, text: e.text, done: Boolean(r), result: r ? r.text : '', error: r ? r.error : false });
+        tools.list.push({ tool: e.tool, text: e.text, detail: e.detail || '', done: Boolean(r), result: r ? r.text : '', error: r ? r.error : false });
         return;
       }
       tools = null;
@@ -219,7 +219,7 @@ const ChatView = {
     const parts = String(src).split(/(`[^`\n]+`)/g);
     return parts
       .map((p, i) => {
-        if (i % 2) return `<code>${esc(p.slice(1, -1))}</code>`;
+        if (i % 2) return this.codeSpan(p.slice(1, -1));
         let t = esc(p);
         t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
         t = t.replace(/(^|[^*\w])\*([^*\s][^*\n]*)\*(?![*\w])/g, '$1<em>$2</em>');
@@ -355,14 +355,55 @@ const ChatView = {
       .map(([w, n]) => `${nouns[w][0]} ${n} ${n === 1 ? nouns[w][1] : nouns[w][2]}`)
       .join(', ');
     const running = done < it.list.length;
+    let add = 0;
+    let del = 0;
+    for (const t of it.list) {
+      for (const l of (t.detail || '').split('\n')) {
+        if (l.startsWith('+') && !l.startsWith('+++')) add++;
+        else if (l.startsWith('-') && !l.startsWith('---')) del++;
+      }
+    }
     const rows = it.list
-      .map(
-        (t) =>
-          `<div class="cm-tool${t.error ? ' err' : ''}${t.done ? '' : ' run'}"><span class="cm-tool-name">${esc(t.tool)}</span><code>${esc(t.text || '')}</code>${t.result ? `<pre>${esc(t.result)}</pre>` : ''}</div>`
-      )
+      .map((t) => {
+        const fileish = ['read', 'edit'].includes(this.toolWord(t.tool)) && this.looksLikePath(t.text);
+        const what = fileish ? this.codeSpan(t.text) : `<code>${esc(t.text || '')}</code>`;
+        // An edit shows what changed; its "file updated" result says nothing more.
+        const body = t.detail ? this.diffHtml(t.detail) : t.result ? `<pre>${esc(t.result)}</pre>` : '';
+        return `<div class="cm-tool${t.error ? ' err' : ''}${t.done ? '' : ' run'}"><span class="cm-tool-name">${esc(t.tool)}</span>${what}${body}${t.detail && t.error && t.result ? `<pre>${esc(t.result)}</pre>` : ''}</div>`;
+      })
       .join('');
+    const counts = add || del ? `<span class="cm-counts">${add ? `<b class="hc-add">+${add}</b>` : ''}${del ? `<b class="hc-del">-${del}</b>` : ''}</span>` : '';
     const forced = it.list.some((t) => t.error) && !this.shut.has(it.key);
-    return `<details class="cm cm-tools" data-key="${it.key}"${this.open.has(it.key) || forced ? ' open' : ''}><summary>${running ? dotsHtml : ''}<span>${esc(label)}</span></summary>${rows}</details>`;
+    return `<details class="cm cm-tools" data-key="${it.key}"${this.open.has(it.key) || forced ? ' open' : ''}><summary>${running ? dotsHtml : ''}<span>${esc(label)}</span>${counts}</summary>${rows}</details>`;
+  },
+
+  /** `-`/`+` lines as a small coloured diff. */
+  diffHtml(detail) {
+    const rows = detail
+      .split('\n')
+      .map((l) => {
+        const c = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : l.startsWith('@@') || l.startsWith('***') ? 'hunk' : 'ctx';
+        return `<span class="d-${c}">${esc(l) || ' '}</span>`;
+      })
+      .join('');
+    return `<pre class="cm-diff">${rows}</pre>`;
+  },
+
+  /** Text that names a file: a path with a folder, or a name with an extension. */
+  looksLikePath(t) {
+    const x = String(t || '').trim();
+    if (!x || x.length > 260 || /\s/.test(x) || /^(https?:|www\.)/i.test(x) || /^v?\d+(\.\d+)+$/.test(x)) return false;
+    const m = /^(?:[A-Za-z]:[\\/]|\.{0,2}[\\/])?(?:[\w.@-]+[\\/])*[\w.@-]*[A-Za-z_][\w@-]*\.([A-Za-z][A-Za-z0-9]{0,5})(?::\d+(?::\d+)?)?$/.exec(x);
+    if (!m) return false;
+    // `src/app.js` is a file; `console.log` is code. Without a folder, only known file types count.
+    return /[\\/]/.test(x) || this.EXT.test(m[1]);
+  },
+  EXT: /^(js|mjs|cjs|jsx|ts|tsx|json|md|mdx|css|scss|less|html|htm|vue|svelte|rs|py|go|java|kt|rb|php|c|h|cc|cpp|hpp|cs|swift|toml|yaml|yml|lock|txt|sh|ps1|bat|cmd|sql|xml|ini|cfg|conf|gradle|dart|lua|zig|ex|exs|scala|dockerfile|env|csv|svg|png|jpg|gif)$/i,
+
+  /** Inline code; a file path becomes a link that opens it in the explorer. */
+  codeSpan(t) {
+    if (!this.looksLikePath(t)) return `<code>${esc(t)}</code>`;
+    return `<code class="cm-path" role="link" tabindex="0" data-path="${esc(t)}" title="Open in the explorer">${esc(t)}</code>`;
   },
 
   /** The time a message was sent, for the row of actions under it. */
@@ -411,6 +452,11 @@ const ChatView = {
     panel.append(el);
     this.el = el;
     el.addEventListener('click', (e) => {
+      const path = e.target.closest('.cm-path');
+      if (path) {
+        openTerminalPath(path.dataset.path);
+        return;
+      }
       const act = e.target.closest('[data-act]');
       if (act) {
         const it = (this.cur || []).find((x) => x.key === act.dataset.key);
@@ -583,6 +629,11 @@ window.addEventListener(
 
 // typing anywhere in the chat goes to the message box
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target && e.target.classList && e.target.classList.contains('cm-path')) {
+    e.preventDefault();
+    openTerminalPath(e.target.dataset.path);
+    return;
+  }
   if (!ChatView.el || ChatView.el.hidden || e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
   const t = e.target;
   if (t && (t.closest('input, textarea, select, [contenteditable]') || t.closest('dialog[open]'))) return;

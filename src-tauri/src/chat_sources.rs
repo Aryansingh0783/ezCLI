@@ -3,7 +3,7 @@
 //! Both are rewritten whole, so the offset here is a fingerprint of the last read and a
 //! change replaces everything the webview has.
 
-use crate::chat_feed::{tool_summary, truncate, ChatEvent, ChatPage, MAX_EVENTS, MAX_RESULT_CHARS, MAX_TEXT_CHARS};
+use crate::chat_feed::{edit_detail, tool_summary, truncate, ChatEvent, ChatPage, MAX_EVENTS, MAX_RESULT_CHARS, MAX_TEXT_CHARS};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
@@ -44,6 +44,7 @@ pub fn opencode_events(json: &str, out: &mut Vec<ChatEvent>) {
                         id: id.clone(),
                         tool: p.get("tool").and_then(Value::as_str).unwrap_or("tool").into(),
                         text: tool_summary(state.get("input").unwrap_or(&Value::Null)),
+                        detail: edit_detail(state.get("input").unwrap_or(&Value::Null)),
                         ts: when.clone(),
                         ..Default::default()
                     });
@@ -104,6 +105,7 @@ pub fn freebuff_events(json: &str, out: &mut Vec<ChatEvent>) {
                                     id: id.clone(),
                                     tool: b.get("toolName").and_then(Value::as_str).unwrap_or("tool").into(),
                                     text: tool_summary(b.get("input").unwrap_or(&Value::Null)),
+                                    detail: edit_detail(b.get("input").unwrap_or(&Value::Null)),
                                     ..Default::default()
                                 });
                                 if let Some(o) = b.get("output").and_then(Value::as_str) {

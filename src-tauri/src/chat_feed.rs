@@ -34,6 +34,68 @@ pub struct ChatEvent {
     pub tool: String,
     pub error: bool,
     pub ts: String,
+    /// For a tool that changes a file: the change as `-`/`+` lines.
+    pub detail: String,
+}
+
+/// The lines a file edit removes and adds, from a tool call's input, whichever CLI
+/// wrote it: old/new pairs (Claude Code, OpenCode, Freebuff), a list of them, a whole
+/// new file, or a patch (Codex). Empty for anything that is not an edit.
+pub(crate) fn edit_detail(input: &Value) -> String {
+    const MAX_LINES: usize = 80;
+    let mut lines: Vec<String> = Vec::new();
+    let push = |prefix: char, text: &str, lines: &mut Vec<String>| {
+        for l in text.lines() {
+            if lines.len() >= MAX_LINES {
+                return;
+            }
+            lines.push(format!("{prefix}{l}"));
+        }
+    };
+    let pair = |v: &Value| -> Option<(String, String)> {
+        let get = |a: &str, b: &str, c: &str| v.get(a).or_else(|| v.get(b)).or_else(|| v.get(c)).and_then(Value::as_str).map(str::to_string);
+        Some((get("old_string", "oldString", "old")?, get("new_string", "newString", "new")?))
+    };
+    match input {
+        Value::String(patch) if patch.contains("*** Begin Patch") || patch.contains("\n@@") => {
+            for l in patch.lines().filter(|l| l.starts_with('+') || l.starts_with('-') || l.starts_with("@@") || (l.starts_with("*** ") && !l.starts_with("*** Begin") && !l.starts_with("*** End"))) {
+                if lines.len() >= MAX_LINES {
+                    break;
+                }
+                lines.push(l.to_string());
+            }
+        }
+        Value::Object(obj) => {
+            if let Some((old, new)) = pair(input) {
+                push('-', &old, &mut lines);
+                push('+', &new, &mut lines);
+            } else if let Some(list) = obj.get("edits").or_else(|| obj.get("replacements")).and_then(Value::as_array) {
+                for e in list {
+                    if let Some((old, new)) = pair(e) {
+                        push('-', &old, &mut lines);
+                        push('+', &new, &mut lines);
+                    }
+                }
+            } else if let Some(content) = obj.get("content").and_then(Value::as_str) {
+                push('+', content, &mut lines);
+            } else if let Some(patch) = obj.get("input").or_else(|| obj.get("patch")) {
+                return edit_detail(patch);
+            }
+        }
+        _ => {}
+    }
+    truncate(lines.join("\n"), 8_000)
+}
+
+/// The files a patch touches, for the one-line summary of an apply_patch call.
+fn patch_files(input: &Value) -> String {
+    let Some(patch) = input.as_str() else { return String::new() };
+    let files: Vec<&str> = patch
+        .lines()
+        .filter_map(|l| l.strip_prefix("*** Update File: ").or_else(|| l.strip_prefix("*** Add File: ")).or_else(|| l.strip_prefix("*** Delete File: ")))
+        .map(str::trim)
+        .collect();
+    truncate(files.join(", "), 220)
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -149,6 +211,7 @@ pub fn claude_events(line: &str, out: &mut Vec<ChatEvent>) {
                             id: b.get("id").and_then(Value::as_str).unwrap_or("").into(),
                             tool: b.get("name").and_then(Value::as_str).unwrap_or("tool").into(),
                             text: tool_summary(b.get("input").unwrap_or(&Value::Null)),
+                            detail: edit_detail(b.get("input").unwrap_or(&Value::Null)),
                             ts: when.clone(),
                             ..Default::default()
                         });
@@ -189,11 +252,18 @@ pub fn codex_events(line: &str, out: &mut Vec<ChatEvent>) {
                 .or_else(|| p.get("action").cloned())
                 .unwrap_or(Value::Null);
             let name = p.get("name").and_then(Value::as_str).unwrap_or("shell");
+            // apply_patch sends the patch itself as `input`.
+            let raw_input = p.get("input").cloned().unwrap_or(Value::Null);
+            let detail = if raw_input.is_null() { edit_detail(&args) } else { edit_detail(&raw_input) };
             out.push(ChatEvent {
                 kind: "tool".into(),
                 id: p.get("call_id").and_then(Value::as_str).unwrap_or("").into(),
                 tool: name.into(),
-                text: tool_summary(&args),
+                text: {
+                    let t = tool_summary(&args);
+                    if t.is_empty() { patch_files(&raw_input) } else { t }
+                },
+                detail,
                 ts: when,
                 ..Default::default()
             });
@@ -334,6 +404,22 @@ mod tests {
         assert_eq!(kinds, ["user", "tool", "result", "assistant"]);
         assert_eq!(out[1].text, "ls -la");
         assert_eq!(out[2].text, "a\nb");
+    }
+
+    #[test]
+    fn edits_from_every_cli_become_minus_plus_lines() {
+        let claude = serde_json::json!({"file_path": "a.rs", "old_string": "let a = 1;", "new_string": "let a = 2;\nlet b = 3;"});
+        assert_eq!(edit_detail(&claude), "-let a = 1;\n+let a = 2;\n+let b = 3;");
+        let multi = serde_json::json!({"file_path": "a.rs", "edits": [{"old_string": "x", "new_string": "y"}, {"old_string": "p", "new_string": "q"}]});
+        assert_eq!(edit_detail(&multi), "-x\n+y\n-p\n+q");
+        let opencode = serde_json::json!({"filePath": "a.ts", "oldString": "old", "newString": "new"});
+        assert_eq!(edit_detail(&opencode), "-old\n+new");
+        let write = serde_json::json!({"file_path": "n.txt", "content": "one\ntwo"});
+        assert_eq!(edit_detail(&write), "+one\n+two");
+        let patch = Value::String("*** Begin Patch\n*** Update File: src/m.rs\n@@\n-old line\n+new line\n context\n*** End Patch".into());
+        assert_eq!(edit_detail(&patch), "*** Update File: src/m.rs\n@@\n-old line\n+new line");
+        assert_eq!(patch_files(&patch), "src/m.rs");
+        assert_eq!(edit_detail(&serde_json::json!({"command": "ls"})), "");
     }
 
     #[test]

@@ -123,3 +123,24 @@ html[data-layout='calm'] .session-head > .head-view { opacity: 1 !important; }
 .find-bar.chat-find { z-index: 9; }
 ::highlight(chat-find) { background-color: rgb(255 214 0 / 40%); color: inherit; }
 ::highlight(chat-find-now) { background-color: #f59e0b; color: #000; }
+
+/* file paths open in the explorer */
+.cm-body code.cm-path, .cm-tool code.cm-path {
+  cursor: pointer; color: var(--brand); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--brand) 40%, transparent); text-underline-offset: 2px;
+}
+.cm-body code.cm-path:hover, .cm-tool code.cm-path:hover { text-decoration-color: currentColor; }
+.cm-path:focus-visible { outline: 2px solid color-mix(in srgb, var(--brand) 55%, transparent); outline-offset: 1px; }
+
+/* what an edit changed */
+.cm-counts { display: inline-flex; gap: 6px; margin-left: 4px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.cm-counts b { font-weight: 600; }
+.cm-diff {
+  margin: 6px 0 0; padding: 6px 0; max-height: 280px; overflow: auto; border-radius: 8px; border: 1px solid var(--line, var(--border));
+  background: color-mix(in srgb, var(--ink, #1f1d19) 3%, transparent); font: 12px/1.5 'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+}
+.cm-diff span { display: block; padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cm-diff .d-add { background: rgb(47 125 61 / 12%); color: #24602f; }
+.cm-diff .d-del { background: rgb(178 58 42 / 10%); color: #8f2c1f; }
+.cm-diff .d-hunk { color: var(--ink-faint, var(--faint)); }
+:root[data-theme='dark'] .cm-diff .d-add { background: rgb(111 207 134 / 12%); color: #9be3ac; }
+:root[data-theme='dark'] .cm-diff .d-del { background: rgb(240 138 122 / 12%); color: #f5a99d; }
