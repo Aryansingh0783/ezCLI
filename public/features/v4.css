@@ -407,3 +407,23 @@ html[data-layout='calm'] .team-view { background: inherit; }
   font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 .team-idea:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); border-color: color-mix(in srgb, var(--ink, #1f1d19) 26%, transparent); color: var(--ink, var(--text)); }
+
+/* ===================== Gemini API-key setup (gemini.js) ===================== */
+.gem-notice { color: var(--ink-soft, var(--muted)); }
+.gem-row { display: flex; gap: 8px; margin: 8px 0 6px; }
+.gem-key {
+  flex: 1; min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--line, var(--border)); border-radius: 7px;
+  background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 12.5px; outline: none;
+}
+.gem-key:focus { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+.gem-btn {
+  flex: none; height: 30px; padding: 0 14px; border: 0; border-radius: 7px; background: var(--brand); color: var(--brand-ink, #fff); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.gem-btn:hover:not(:disabled) { filter: brightness(1.07); }
+.gem-btn:disabled { opacity: 0.6; cursor: default; }
+.gem-foot { font-size: 11.5px; color: var(--ink-faint, var(--faint)); }
+.gem-link { background: none; border: 0; padding: 0; font: inherit; font-size: inherit; color: var(--brand); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.gem-msg.ok { color: #2f7d3d; }
+.gem-msg.err { color: #b23a2a; }
+:root[data-theme='dark'] .gem-msg.ok { color: #6fcf86; }
+:root[data-theme='dark'] .gem-msg.err { color: #f08a7a; }

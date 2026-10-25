@@ -123,7 +123,7 @@ provider is free.
 | --- | --- | --- | --- |
 | OpenCode | Yes. It includes key-free models and can also use connected providers or local Ollama. Its Model menu is refreshed from `opencode models`. | Yes | `npm install -g opencode-ai` |
 | Antigravity CLI | Yes, with a personal Google-account sign-in. It is the supported personal-Google route. The Antigravity desktop app does not include this CLI. | No | `irm https://antigravity.google/cli/install.ps1 \| iex` |
-| Gemini CLI | Not through personal Google login. Use a Gemini API key, Vertex AI, or an enterprise configuration. | No | `npm install -g @google/gemini-cli` |
+| Gemini CLI | Paste a free Gemini API key in the session's setup field (ezCLI stores it in `~/.gemini/.env`). Personal Google login is not supported; use Antigravity CLI for that. | No | `npm install -g @google/gemini-cli` |
 | Ollama Local | Yes, after you choose a model that is already downloaded locally. The app detects coarse PC capacity to explain this route, but never pulls a model itself. | No | `irm https://ollama.com/install.ps1 \| iex` |
 | Ollama Cloud | Your signed-in Ollama account and its usage/plan limits apply. The Model pill reads Ollama's live public cloud catalog; it launches the matching Cloud CLI alias without a model download. | No | Install Ollama, then run `ollama signin` yourself |
 | Freebuff | Yes, ad-supported. It chooses models server-side and completes its own setup on first use. | No | `npm install -g freebuff` |
@@ -173,6 +173,15 @@ Every release, newest first.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 5.4.0
+
+- **Connect Gemini CLI with an API key, from inside ezCLI.** Google dropped personal Google
+  sign-in for Gemini CLI, so a Gemini session used to fail at its own sign-in. The Gemini notice
+  now has a field: paste a free key from aistudio.google.com and ezCLI stores it where Gemini CLI
+  reads it (`~/.gemini/.env`) and switches the CLI to API-key auth, then restarts the tab. The key
+  stays on this PC; ezCLI never sends it anywhere and never shows it back. (Antigravity CLI is
+  still the way to use a personal Google account.)
 
 ### New in 5.3.0
 

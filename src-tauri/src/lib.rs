@@ -8,6 +8,7 @@ mod backends;
 mod capture;
 mod chat_feed;
 mod chat_sources;
+mod gemini_auth;
 mod features;
 mod health;
 mod files_api;
@@ -796,6 +797,24 @@ fn open_targets() -> Vec<open_in::OpenTarget> {
     open_in::detect()
 }
 
+/// Is Gemini CLI set up to run with an API key on this PC?
+#[tauri::command]
+fn gemini_status() -> gemini_auth::GeminiStatus {
+    gemini_auth::status()
+}
+
+/// Store the user's own Gemini API key and switch Gemini CLI to API-key auth.
+#[tauri::command]
+fn gemini_connect(key: String) -> Result<gemini_auth::GeminiStatus, String> {
+    gemini_auth::connect(&key)
+}
+
+/// Remove the stored Gemini API key.
+#[tauri::command]
+fn gemini_disconnect() -> Result<gemini_auth::GeminiStatus, String> {
+    gemini_auth::disconnect()
+}
+
 #[tauri::command]
 fn open_in(target: String, path: String) -> Result<(), String> {
     open_in::open(&target, &path).map_err(|e| e.to_string())
@@ -952,6 +971,9 @@ pub fn run() {
             session_usage,
             chat_feed,
             chat_feed_supported,
+            gemini_status,
+            gemini_connect,
+            gemini_disconnect,
             set_pc_control,
             open_targets,
             open_in,

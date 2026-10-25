@@ -1618,11 +1618,14 @@ function renderSessionAgentNotice(s = active()) {
   const isGemini = Boolean(s && s.agentId === 'gemini');
   const isOllamaCloud = Boolean(s && s.agentId === 'ollama-cloud');
   notice.hidden = !isGemini && !isOllamaCloud;
-  notice.innerHTML = isGemini
-    ? '<strong>Gemini CLI setup:</strong> Personal Google sign-in is no longer supported here. Use Antigravity CLI for a personal account; Gemini CLI needs a Gemini API key, Vertex AI, or an enterprise setup.'
-    : isOllamaCloud
+  if (!isGemini) notice.classList.remove('gem-notice');
+  if (isGemini && typeof GeminiSetup !== 'undefined') {
+    GeminiSetup.render(notice, s);
+  } else {
+    notice.innerHTML = isOllamaCloud
       ? '<strong>Ollama Cloud:</strong> This tab launches a remote model. It requires an Ollama sign-in from your own terminal (<code>ollama signin</code>); ezCLI never handles your account or API key.'
       : '';
+  }
 }
 
 /* The home greeting changes the way Claude's does: a line for the time of day, now and then a
