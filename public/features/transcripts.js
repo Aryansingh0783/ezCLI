@@ -75,13 +75,15 @@ addEventListener('beforeunload', flushMemory);
 /* ------------------------------------------------------------ export */
 
 const Export = (() => {
-  function markdown(s, text) {
+  function markdown(s, text, chat) {
     const m = transcriptMeta(s);
+    if (chat) return `# ${s.title}\n\n- Agent: ${m.agentLabel}\n- Model: ${m.model}\n- Folder: \`${m.cwd}\`\n- Exported: ${new Date().toLocaleString()}\n\n${ChatView.markdown(chat, m.agentLabel)}`;
     return `# ${s.title}\n\n- Agent: ${m.agentLabel}\n- Model: ${m.model}\n- Folder: \`${m.cwd}\`\n- Exported: ${new Date().toLocaleString()}\n\n\`\`\`text\n${text.replace(/```/g, '`​``')}\n\`\`\`\n`;
   }
 
-  function html(s, text) {
+  function html(s, text, chat) {
     const m = transcriptMeta(s);
+    const body = chat ? `<div class="chat">${ChatView.exportHtml(chat, m.agentLabel)}</div>` : `<pre>${esc(text)}</pre>`;
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(s.title)} · ezCLI</title>
@@ -93,17 +95,24 @@ const Export = (() => {
   pre{background:#111318;border:1px solid #2a2a2e;border-radius:9px;padding:18px;overflow:auto;
       font:12.5px/1.45 'JetBrains Mono','Cascadia Code',Consolas,monospace;white-space:pre-wrap;word-break:break-word}
   ::selection{background:rgb(124 255 63 / 25%)}
+  .chat{max-width:760px;margin:0 auto;line-height:1.65}
+  .u{margin:22px 0;padding:10px 16px;border-radius:16px;background:#1c1c1f;white-space:pre-wrap}
+  .a{margin:0 0 22px}.a>b{display:block;margin-bottom:6px;color:#9a9aa0;font-size:12.5px;font-weight:600}
+  .a pre{margin:10px 0}.a code{font:12.5px 'JetBrains Mono',Consolas,monospace}
+  .t{margin:0 0 18px;color:#9a9aa0;font-size:13.5px}.t div{margin:4px 0 0 14px}
+  table{border-collapse:collapse}td,th{border:1px solid #2a2a2e;padding:5px 10px}
 </style></head>
 <body><main><h1>${esc(s.title)}</h1>
 <p class="meta">${esc(m.agentLabel)} · ${esc(m.model)} · ${esc(m.cwd)} · exported ${esc(new Date().toLocaleString())}</p>
-<pre>${esc(text)}</pre></main></body></html>`;
+${body}</main></body></html>`;
   }
 
   async function run(format = 'md') {
     const s = active();
     if (!s) return toast('Open a session to export it.');
     const text = terminalText(s);
-    if (!text.trim()) return toast('This session has no output to export yet.');
+    const chat = typeof ChatView !== 'undefined' ? ChatView.exportable(s) : null;
+    if (!chat && !text.trim()) return toast('This session has no output to export yet.');
     const safe = s.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'session';
     const ext = format === 'html' ? 'html' : 'md';
     let path;
@@ -119,7 +128,7 @@ const Export = (() => {
     }
     if (!path) return;
     try {
-      await invoke('write_text_file', { path, contents: ext === 'html' ? html(s, text) : markdown(s, text) });
+      await invoke('write_text_file', { path, contents: ext === 'html' ? html(s, text, chat) : markdown(s, text, chat) });
       toast(`Exported to ${basename(path)}`, 'ok', () => invoke('open_in', { target: 'files', path: path.replace(/[\\/][^\\/]+$/, '') }).catch(() => {}));
     } catch (err) {
       toast(String(err), 'error');

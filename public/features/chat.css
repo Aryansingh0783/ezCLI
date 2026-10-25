@@ -117,3 +117,9 @@ html[data-layout='calm'] .session-head > .head-view { opacity: 1 !important; }
 :root[data-theme='dark'] .cm-code .tk-s { color: #8fd19e; }
 :root[data-theme='dark'] .cm-code .tk-n { color: #e0b15a; }
 :root[data-theme='dark'] .cm-code .tk-k { color: #c9a0ee; }
+
+/* time under a message, and the find highlights */
+.cm-time { align-self: center; margin-left: 6px; font-size: 12px; color: var(--ink-faint, var(--faint)); }
+.find-bar.chat-find { z-index: 9; }
+::highlight(chat-find) { background-color: rgb(255 214 0 / 40%); color: inherit; }
+::highlight(chat-find-now) { background-color: #f59e0b; color: #000; }

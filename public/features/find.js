@@ -109,6 +109,7 @@ const Find = (() => {
   }
 
   function open() {
+    if (typeof ChatView !== 'undefined' && ChatView.visible()) return ChatFind.open();
     const s = active();
     if (!s) return toast('Open a session first, then search its output.');
     ensureBar().classList.add('open');

@@ -14,6 +14,8 @@ const ChatView = {
   el: null,
   sig: '',
   open: new Set(),
+  shut: new Set(),
+  cache: new Map(),
   FEED: new Set(['claude-code', 'claude-chat', 'codex', 'opencode', 'deepseek', 'freebuff']),
   /** How often each feed is read. OpenCode runs a command to export, so it is read less often. */
   every(s) {
@@ -41,7 +43,7 @@ const ChatView = {
       const old = c.turns.shift();
       if (old.marker) old.marker.dispose();
     }
-    this.apply();
+    this.apply(true);
   },
 
   /** New events from the CLI's own conversation file, when it keeps one. */
@@ -125,6 +127,8 @@ const ChatView = {
     let items = [];
     if (c.events.length) items = this.fromEvents(c);
     else if (c.turns.length) items = this.fromTurns(s, c);
+    // Keys name a message across redraws; scoped to the session so open/closed groups never leak between tabs.
+    for (const it of items) it.key = `${s.id}:${it.key}`;
     // A CLI that redraws its screen can hide the reply for a moment; keep showing the last good view.
     if (items.length) {
       c.last = items;
@@ -147,7 +151,7 @@ const ChatView = {
         return;
       }
       tools = null;
-      items.push({ k: e.kind === 'user' ? 'user' : 'assistant', key: `e${i}`, text: e.text, hard: false });
+      items.push({ k: e.kind === 'user' ? 'user' : 'assistant', key: `e${i}`, text: e.text, hard: false, ts: e.ts });
     });
     return items;
   },
@@ -177,7 +181,7 @@ const ChatView = {
     });
     const items = [];
     c.turns.forEach((t, i) => {
-      items.push({ k: 'user', key: `u${i}`, text: t.text });
+      items.push({ k: 'user', key: `u${i}`, text: t.text, ts: t.at });
       if (t.reply != null) {
         if (t.reply) items.push({ k: 'assistant', key: `a${i}`, text: t.reply, hard: true });
         return;
@@ -357,15 +361,35 @@ const ChatView = {
           `<div class="cm-tool${t.error ? ' err' : ''}${t.done ? '' : ' run'}"><span class="cm-tool-name">${esc(t.tool)}</span><code>${esc(t.text || '')}</code>${t.result ? `<pre>${esc(t.result)}</pre>` : ''}</div>`
       )
       .join('');
-    return `<details class="cm cm-tools" data-key="${it.key}"${this.open.has(it.key) ? ' open' : ''}><summary>${running ? dotsHtml : ''}<span>${esc(label)}</span></summary>${rows}</details>`;
+    const forced = it.list.some((t) => t.error) && !this.shut.has(it.key);
+    return `<details class="cm cm-tools" data-key="${it.key}"${this.open.has(it.key) || forced ? ' open' : ''}><summary>${running ? dotsHtml : ''}<span>${esc(label)}</span></summary>${rows}</details>`;
+  },
+
+  /** The time a message was sent, for the row of actions under it. */
+  when(ts) {
+    const d = new Date(ts);
+    if (!ts || Number.isNaN(d.getTime())) return '';
+    return `<span class="cm-time">${esc(d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>`;
+  },
+
+  /** Markdown is the costly part of a redraw, and finished messages do not change. */
+  mdCached(s, it) {
+    const key = `${s.id}|${it.key}|${it.hard ? 1 : 0}`;
+    const hit = this.cache.get(key);
+    if (hit && hit.text === it.text) return hit.html;
+    const html = this.md(it.text, it.hard);
+    this.cache.set(key, { text: it.text, html });
+    if (this.cache.size > 600) this.cache.delete(this.cache.keys().next().value);
+    return html;
   },
 
   html(s, items) {
     let h = '';
     this.cur = items;
     for (const it of items) {
-      if (it.k === 'user') h += `<div class="cm cm-user"><div class="cm-bubble">${esc(it.text)}</div><div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button></div></div>`;
-      else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.md(it.text, it.hard)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button></div></div>`;
+      const when = this.when(it.ts);
+      if (it.k === 'user') h += `<div class="cm cm-user"><div class="cm-bubble">${esc(it.text)}</div><div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
+      else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
       else if (it.k === 'tools') h += this.toolsHtml(it);
     }
     if (s.working) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}</div>`;
@@ -429,8 +453,13 @@ const ChatView = {
     el.addEventListener('toggle', (e) => {
       const d = e.target;
       if (d.matches && d.matches('details[data-key]')) {
-        if (d.open) this.open.add(d.dataset.key);
-        else this.open.delete(d.dataset.key);
+        if (d.open) {
+          this.open.add(d.dataset.key);
+          this.shut.delete(d.dataset.key);
+        } else {
+          this.open.delete(d.dataset.key);
+          this.shut.add(d.dataset.key);
+        }
       }
     }, true);
     const head = $('headTitle');
@@ -493,6 +522,7 @@ const ChatView = {
     this.el.hidden = !on;
     if (!on) {
       this.sig = '';
+      if (typeof ChatFind !== 'undefined' && ChatFind.isOpen()) ChatFind.close();
       return;
     }
     const surface = getComputedStyle(document.querySelector('.main')).backgroundColor;
@@ -505,6 +535,7 @@ const ChatView = {
     $('chatCol').innerHTML = html;
     if (near || force) this.el.scrollTop = this.el.scrollHeight;
     this.syncLatest();
+    if (typeof ChatFind !== 'undefined' && ChatFind.isOpen()) ChatFind.run(false);
   },
 
   /** A "Latest" button appears when you have scrolled up from the newest message. */
@@ -558,3 +589,158 @@ window.addEventListener('keydown', (e) => {
   const box = $('ptyInput');
   if (box) box.focus();
 });
+
+/* ------------------------------------------------ export the conversation */
+ChatView.exportable = function (s) {
+  if (prefs.chatView === false) return null;
+  const items = this.model(s);
+  return items.length ? items : null;
+};
+
+ChatView.markdown = function (items, who) {
+  const fence = (t) => String(t).replace(/```/g, "'''");
+  return items
+    .map((it) => {
+      if (it.k === 'user') return `## You\n\n${it.text}\n`;
+      if (it.k === 'assistant') return `## ${who || 'Assistant'}\n\n${it.text}\n`;
+      const rows = it.list.map((t) => `- ${t.tool}${t.text ? `: \`${fence(t.text).replace(/`/g, "'")}\`` : ''}${t.error ? ' (failed)' : ''}`);
+      return `<details><summary>${rows.length} tool call${rows.length === 1 ? '' : 's'}</summary>\n\n${rows.join('\n')}\n\n</details>\n`;
+    })
+    .join('\n');
+};
+
+ChatView.exportHtml = function (items, who) {
+  return items
+    .map((it) => {
+      if (it.k === 'user') return `<div class="u">${esc(it.text)}</div>`;
+      if (it.k === 'assistant') return `<div class="a"><b>${esc(who || 'Assistant')}</b>${this.md(it.text, it.hard)}</div>`;
+      return `<details class="t"><summary>${it.list.length} tool call${it.list.length === 1 ? '' : 's'}</summary>${it.list
+        .map((t) => `<div><b>${esc(t.tool)}</b> <code>${esc(t.text || '')}</code></div>`)
+        .join('')}</details>`;
+    })
+    .join('\n');
+};
+
+/* ------------------------------------------------ find in the conversation */
+ChatView.visible = function () {
+  return Boolean(this.el && !this.el.hidden);
+};
+
+const ChatFind = {
+  bar: null,
+  ranges: [],
+  at: -1,
+
+  isOpen() {
+    return Boolean(this.bar && this.bar.classList.contains('open'));
+  },
+
+  build() {
+    const b = document.createElement('div');
+    b.className = 'find-bar chat-find';
+    b.setAttribute('role', 'search');
+    b.innerHTML = `<input type="text" class="find-input" placeholder="Find in conversation" aria-label="Find in conversation" spellcheck="false" autocomplete="off" /><span class="find-count" aria-live="polite"></span>
+      <button type="button" class="find-btn" data-f="prev" aria-label="Previous match" title="Previous (Shift+Enter)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 15 6-6 6 6" /></svg></button>
+      <button type="button" class="find-btn" data-f="next" aria-label="Next match" title="Next (Enter)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg></button>
+      <button type="button" class="find-btn" data-f="close" aria-label="Close find" title="Close (Esc)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" /></svg></button>`;
+    const input = b.querySelector('input');
+    let timer = 0;
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => this.run(true), 80);
+    });
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.step(e.shiftKey ? -1 : 1);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.close();
+      }
+    });
+    b.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-f]');
+      if (!x) return;
+      if (x.dataset.f === 'close') this.close();
+      else this.step(x.dataset.f === 'next' ? 1 : -1);
+    });
+    document.querySelector('.terminal-panel').appendChild(b);
+    this.bar = b;
+  },
+
+  open() {
+    if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return toast('Search in the chat is not available in this window.');
+    if (!this.bar) this.build();
+    this.bar.classList.add('open');
+    const input = this.bar.querySelector('input');
+    const sel = String(getSelection() || '').trim();
+    if (sel && !sel.includes('\n') && sel.length < 120) input.value = sel;
+    input.focus();
+    input.select();
+    this.run(true);
+  },
+
+  /** Find every match; `go` also moves to the nearest one to the bottom. */
+  run(go) {
+    if (!this.bar) return;
+    const q = this.bar.querySelector('input').value.trim().toLowerCase();
+    const col = $('chatCol');
+    this.ranges = [];
+    if (q && col) {
+      const walker = document.createTreeWalker(col, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = walker.nextNode()) && this.ranges.length < 1000) {
+        const t = n.nodeValue.toLowerCase();
+        let i = 0;
+        while ((i = t.indexOf(q, i)) !== -1) {
+          const r = new Range();
+          r.setStart(n, i);
+          r.setEnd(n, i + q.length);
+          this.ranges.push(r);
+          i += q.length;
+        }
+      }
+    }
+    CSS.highlights.set('chat-find', new Highlight(...this.ranges));
+    const count = this.bar.querySelector('.find-count');
+    this.bar.classList.toggle('none', Boolean(q) && !this.ranges.length);
+    if (!this.ranges.length) {
+      CSS.highlights.delete('chat-find-now');
+      count.textContent = q ? 'No results' : '';
+      this.at = -1;
+      return;
+    }
+    if (go || this.at < 0 || this.at >= this.ranges.length) this.show(this.ranges.length - 1, go);
+    else this.show(this.at, false);
+  },
+
+  show(i, scroll = true) {
+    this.at = ((i % this.ranges.length) + this.ranges.length) % this.ranges.length;
+    const r = this.ranges[this.at];
+    CSS.highlights.set('chat-find-now', new Highlight(r));
+    this.bar.querySelector('.find-count').textContent = `${this.at + 1} of ${this.ranges.length}${this.ranges.length >= 1000 ? '+' : ''}`;
+    if (!scroll) return;
+    const el = r.startContainer.parentElement;
+    const d = el && el.closest('details');
+    if (d && !d.open) d.open = true;
+    if (el) el.scrollIntoView({ block: 'center' });
+  },
+
+  step(dir) {
+    if (!this.ranges.length) return this.run(true);
+    this.show(this.at + dir);
+  },
+
+  close() {
+    if (!this.bar) return;
+    this.bar.classList.remove('open');
+    this.ranges = [];
+    this.at = -1;
+    if (window.CSS && CSS.highlights) {
+      CSS.highlights.delete('chat-find');
+      CSS.highlights.delete('chat-find-now');
+    }
+    if (ChatView.visible()) $('ptyInput') && $('ptyInput').focus();
+  }
+};

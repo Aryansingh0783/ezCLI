@@ -174,6 +174,18 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.2.0
+
+- **Export is a clean conversation.** Export as Markdown or HTML now writes what you and the agent
+  said, with tool calls listed under each answer, instead of a dump of the terminal screen.
+- **Find works in the chat.** `Ctrl+Shift+F` highlights every match in the conversation, counts
+  them, and `Enter` / `Shift+Enter` step through, opening folded tool calls when a match is inside one.
+- **Faster long chats.** Finished messages are drawn once and reused, so a long conversation stays
+  smooth while the agent is working.
+- **Smaller touches.** Sending jumps to the bottom, a tool call that failed opens itself, and each
+  message shows the time it was sent. Fixed: an open or closed tool group no longer carries over
+  from one session to another.
+
 ### New in 5.1.0
 
 - **The chat shows up sooner.** It takes over from the terminal as soon as the agent starts working
