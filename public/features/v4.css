@@ -293,3 +293,24 @@ html[data-layout='calm'] #ptyComposer .usage-ring:hover { background: color-mix(
 
 /* a limit near its cap in the status bar: a darker amber on light windows so it stays readable */
 :root[data-theme='light'] .live-usage-item.hot { color: color-mix(in srgb, var(--warn) 72%, #000); }
+
+/* narrow message boxes (a small window, or the explorer docked beside the session): the footer
+ * wraps onto a second line instead of running past the box. Container queries, because the box
+ * is narrow when the explorer takes space even in a wide window. */
+html[data-layout='calm'] #ptyComposer, html[data-layout='calm'] #homeComposer { container: composer / inline-size; }
+@container composer (max-width: 660px) {
+  .composer-row, .composer-row.runconfig { flex-wrap: wrap !important; row-gap: 4px; }
+  #homeAgent { margin-left: 0 !important; }
+  .composer-tools { margin-left: auto !important; }
+  #ptyComposer .composer-meta { margin-left: auto; }
+}
+
+/* the session header gives up its chips, then its secondary buttons, as the session column narrows
+ * (a small window, or the explorer docked beside it) so the actions never run under the explorer */
+html[data-layout='calm'] .session-head { container: shead / inline-size; }
+@container shead (max-width: 760px) {
+  .session-head > .head-chip, .session-head > .head-branch, .session-head > .head-agent { display: none !important; }
+}
+@container shead (max-width: 520px) {
+  .session-head #actExport, .session-head .open-in-primary { display: none !important; }
+}

@@ -10,9 +10,10 @@
 
 ezCLI is not a harness. Each session spawns the real CLI in a real pseudo-terminal, so
 the agent's own text UI renders unchanged. Nothing is proxied, re-prompted, or rewritten.
-The window adds the parts a bare terminal lacks: tabs, an agent switcher, a file and diff
-browser with git actions, model, effort and mode flags you pick before launch, images and
-videos in the chat, and a compare mode that runs one prompt on several agents at once.
+The window adds the parts a bare terminal lacks: a sidebar of your projects and sessions, an
+agent switcher, a file and diff browser with git actions, model, effort and mode you pick
+before launch, images and videos in the chat, usage meters, and a compare mode that runs one
+prompt on several agents at once.
 
 ![The calm home screen: one message box, your sessions in the sidebar](docs/screenshot-launcher.png)
 
@@ -27,6 +28,40 @@ videos in the chat, and a compare mode that runs one prompt on several agents at
 ![Compare mode: one prompt sent to three agents](docs/screenshot-compare.png)
 
 ![Settings, with a section list on the left](docs/screenshot-settings.png)
+
+## Highlights
+
+**A window that feels like a desktop chat app**
+
+- **Sand and Sand Dark.** A flat, warm window modelled on the Claude desktop app: a tinted
+  sidebar, one continuous content area, a serif greeting with the ezCLI mark, and a white
+  message box. Seven other themes are one click away in Settings.
+- **A sidebar that does the switching.** New session, your projects, the open project's
+  sessions (with a status dot, or three moving dots while an agent works), earlier saved
+  sessions with stars, then Instructions, Brain, Browser, Settings and Keys. Hide it with
+  Ctrl+Alt+S, double-click a session to rename it, hover for a preview of its latest output,
+  and move through it with the arrow keys.
+- **The same message box for every agent.** The mode on the left; the model and effort on the
+  right, then the usage ring and send. Click the mode or the model to change it.
+- **Usage meters.** The ring shows how full the context window is. Click it for the context
+  window and **Plan usage limits** as thin bars with reset times, read from each CLI's own
+  files with no network request. CLIs that report nothing show a marked estimate.
+- **A transparent terminal.** The terminal sits directly on the window, in dark ink on a
+  light theme and light ink on a dark one. Dark glass and Solid are in Settings, with the
+  JetBrains Mono font, line spacing and cursor shape.
+- **Settings with a section list**, an editor for the project's `CLAUDE.md`, `AGENTS.md` or
+  `GEMINI.md`, and menus, dialogs and toasts in one consistent style.
+
+**What is underneath**
+
+- Claude Code, Codex, OpenCode, DeepSeek, Gemini CLI, Antigravity, Freebuff and Ollama, each
+  as its own CLI in its own terminal, in any folder.
+- Compare mode, team chat, a file and diff explorer, session search and resume, slash
+  commands with suggestions, clickable file paths in the output, find in output, and a
+  second-brain map of your projects that opens in Obsidian.
+- Everything stays on your PC. ezCLI never handles an account or an API key.
+
+Shortcuts are listed under [Keyboard](#keyboard).
 
 ## Install
 
@@ -119,7 +154,9 @@ ezCLI does not install Ollama, run `ollama signin`, download a model, or handle
 an Ollama API key. It uses the signed-in local CLI only after you choose a live
 catalog entry.
 
-## Current features
+## Changelog
+
+Every release, newest first.
 
 ### New in 2.1
 
@@ -136,6 +173,17 @@ catalog entry.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 4.5.0
+
+- **README refresh.** A Highlights section near the top describes the new look and features,
+  with the new banner and logo and fresh screenshots of every main screen.
+- **Fix: the explorer covered the message box in a narrower window.** The explorer now never
+  takes more than the window can spare, so the session beside it keeps at least 320px.
+- **Fix: the message box footer overflowed in a small window or with the explorer open.** It
+  wraps onto a second line when the box is narrow.
+- **Fix: the session header's buttons ran under the explorer.** The header now drops its chips,
+  then Export and Open, as the session column narrows.
 
 ### New in 4.4.0
 
@@ -740,7 +788,10 @@ The window claims only `Ctrl+Alt` combinations, so the agent's own terminal shor
 | --- | --- |
 | `Ctrl+Alt+N` | New session |
 | `Ctrl+Alt+W` | Close session |
-| `Ctrl+Alt+B` | Show or hide the sidebar |
+| `Ctrl+Alt+S` | Show or hide the sidebar |
+| `Ctrl+Alt+B` | Show or hide the file explorer |
+| `Ctrl+Shift+F` | Find in the terminal output |
+| `Ctrl` + mouse wheel | Terminal text size |
 | `Ctrl+Alt+K` | Clear the terminal |
 | `Ctrl+Alt+1` … `9` | Jump to a session |
 | `Enter` | Send the composer |

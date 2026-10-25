@@ -2264,8 +2264,24 @@ function setExplorerOpen(open, { quiet = false } = {}) {
   requestAnimationFrame(fitActive);
 }
 
+/** The explorer never takes more than the window can spare: the session keeps at least 320px,
+ *  so the explorer cannot cover the composer when the window is narrow or the sidebar is open. */
 function applyExplorerWidth() {
-  document.querySelector('.main').style.setProperty('--explorer-width', `${prefs.explorerWidth}px`);
+  const main = document.querySelector('.main');
+  const room = main.clientWidth - 320;
+  const width = Math.max(260, Math.min(prefs.explorerWidth, room));
+  main.style.setProperty('--explorer-width', `${Math.round(width)}px`);
+}
+window.addEventListener('resize', () => applyExplorerWidth());
+{
+  let last = 0;
+  new ResizeObserver(() => {
+    const w = document.querySelector('.main').clientWidth;
+    if (Math.abs(w - last) > 1) {
+      last = w;
+      applyExplorerWidth();
+    }
+  }).observe(document.querySelector('.main'));
 }
 
 function explorerRoot() {
