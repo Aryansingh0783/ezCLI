@@ -190,8 +190,8 @@ const ChatView = {
       if (sealed) t.reply = text;
       if (text) items.push({ k: 'assistant', key: `a${i}`, text, hard: true });
     });
-    // Until the agent has actually answered, the terminal may be holding a question; keep showing it.
-    return items.some((x) => x.k === 'assistant') ? items : [];
+    // Until the agent has answered or started working on it, the terminal may be holding a question; keep showing it.
+    return items.some((x) => x.k === 'assistant') || s.working ? items : [];
   },
 
   /** A question the CLI is waiting on, which only the terminal can answer. */
@@ -226,8 +226,24 @@ const ChatView = {
       .join('');
   },
 
+  /** Light colouring for code: comments, strings, numbers and common keywords. */
+  highlight(body) {
+    const re = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|(?<![^\s])#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\b(\d+(?:\.\d+)?)\b|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|class|new|async|await|try|catch|throw|def|fn|pub|use|impl|struct|enum|match|self|None|True|False|null|true|false|undefined|in|of|and|or|not|with|as|type|interface|extends|switch|case|break|continue|echo|git|npm|cd)\b/g;
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(body))) {
+      out += esc(body.slice(last, m.index));
+      const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'n' : 'k';
+      out += `<span class="tk-${cls}">${esc(m[0])}</span>`;
+      last = re.lastIndex;
+    }
+    return out + esc(body.slice(last));
+  },
+
   code(lang, body) {
-    return `<div class="cm-code"><div class="cm-code-head"><span>${esc(lang.trim() || 'text')}</span><button type="button" class="cm-copy">Copy</button></div><pre><code>${esc(body)}</code></pre></div>`;
+    const shown = body.length > 20000 ? esc(body) : this.highlight(body);
+    return `<div class="cm-code"><div class="cm-code-head"><span>${esc(lang.trim() || 'text')}</span><button type="button" class="cm-copy">Copy</button></div><pre><code>${shown}</code></pre></div>`;
   },
 
   text(src, hard) {
@@ -346,9 +362,10 @@ const ChatView = {
 
   html(s, items) {
     let h = '';
+    this.cur = items;
     for (const it of items) {
-      if (it.k === 'user') h += `<div class="cm cm-user"><div class="cm-bubble">${esc(it.text)}</div></div>`;
-      else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.md(it.text, it.hard)}</div></div>`;
+      if (it.k === 'user') h += `<div class="cm cm-user"><div class="cm-bubble">${esc(it.text)}</div><div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button></div></div>`;
+      else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.md(it.text, it.hard)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button></div></div>`;
       else if (it.k === 'tools') h += this.toolsHtml(it);
     }
     if (s.working) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}</div>`;
@@ -365,10 +382,33 @@ const ChatView = {
     el.hidden = true;
     el.setAttribute('role', 'log');
     el.setAttribute('aria-label', 'Conversation');
-    el.innerHTML = '<div class="chat-col" id="chatCol"></div>';
+    el.innerHTML = '<div class="chat-col" id="chatCol"></div><button type="button" id="chatLatest" class="chat-latest" aria-label="Jump to the latest message" hidden>Latest</button>';
+    el.addEventListener('scroll', () => this.syncLatest(), { passive: true });
     panel.append(el);
     this.el = el;
     el.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]');
+      if (act) {
+        const it = (this.cur || []).find((x) => x.key === act.dataset.key);
+        if (!it) return;
+        if (act.dataset.act === 'copy') {
+          navigator.clipboard.writeText(it.text).then(() => {
+            act.textContent = 'Copied';
+            setTimeout(() => (act.textContent = 'Copy'), 1200);
+          });
+        } else {
+          const box = $('ptyInput');
+          box.value = it.text;
+          autoGrow(box);
+          box.focus();
+          box.setSelectionRange(box.value.length, box.value.length);
+        }
+        return;
+      }
+      if (e.target.closest('#chatLatest')) {
+        this.el.scrollTo({ top: this.el.scrollHeight, behavior: 'smooth' });
+        return;
+      }
       const a = e.target.closest('a[href]');
       if (a) {
         e.preventDefault();
@@ -444,6 +484,12 @@ const ChatView = {
     }
     const panel = this.el.parentElement;
     panel.classList.toggle('chat-on', on);
+    const box = $('ptyInput');
+    if (box) {
+      if (!box.dataset.ph) box.dataset.ph = box.placeholder;
+      const a = s && agent(s.agentId);
+      box.placeholder = on && a ? `Reply to ${a.label}. Enter sends, Shift+Enter adds a line.` : box.dataset.ph;
+    }
     this.el.hidden = !on;
     if (!on) {
       this.sig = '';
@@ -458,6 +504,14 @@ const ChatView = {
     const near = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 90;
     $('chatCol').innerHTML = html;
     if (near || force) this.el.scrollTop = this.el.scrollHeight;
+    this.syncLatest();
+  },
+
+  /** A "Latest" button appears when you have scrolled up from the newest message. */
+  syncLatest() {
+    const b = $('chatLatest');
+    if (!b || !this.el) return;
+    b.hidden = this.el.hidden || this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 240;
   },
 
   tick() {
@@ -495,3 +549,12 @@ window.addEventListener(
   },
   true
 );
+
+// typing anywhere in the chat goes to the message box
+window.addEventListener('keydown', (e) => {
+  if (!ChatView.el || ChatView.el.hidden || e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+  const t = e.target;
+  if (t && (t.closest('input, textarea, select, [contenteditable]') || t.closest('dialog[open]'))) return;
+  const box = $('ptyInput');
+  if (box) box.focus();
+});

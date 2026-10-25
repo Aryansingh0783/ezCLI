@@ -174,6 +174,17 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.1.0
+
+- **The chat shows up sooner.** It takes over from the terminal as soon as the agent starts working
+  on your message, not only after its first reply. If the agent is stuck on a question, the
+  terminal stays up so you can answer it.
+- **Message actions.** Hover a message for Copy, and Edit on your own, which puts it back in the
+  message box. A "Latest" button appears when you scroll up, and typing anywhere in the chat goes
+  to the message box.
+- **Code blocks have colour** for comments, strings, numbers and keywords, and the message box
+  says "Reply to <agent>" instead of "Message the CLI".
+
 ### New in 5.0.0
 
 - **Sessions are a chat, not a terminal.** Your messages appear as bubbles, the agent's replies as
