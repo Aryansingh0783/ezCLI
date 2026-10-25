@@ -174,6 +174,17 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.5.1
+
+- **OpenCode now shows as a chat.** OpenCode 2 no longer has the `export` command ezCLI relied
+  on, so its sessions stayed in the terminal. ezCLI now reads the newest messages through
+  OpenCode's own `api`, keeps them in a small cache, and shows your messages, its replies, tool
+  calls with diffs, and why a turn stopped (for example "Free usage limit reached"). A long
+  session no longer means downloading its whole history on every refresh.
+- **OpenCode sessions resume properly.** Resuming an OpenCode tab used to say the conversation
+  "was never stored" and start a new one, and a continued session was never matched to its tab.
+  Both are fixed, and the session lookup now runs inside the project folder.
+
 ### New in 5.5.0
 
 - **A living project graph.** With a project's graph turned on, ezCLI now keeps it up to date

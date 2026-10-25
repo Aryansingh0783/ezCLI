@@ -59,7 +59,8 @@ const ChatView = {
         agentId: s.agentId,
         sessionId: s.providerSessionId || '',
         offset: c.offset,
-        sinceMs: Math.round(s.startedAt || Date.now())
+        sinceMs: Math.round(s.startedAt || Date.now()),
+        cwd: s.cwd || null
       });
       if (!page) return;
       if (page.reset) {

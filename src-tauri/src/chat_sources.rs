@@ -60,13 +60,159 @@ pub fn opencode_events(json: &str, out: &mut Vec<ChatEvent>) {
     }
 }
 
-pub fn opencode_page(session_id: &str, offset: u64) -> Option<ChatPage> {
+/* OpenCode 2 keeps messages behind `opencode api session.message.list`: newest first, each
+ * `{ type: user | assistant | compaction | idle, ... }`. A long session is huge (tool output
+ * included), so only the newest few messages are read after the first call and merged into a
+ * cache; OpenCode 1 still has `opencode export`, kept as the fallback. */
+
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Mutex;
+
+type MessageCache = HashMap<String, BTreeMap<(u64, String), Vec<ChatEvent>>>;
+static OC2: Mutex<Option<MessageCache>> = Mutex::new(None);
+
+fn v2_content_text(c: &Value) -> String {
+    match c {
+        Value::String(s) => s.clone(),
+        Value::Array(a) => a
+            .iter()
+            .filter_map(|b| b.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// The chat events one OpenCode 2 message turns into.
+pub fn opencode2_message_events(m: &Value, out: &mut Vec<ChatEvent>) {
+    let when = m.pointer("/time/created").map(|t| t.to_string()).unwrap_or_default();
+    match m.get("type").and_then(Value::as_str).unwrap_or("") {
+        "user" => {
+            let text = m.get("text").and_then(Value::as_str).unwrap_or("");
+            if !text.trim().is_empty() {
+                out.push(ChatEvent { kind: "user".into(), text: truncate(text.to_string(), MAX_TEXT_CHARS), ts: when, ..Default::default() });
+            }
+        }
+        "assistant" => {
+            if let Some(blocks) = m.get("content").and_then(Value::as_array) {
+                for b in blocks {
+                    match b.get("type").and_then(Value::as_str).unwrap_or("") {
+                        "text" => {
+                            let text = b.get("text").and_then(Value::as_str).unwrap_or("");
+                            if !text.trim().is_empty() {
+                                out.push(ChatEvent { kind: "assistant".into(), text: truncate(text.to_string(), MAX_TEXT_CHARS), ts: when.clone(), ..Default::default() });
+                            }
+                        }
+                        "tool" => {
+                            let id = b.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                            let state = b.get("state").unwrap_or(&Value::Null);
+                            let input = state.get("input").unwrap_or(&Value::Null);
+                            let mut detail = edit_detail(input);
+                            if detail.is_empty() {
+                                if let Some(patch) = state.pointer("/metadata/files/0/patch") {
+                                    detail = edit_detail(patch);
+                                }
+                            }
+                            out.push(ChatEvent {
+                                kind: "tool".into(),
+                                id: id.clone(),
+                                tool: b.get("name").and_then(Value::as_str).unwrap_or("tool").into(),
+                                text: tool_summary(input),
+                                detail,
+                                ts: when.clone(),
+                                ..Default::default()
+                            });
+                            let status = state.get("status").and_then(Value::as_str).unwrap_or("");
+                            if status == "completed" || status == "error" {
+                                let body = v2_content_text(state.get("content").unwrap_or(&Value::Null));
+                                out.push(ChatEvent { kind: "result".into(), id, text: truncate(body, MAX_RESULT_CHARS), error: status == "error", ts: when.clone(), ..Default::default() });
+                            }
+                        }
+                        // the model's thinking is not the answer
+                        _ => {}
+                    }
+                }
+            }
+            // A turn that ended in an error says why (for example the free quota is used up).
+            if let Some(msg) = m.pointer("/error/message").and_then(Value::as_str) {
+                out.push(ChatEvent { kind: "assistant".into(), text: format!("**Stopped:** {msg}"), ts: when, ..Default::default() });
+            }
+        }
+        _ => {}
+    }
+}
+
+fn opencode2_fetch(session_id: &str, limit: u32, dir: Option<&std::path::Path>) -> Option<Vec<Value>> {
+    let resolved = crate::agents::resolve_command("opencode")?;
+    let args = vec![
+        "api".to_string(),
+        "session.message.list".to_string(),
+        "--param".to_string(),
+        format!("sessionID={session_id}"),
+        "--param".to_string(),
+        format!("limit={limit}"),
+    ];
+    let text = crate::run_catalog_in(&resolved, &args, dir).ok()?;
+    let v: Value = serde_json::from_str(&text[text.find('{')?..]).ok()?;
+    v.get("data").and_then(Value::as_array).cloned()
+}
+
+fn opencode2_page(session_id: &str, offset: u64, dir: Option<&std::path::Path>) -> Option<ChatPage> {
+    let id_of = |m: &Value| (m.pointer("/time/created").and_then(Value::as_u64).unwrap_or(0), m.get("id").and_then(Value::as_str).unwrap_or("").to_string());
+    let known = |ids: &[(u64, String)]| -> (bool, bool) {
+        // (cache has this session, any fetched message is already known)
+        let guard = OC2.lock().ok();
+        let cache = guard.as_ref().and_then(|g| g.as_ref()).and_then(|m| m.get(session_id));
+        match cache {
+            None => (false, false),
+            Some(c) => (true, ids.iter().any(|k| c.contains_key(k))),
+        }
+    };
+    let (had, _) = known(&[]);
+    let mut data = opencode2_fetch(session_id, if had { 8 } else { 40 }, dir)?;
+    if had {
+        let ids: Vec<(u64, String)> = data.iter().map(id_of).collect();
+        // Nothing fetched is known yet: more happened than a small page holds, so read a bigger
+        // page rather than leave a gap.
+        if !known(&ids).1 {
+            data = opencode2_fetch(session_id, 40, dir)?;
+        }
+    }
+    {
+        let mut guard = OC2.lock().ok()?;
+        let cache = guard.get_or_insert_with(HashMap::new).entry(session_id.to_string()).or_default();
+        for m in &data {
+            let mut ev = Vec::new();
+            opencode2_message_events(m, &mut ev);
+            cache.insert(id_of(m), ev);
+        }
+        // keep the cache bounded
+        while cache.len() > 400 {
+            let k = cache.keys().next().cloned();
+            if let Some(k) = k {
+                cache.remove(&k);
+            }
+        }
+    }
+    let guard = OC2.lock().ok()?;
+    let cache = guard.as_ref()?.get(session_id)?;
+    let events: Vec<ChatEvent> = cache.values().flatten().cloned().collect();
+    let fingerprint = events.iter().fold(events.len() as u64, |h, e| h.wrapping_mul(31).wrapping_add(e.text.len() as u64 + e.kind.len() as u64));
+    Some(whole(fingerprint, offset, events))
+}
+
+pub fn opencode_page(session_id: &str, offset: u64, cwd: Option<&str>) -> Option<ChatPage> {
     let ok = session_id.strip_prefix("ses_").is_some_and(|r| (8..=40).contains(&r.len()) && r.chars().all(|c| c.is_ascii_alphanumeric()));
     if !ok {
         return None;
     }
+    let dir = cwd.map(std::path::Path::new);
+    if let Some(page) = opencode2_page(session_id, offset, dir) {
+        return Some(page);
+    }
+    // OpenCode 1: the whole conversation through `opencode export`.
     let resolved = crate::agents::resolve_command("opencode")?;
-    let text = crate::run_catalog(&resolved, &["export".to_string(), session_id.to_string()]).ok()?;
+    let text = crate::run_catalog_in(&resolved, &["export".to_string(), session_id.to_string()], dir).ok()?;
     let mut events = Vec::new();
     opencode_events(&text, &mut events);
     Some(whole(text.len() as u64, offset, events))
@@ -196,5 +342,26 @@ mod tests {
         let p = whole(8, 7, ev);
         assert!(p.reset);
         assert_eq!(p.events.len(), 1);
+    }
+
+    #[test]
+    fn opencode2_messages_become_events() {
+        let user: Value = serde_json::from_str(r#"{"id":"m1","type":"user","text":"hi","time":{"created":1}}"#).unwrap();
+        let asst: Value = serde_json::from_str(
+            r#"{"id":"m2","type":"assistant","time":{"created":2},"content":[
+                {"type":"reasoning","text":"thinking"},
+                {"type":"tool","id":"t1","name":"edit","state":{"status":"completed","input":{"filePath":"a.cs","oldString":"x","newString":"y"},"content":[{"type":"text","text":"Edited a.cs"}]}},
+                {"type":"text","text":"Done."}],
+               "error":{"message":"Free usage limit reached."}}"#,
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        opencode2_message_events(&user, &mut out);
+        opencode2_message_events(&asst, &mut out);
+        let kinds: Vec<&str> = out.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["user", "tool", "result", "assistant", "assistant"]);
+        assert_eq!(out[1].detail, "-x\n+y");
+        assert_eq!(out[2].text, "Edited a.cs");
+        assert!(out[4].text.contains("Free usage limit reached."));
     }
 }

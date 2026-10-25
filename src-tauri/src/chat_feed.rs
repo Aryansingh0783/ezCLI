@@ -350,10 +350,10 @@ fn read_from(path: &Path, codex: bool, offset: u64) -> Option<ChatPage> {
 }
 
 /// New events for a session since `offset`.
-pub fn read(agent_id: &str, session_id: &str, offset: u64, since_ms: u64) -> Option<ChatPage> {
+pub fn read(agent_id: &str, session_id: &str, offset: u64, since_ms: u64, cwd: Option<&str>) -> Option<ChatPage> {
     match agent_id {
         "freebuff" => crate::chat_sources::freebuff_page(since_ms, offset),
-        "opencode" | "deepseek" => crate::chat_sources::opencode_page(session_id, offset),
+        "opencode" | "deepseek" => crate::chat_sources::opencode_page(session_id, offset, cwd),
         _ => {
             // The id reaches the file system, so accept only a UUID.
             if !crate::agents::valid_session_id(session_id) {

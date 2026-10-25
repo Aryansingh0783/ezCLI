@@ -569,6 +569,12 @@ pub fn provider_session_exists(agent_id: &str, id: &str) -> bool {
         "codex" => codex_sessions_dir()
             .map(|root| collect_files(&root, Source::Codex).0.iter().any(|(_, _, p)| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(id))))
             .unwrap_or(false),
+        // OpenCode keeps sessions behind its own service; ask it rather than read its database.
+        "opencode" | "deepseek" => {
+            let Some(resolved) = crate::agents::resolve_command("opencode") else { return false };
+            let args = ["api".to_string(), "session.get".to_string(), "--param".to_string(), format!("sessionID={id}")];
+            crate::run_catalog(&resolved, &args).is_ok_and(|out| out.contains(&format!("\"id\":\"{id}\"")))
+        }
         _ => false,
     }
 }

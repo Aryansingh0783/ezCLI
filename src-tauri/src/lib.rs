@@ -519,11 +519,20 @@ fn git_diff(
 /// The command and every argument come from trusted built-in routing or the
 /// user-owned agents.json, never from the webview.
 pub(crate) fn run_catalog(resolved: &str, args: &[String]) -> Result<String, String> {
+    run_catalog_in(resolved, args, None)
+}
+
+/// Like `run_catalog`, run from `dir`. Some CLIs (OpenCode's session list) only see the
+/// sessions of the folder they run in.
+pub(crate) fn run_catalog_in(resolved: &str, args: &[String], dir: Option<&std::path::Path>) -> Result<String, String> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
     let launch = agents::launch_command(resolved, args).map_err(|e| e.to_string())?;
     let mut cmd = Command::new(&launch.program);
+    if let Some(d) = dir.filter(|d| d.is_dir()) {
+        cmd.current_dir(d);
+    }
     cmd.args(&launch.args)
         .env("NO_COLOR", "1")
         .env("PATH", agents::effective_path())
@@ -697,8 +706,8 @@ async fn session_usage(agent_id: String, session_id: String) -> Option<usage_liv
 
 /// New conversation events for the chat view, read from the CLI's own session file.
 #[tauri::command]
-async fn chat_feed(agent_id: String, session_id: String, offset: u64, since_ms: Option<u64>) -> Option<chat_feed::ChatPage> {
-    tauri::async_runtime::spawn_blocking(move || chat_feed::read(&agent_id, &session_id, offset, since_ms.unwrap_or(0))).await.ok().flatten()
+async fn chat_feed(agent_id: String, session_id: String, offset: u64, since_ms: Option<u64>, cwd: Option<String>) -> Option<chat_feed::ChatPage> {
+    tauri::async_runtime::spawn_blocking(move || chat_feed::read(&agent_id, &session_id, offset, since_ms.unwrap_or(0), cwd.as_deref())).await.ok().flatten()
 }
 
 /// Whether the chat view can read this agent's conversation.

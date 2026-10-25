@@ -141,24 +141,70 @@ fn claude_usage(session_id: &str) -> Option<LiveUsage> {
 /// `opencode session list` and `opencode export <id>`. Run those, never read the
 /// database directly.
 fn opencode_run(args: &[&str]) -> Option<String> {
+    opencode_run_in(args, None)
+}
+
+/// `session list` shows only the folder it runs in, so the lookup must run in the project.
+fn opencode_run_in(args: &[&str], dir: Option<&Path>) -> Option<String> {
     let resolved = crate::agents::resolve_command("opencode")?;
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    crate::run_catalog(&resolved, &args).ok()
+    crate::run_catalog_in(&resolved, &args, dir).ok()
 }
 
 /// The newest OpenCode session in `cwd` created after `since_ms`.
 pub fn find_opencode_session(cwd: &str, since_ms: u64) -> Option<String> {
-    let out = opencode_run(&["session", "list", "--format", "json", "-n", "25"])?;
+    let dir = Some(Path::new(cwd));
+    // OpenCode 2: the same `api` route the chat feed reads through.
+    if let Some(out) = opencode_run_in(&["api", "session.list"], dir) {
+        if let Some(id) = pick_opencode2_session(&out, cwd, since_ms) {
+            return Some(id);
+        }
+    }
+    let out = opencode_run_in(&["session", "list", "--format", "json", "-n", "25"], dir)?;
     pick_opencode_session(&out, cwd, since_ms)
 }
 
+/// `api session.list` prints `{ data: [{ id, time: { created, updated }, location: { directory } }] }`.
+fn pick_opencode2_session(json: &str, cwd: &str, since_ms: u64) -> Option<String> {
+    let v: Value = serde_json::from_str(&json[json.find('{')?..]).ok()?;
+    let want = cwd.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase();
+    v.get("data")?
+        .as_array()?
+        .iter()
+        .filter(|s| {
+            s.pointer("/location/directory")
+                .and_then(Value::as_str)
+                .is_some_and(|d| d.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase() == want)
+        })
+        .filter(|s| {
+            let t = |k: &str| s.pointer(k).and_then(Value::as_u64).unwrap_or(0);
+            t("/time/updated") + 5_000 >= since_ms || t("/time/created") + 5_000 >= since_ms
+        })
+        .max_by_key(|s| s.pointer("/time/updated").and_then(Value::as_u64).unwrap_or(0))
+        .and_then(|s| s.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+}
+
+/// The first JSON array in `text`, skipping any status line OpenCode prints before it (and
+/// ignoring anything after it).
+fn first_json_array(text: &str) -> Option<Vec<Value>> {
+    for (i, _) in text.match_indices('[') {
+        let mut stream = serde_json::Deserializer::from_str(&text[i..]).into_iter::<Value>();
+        if let Some(Ok(Value::Array(a))) = stream.next() {
+            return Some(a);
+        }
+    }
+    None
+}
+
 fn pick_opencode_session(json: &str, cwd: &str, since_ms: u64) -> Option<String> {
-    let start = json.find('[')?;
-    let list: Vec<Value> = serde_json::from_str(&json[start..]).ok()?;
+    let list = first_json_array(json)?;
     let want = cwd.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase();
     list.iter()
         .filter(|s| s.get("directory").and_then(Value::as_str).is_some_and(|d| d.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase() == want))
-        .filter(|s| s.get("created").and_then(Value::as_u64).unwrap_or(0) + 5_000 >= since_ms)
+        // Created or touched since this tab opened: a continued session was created days ago
+        // but is written to as soon as the tab sends a message.
+        .filter(|s| s.get("updated").and_then(Value::as_u64).unwrap_or(0) + 5_000 >= since_ms || s.get("created").and_then(Value::as_u64).unwrap_or(0) + 5_000 >= since_ms)
         .max_by_key(|s| s.get("updated").and_then(Value::as_u64).unwrap_or(0))
         .and_then(|s| s.get("id").and_then(Value::as_str))
         .map(str::to_string)
@@ -363,5 +409,38 @@ mod tests {
             let agent = if c.source == "codex" { "codex" } else { "claude-code" };
             eprintln!("{agent} {} -> {:?}", c.session_id, read(agent, &c.session_id).map(|u| (u.context_tokens, u.context_window, u.output_tokens, u.limits.len())));
         }
+    }
+}
+
+#[cfg(test)]
+mod session_pick_tests {
+    use super::*;
+
+    #[test]
+    fn opencode2_session_list_picks_the_project_session() {
+        let out = r#"{"data":[
+            {"id":"ses_other0001","time":{"created":1,"updated":9},"location":{"directory":"G:\\Other"}},
+            {"id":"ses_mine00001","time":{"created":5,"updated":10},"location":{"directory":"G:\\Unity Game Project"}}],"cursor":{}}"#;
+        let dir = r"G:\Unity Game Project";
+        assert_eq!(pick_opencode2_session(out, dir, 0).as_deref(), Some("ses_mine00001"));
+        assert_eq!(pick_opencode2_session(out, dir, 8).as_deref(), Some("ses_mine00001"));
+        assert_eq!(pick_opencode2_session(out, dir, 99_999), None);
+    }
+
+    #[test]
+    fn a_status_line_before_the_json_does_not_hide_the_session() {
+        let out = r#"[service] started in 0.2s
+[
+  {"id":"ses_abc12345","updated":10,"created":5,"directory":"G:\\Unity Game Project"}
+]
+"#;
+        let dir = r"G:\Unity Game Project";
+        let parsed = first_json_array(out);
+        assert_eq!(parsed.as_ref().map(Vec::len), Some(1), "array not found in {out:?}");
+        assert_eq!(parsed.unwrap()[0].get("directory").and_then(Value::as_str), Some(dir));
+        assert_eq!(pick_opencode_session(out, dir, 0).as_deref(), Some("ses_abc12345"));
+        // a continued session: created before this tab opened, updated after
+        assert_eq!(pick_opencode_session(out, dir, 8).as_deref(), Some("ses_abc12345"));
+        assert_eq!(pick_opencode_session(out, r"G:\Other", 0), None);
     }
 }
