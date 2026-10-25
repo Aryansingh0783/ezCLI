@@ -187,6 +187,19 @@ pub async fn graphify_open(cwd: Option<String>, app: AppHandle) -> Result<(), St
     show_graph(&app, &html, "Graphify: project graph").await
 }
 
+/// Reload the graph window in place if it is open, so a fresh build shows without
+/// stealing focus. Returns whether a window was there to reload.
+#[tauri::command]
+pub fn graph_reload_open(app: AppHandle) -> bool {
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("graph-view") {
+        let _ = win.eval("try{location.reload()}catch(e){}");
+        true
+    } else {
+        false
+    }
+}
+
 /* ------------------------------------------------------------ second brain */
 
 /// Where the second brain's viewer and Obsidian notes live.

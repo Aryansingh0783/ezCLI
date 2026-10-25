@@ -945,6 +945,7 @@ pub fn run() {
             graphify::graphify_plan,
             graphify::graphify_run,
             graphify::graphify_open,
+            graphify::graph_reload_open,
             graphify::graphify_auto,
             graphify::brain_status,
             graphify::brain_vault_plan,

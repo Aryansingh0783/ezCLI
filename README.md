@@ -174,6 +174,18 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.5.0
+
+- **A living project graph.** With a project's graph turned on, ezCLI now keeps it up to date
+  while agents work: a short while after each burst of work settles, it rebuilds the graph
+  incrementally (local, no API key, nothing uploaded), folds the change into the second brain, and
+  if the graph window is open it reloads in place so new files and connections appear on their own.
+  Rebuilds are throttled per project and stay silent unless the graph is open.
+- **Agents stay current.** Because the graph refreshes as work happens, an agent that queries it
+  through the Graphify skill sees the project as it is now, not as it was at the start of the
+  session. Set the skill up once from Settings, "Add Graphify to my agents".
+- The Settings toggle now reads "Keep each project's graph up to date while agents work on it".
+
 ### New in 5.4.0
 
 - **Connect Gemini CLI with an API key, from inside ezCLI.** Google dropped personal Google

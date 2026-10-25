@@ -22,10 +22,43 @@ const Graphify = {
       try {
         const r = await invoke('graphify_auto', { cwd });
         if (r === 'built') {
+          this.lastBuilt.set(cwd, Date.now());
           await Brain.update(true);
         }
       } catch {
         /* best effort; the manual buttons report errors */
+      }
+    });
+  },
+
+  // Keep a project's graph fresh while its agents work. onIdle fires after each
+  // burst of output (the agent has likely just edited files), so a short while
+  // after work settles the graph rebuilds incrementally, the open graph window
+  // reloads itself, and the second brain folds in the change. Throttled per
+  // folder so it never runs back to back, and silent unless the graph is open.
+  lastBuilt: new Map(),
+  LIVE_COOLDOWN: 90_000,
+
+  live(s) {
+    if (!s || !s.cwd || prefs.graphAuto === false) return;
+    const cwd = s.cwd;
+    const now = Date.now();
+    if (now - (this.lastBuilt.get(cwd) || 0) < this.LIVE_COOLDOWN) return;
+    this.lastBuilt.set(cwd, now); // reserve the slot so idle bursts don't stack builds
+    this.queue = (this.queue || Promise.resolve()).then(async () => {
+      try {
+        const r = await invoke('graphify_auto', { cwd });
+        if (r === 'built') {
+          this.lastBuilt.set(cwd, Date.now());
+          const reloaded = await invoke('graph_reload_open').catch(() => false);
+          if (typeof Brain !== 'undefined') Brain.update(true);
+          if (reloaded && cwd === this.folder()) toast('Graph updated with the latest changes.');
+        } else {
+          // installed-but-busy or skipped: let it try again before the full cooldown
+          this.lastBuilt.set(cwd, now - this.LIVE_COOLDOWN + 20_000);
+        }
+      } catch {
+        this.lastBuilt.set(cwd, now - this.LIVE_COOLDOWN + 20_000);
       }
     });
   },
@@ -120,6 +153,9 @@ hooks.boot.push(() => {
   $('settingsBtn')?.addEventListener('click', () => Graphify.refresh());
   Graphify.refresh();
 });
+
+// Refresh the graph a short while after an agent settles from a burst of work.
+hooks.idle.push((s) => Graphify.live(s));
 
 registerCommand({
   group: 'App',
