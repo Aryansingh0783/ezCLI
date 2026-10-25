@@ -23,6 +23,11 @@ const Team = (() => {
     review: { label: 'Draft & review', hint: 'The first agent does the work, the rest review it, then it revises.' },
     merge: { label: 'Compare & merge', hint: 'Everyone answers alone, then the first agent combines the answers.' }
   };
+  const IDEAS = {
+    round: ['Find the three most likely bugs here and fix them, and have each of you review the rest', 'Plan a cleanup of the biggest file, then carry it out together', 'Add a small feature of your choice and write a test for it'],
+    review: ['Write a README for this project, then critique and revise it', 'Write tests for the least tested module, then review them', 'Refactor the longest function, then review the result'],
+    merge: ['Each propose a fix for the most fragile code here; combine the best parts', 'Each suggest how to speed up startup; merge the answers into one plan', 'Each write a release note for the latest changes; merge them']
+  };
   const CONTEXT_BUDGET = 22000; // characters of conversation sent to an agent
   const HUES = [152, 205, 285, 35, 340, 95]; // one per participant slot
 
@@ -389,7 +394,8 @@ const Team = (() => {
     const stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
     thread.innerHTML = current.messages.length
       ? current.messages.map((m) => messageHtml(current, m)).join('')
-      : `<div class="team-empty"><strong>One chat, several agents.</strong><p>${esc2(MODES[current.mode].hint)} Add agents above, then describe the task. They all work in <code>${esc2(basename(current.cwd))}</code>.</p></div>`;
+      : `<div class="team-empty"><strong>One chat, several agents.</strong><p>${esc2(MODES[current.mode].hint)} Add agents above, then describe the task. They all work in <code>${esc2(basename(current.cwd))}</code>.</p>
+        <div class="team-ideas" aria-label="Example tasks">${(IDEAS[current.mode] || IDEAS.round).map((x, i) => `<button type="button" class="team-idea" data-idea="${i}">${esc2(x)}</button>`).join('')}</div></div>`;
     if (stick) thread.scrollTop = thread.scrollHeight;
   }
 
@@ -511,6 +517,13 @@ const Team = (() => {
     });
     const form = view.querySelector('.team-composer');
     const ta = form.querySelector('textarea');
+    view.querySelector('.team-thread').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-idea]');
+      if (!b || !current) return;
+      ta.value = (IDEAS[current.mode] || IDEAS.round)[Number(b.dataset.idea)] || '';
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.focus();
+    });
     ta.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();

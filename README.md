@@ -174,6 +174,15 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 4.10.0
+
+- **Settings buttons look like buttons.** The action buttons in Settings (Sessions, Usage, Open
+  second brain and the rest) have a visible outline again, and the connector name and URL fields
+  share one height and corner radius.
+- **Team chat starts from an example.** The empty team chat offers three example tasks for the
+  mode you picked; click one to fill the message box. The view also sits on the same surface as
+  the rest of the window instead of a cooler grey.
+
 ### New in 4.9.0
 
 - **Starter ideas on the home screen.** Under the message box, a few one-click prompts fit the
