@@ -427,3 +427,16 @@ html[data-layout='calm'] .team-view { background: inherit; }
 .gem-msg.err { color: #b23a2a; }
 :root[data-theme='dark'] .gem-msg.ok { color: #6fcf86; }
 :root[data-theme='dark'] .gem-msg.err { color: #f08a7a; }
+
+/* ===================== asking for your name (name.js) ===================== */
+.home-name-ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 2px 0 18px; font-size: 14px; color: var(--ink-soft, var(--muted)); }
+.home-name-ask input {
+  width: 180px; height: 32px; padding: 0 10px; border: 1px solid var(--line, var(--border)); border-radius: 8px;
+  background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 14px; outline: none;
+}
+.home-name-ask input:focus { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+.home-name-ask button { height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--brand); color: var(--brand-ink, #fff); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.home-name-ask button.ghost { background: transparent; color: var(--ink-faint, var(--faint)); font-weight: 500; }
+.home-name-ask button.ghost:hover { color: var(--ink, var(--text)); }
+.onboarding-name { display: grid; gap: 6px; margin: 10px 0 12px; font-size: 13px; color: var(--ink-soft, var(--muted)); }
+.onboarding-name input { height: 32px; padding: 0 10px; border: 1px solid var(--line, var(--border)); border-radius: 8px; background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 14px; }

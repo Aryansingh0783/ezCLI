@@ -1640,12 +1640,9 @@ const GREETINGS = {
   any: ['Welcome back, {n}', 'Hello, {n}', "What's on your mind, {n}?", 'Ready when you are, {n}', 'What shall we make, {n}?']
 };
 function homeName() {
-  const typed = String(prefs.displayName || '').trim();
-  if (typed) return typed.slice(0, 24);
-  const base = String(state.homeCwd || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
-  const clean = base.replace(/[^\p{L}\p{N} ._-]/gu, '');
-  if (!clean || clean.length > 20 || /^(user|users|admin|administrator|owner|home|root|default)$/i.test(clean) || /\d{3,}/.test(clean)) return '';
-  return clean.charAt(0).toUpperCase() + clean.slice(1);
+  // Only a name the person gave. Guessing from the Windows account folder showed whatever
+  // name the PC was set up with, which is often not theirs.
+  return String(prefs.displayName || '').trim().slice(0, 24);
 }
 const greetingCache = { key: '', text: '' };
 function homeGreeting() {
@@ -1657,7 +1654,8 @@ function homeGreeting() {
     // the time-of-day lines are twice as likely as the general ones
     const pool = [...GREETINGS[part], ...GREETINGS[part], ...GREETINGS.any];
     let line = pool[Math.floor(Math.random() * pool.length)];
-    if (!name) line = line.replace('Hi {n}, ', '').replace(/,? \{n\}/g, '').replace('{n}', '');
+    // Without a name, most lines read oddly ("One more thing?"); use the plain greeting.
+    if (!name) line = { early: 'Working late?', morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening' }[part];
     greetingCache.key = key;
     greetingCache.text = line.replace(/\{n\}/g, name).replace(/\s+([?,])/g, '$1').trim();
     greetingCache.text = greetingCache.text.charAt(0).toUpperCase() + greetingCache.text.slice(1);

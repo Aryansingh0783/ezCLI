@@ -351,6 +351,7 @@ pub async fn install_agent(
     if runs.contains_running(&agent_id) {
         return Err(format!("An install for {label} is already running."));
     }
+    let command_line = install::prepare(&command_line);
     let runs = runs.inner().clone();
     let app2 = app.clone();
     let id = agent_id.clone();

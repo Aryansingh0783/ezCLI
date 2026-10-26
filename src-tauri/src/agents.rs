@@ -919,6 +919,12 @@ fn well_known_cli_dirs() -> Vec<PathBuf> {
         out.push(local.join("pnpm"));
         out.push(local.join("Volta").join("bin"));
         out.push(local.join("Programs").join("Ollama")); // Ollama default
+        out.push(local.join("Programs").join("nodejs")); // portable Node.js ezCLI installs
+    }
+    if let Some(pf) = env("ProgramFiles") {
+        out.push(pf.join("nodejs")); // Node.js MSI / winget
+    }
+    if let Some(local) = env("LOCALAPPDATA") {
         // Antigravity CLI's installer puts agy.exe here and does not always
         // add it to PATH. (The Antigravity desktop app ships no CLI at all.)
         out.push(local.join("agy").join("bin"));

@@ -82,6 +82,24 @@ installed only when its download matches the SHA-256 published with the release.
 The macOS and Linux builds are new and less tested than Windows. PC control and voice
 typing are Windows-only for now.
 
+### On a brand-new Windows PC
+
+Most agents (Claude Code, Codex, OpenCode, DeepSeek, Gemini CLI, Freebuff) install through npm,
+which comes with Node.js, and a fresh Windows has no Node.js. **You don't need to do anything
+about it:** when you install one of these agents from ezCLI, it installs Node.js first. It uses
+`winget` when that works, and otherwise downloads the official portable Node.js LTS from
+nodejs.org, checks it against the SHA-256 nodejs.org publishes, and unpacks it to
+`%LOCALAPPDATA%\Programs\nodejs` with no admin rights needed. Then the agent installs as usual.
+
+If you'd rather set it up yourself, either of these works in PowerShell. Then restart ezCLI:
+
+```powershell
+winget install --id OpenJS.NodeJS.LTS -e
+```
+
+or download the LTS installer from [nodejs.org](https://nodejs.org) and run it. After that,
+`npm install -g @anthropic-ai/claude-code` (or the agent's command shown in ezCLI) works.
+
 ### Arch Linux / CachyOS
 
 There's no AUR package yet, but [`packaging/arch/PKGBUILD`](packaging/arch/PKGBUILD)
@@ -173,6 +191,18 @@ Every release, newest first.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 5.7.1
+
+- **Agents install on a brand-new PC.** Most agents install through npm, which a fresh Windows
+  doesn't have, so their install failed. Installing one from ezCLI now installs Node.js first if
+  it's missing: through winget when that works, otherwise the official portable Node.js LTS from
+  nodejs.org (checked against its published SHA-256, no admin rights needed). Every install also
+  turns on TLS 1.2, which older Windows PowerShell leaves off, and Ollama falls back to winget if
+  its download script fails. The README has the manual steps too.
+- **Your name, not the PC's.** The home greeting no longer guesses a name from the Windows
+  account folder. First-run setup asks what to call you, the home screen asks once if you skipped
+  it, and Settings changes it any time. Until then it simply says "Good evening".
 
 ### New in 5.6.0
 

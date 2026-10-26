@@ -47,6 +47,26 @@ pub struct InstallDone {
     pub resolved: bool,
 }
 
+/// What actually runs for an agent's install command on a fresh PC. On Windows: TLS 1.2 for old
+/// PowerShell, Node.js installed first when the command needs npm, and Ollama through winget if
+/// its download script fails. The shown command stays the agent's own.
+pub fn prepare(command_line: &str) -> String {
+    if !cfg!(windows) {
+        return command_line.to_string();
+    }
+    const TLS: &str = "try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}";
+    let trimmed = command_line.trim();
+    if trimmed.starts_with("npm ") {
+        return format!("$ErrorActionPreference = 'Stop'\n{}\n{trimmed}", include_str!("ensure_node.ps1"));
+    }
+    if trimmed.contains("ollama.com/install.ps1") {
+        return format!(
+            "{TLS}\ntry {{ {trimmed} }} catch {{ Write-Output \"The Ollama script failed ($_); trying winget.\"; winget install --id Ollama.Ollama -e --source winget --silent --accept-package-agreements --accept-source-agreements }}"
+        );
+    }
+    format!("{TLS}\n{trimmed}")
+}
+
 #[cfg(windows)]
 fn shell_command(command_line: &str) -> Command {
     let root = std::env::var_os("SystemRoot").map(std::path::PathBuf::from);
