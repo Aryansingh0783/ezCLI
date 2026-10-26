@@ -34,7 +34,11 @@ if (-not (Test-Npm)) {
     $zip = Join-Path $env:TEMP "$name.zip"
     Write-Output "> download $name.zip"
     Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$version/$name.zip" -OutFile $zip
-    $sums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$version/SHASUMS256.txt").Content
+    # Saved and read as a file: Windows PowerShell returns bytes, not text, for some content types.
+    $sumsFile = "$zip.sums"
+    Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$version/SHASUMS256.txt" -OutFile $sumsFile
+    $sums = Get-Content $sumsFile -Raw
+    Remove-Item $sumsFile -Force
     $line = ($sums -split "`n") | Where-Object { $_ -match ([regex]::Escape("$name.zip") + '\s*$') } | Select-Object -First 1
     $want = ($line -split '\s+')[0].ToLower()
     $got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()

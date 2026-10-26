@@ -65,7 +65,16 @@ Shortcuts are listed under [Keyboard](#keyboard).
 
 ## Install
 
-Download from the [Releases page](https://github.com/Aryansingh0783/ezCLI/releases/latest):
+**Windows, one line.** Paste this into PowerShell. It downloads the newest release, checks it
+against the SHA-256 published with it, and runs the installer:
+
+```powershell
+irm https://raw.githubusercontent.com/Aryansingh0783/ezCLI/main/install.ps1 | iex
+```
+
+Then install agents from inside ezCLI; it sets up Node.js for them if your PC doesn't have it.
+
+Or download from the [Releases page](https://github.com/Aryansingh0783/ezCLI/releases/latest):
 
 | Platform | File |
 | --- | --- |
@@ -191,6 +200,15 @@ Every release, newest first.
   nothing, and every PC shows the same list.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
+
+### New in 5.7.2
+
+- **Install ezCLI with one line** in PowerShell (see Install above): it finds the newest release,
+  verifies the installer's SHA-256 and runs it. Works in Windows PowerShell 5.1 and PowerShell 7.
+- **Safer releases.** A release now refuses to build if its tag doesn't match the version inside
+  the app, so a tag on the wrong commit can no longer ship old code under a new number (which
+  briefly happened with v5.7.0, since removed).
+- The Node.js setup for agents now reads nodejs.org's checksum list the same robust way.
 
 ### New in 5.7.1
 
