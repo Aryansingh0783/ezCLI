@@ -57,7 +57,7 @@ pub fn prepare(command_line: &str) -> String {
     const TLS: &str = "try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}";
     let trimmed = command_line.trim();
     if trimmed.starts_with("npm ") {
-        return format!("$ErrorActionPreference = 'Stop'\n{}\n{trimmed}", include_str!("ensure_node.ps1"));
+        return format!("$ErrorActionPreference = 'Stop'\n{}\n{}", include_str!("ensure_node.ps1"), allow_own_script(trimmed));
     }
     if trimmed.contains("ollama.com/install.ps1") {
         return format!(
@@ -65,6 +65,27 @@ pub fn prepare(command_line: &str) -> String {
         );
     }
     format!("{TLS}\n{trimmed}")
+}
+
+/// npm 11.16 skips every package's install script unless it is allowed, and some agents need
+/// theirs (OpenCode's places its program). Allow only the package being installed, never its
+/// dependencies. Older npm ignores the flag.
+fn allow_own_script(npm_command: &str) -> String {
+    let parts: Vec<&str> = npm_command.split_whitespace().collect();
+    let pkg = match parts.as_slice() {
+        ["npm", "install" | "i", "-g", pkg] | ["npm", "install" | "i", pkg, "-g"] => *pkg,
+        _ => return npm_command.to_string(),
+    };
+    // the name without a version, @scope/name@1.2 -> @scope/name
+    let name = match pkg.rfind('@') {
+        Some(i) if i > 0 => &pkg[..i],
+        _ => pkg,
+    };
+    if name.chars().all(|c| c.is_ascii_alphanumeric() || "@/._-".contains(c)) {
+        format!("{npm_command} --allow-scripts={name}")
+    } else {
+        npm_command.to_string()
+    }
 }
 
 #[cfg(windows)]
@@ -273,6 +294,23 @@ mod tests {
         assert!(out.contains("hello-install"));
         assert!(agents::resolve_command(target).is_some());
         let _ = runs; // runs/cancel wiring is covered by the live app smoke test
+    }
+
+    #[test]
+    fn npm_installs_allow_only_their_own_script() {
+        assert_eq!(allow_own_script("npm install -g opencode-ai"), "npm install -g opencode-ai --allow-scripts=opencode-ai");
+        assert_eq!(
+            allow_own_script("npm install -g @anthropic-ai/claude-code"),
+            "npm install -g @anthropic-ai/claude-code --allow-scripts=@anthropic-ai/claude-code"
+        );
+        assert_eq!(allow_own_script("npm install -g freebuff@1.2.3"), "npm install -g freebuff@1.2.3 --allow-scripts=freebuff");
+        assert_eq!(allow_own_script("npm run build"), "npm run build");
+        if cfg!(windows) {
+            let p = prepare("npm install -g opencode-ai");
+            assert!(p.contains("Node.js is not installed yet"));
+            assert!(p.trim_end().ends_with("npm install -g opencode-ai --allow-scripts=opencode-ai"));
+            assert!(prepare("irm https://ollama.com/install.ps1 | iex").contains("winget install --id Ollama.Ollama"));
+        }
     }
 
     #[test]

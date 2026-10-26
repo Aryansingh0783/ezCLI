@@ -109,7 +109,94 @@ const Installer = (() => {
     if (!sheet.open) sheet.showModal();
   }
 
-  return { open };
+  /* ---------------------------------------------------------- install everything */
+
+  /** Agents not installed yet, one per install command (Claude and Claude Code share one). */
+  function missing() {
+    const seen = new Set();
+    return state.agents.filter((a) => {
+      if (a.available || !a.install || seen.has(a.install)) return false;
+      seen.add(a.install);
+      return true;
+    });
+  }
+
+  async function runAll(list) {
+    busy = true;
+    const act = sheet.querySelector('[data-run]');
+    const stopBtn = sheet.querySelector('[data-stop]');
+    act.hidden = true;
+    stopBtn.hidden = false;
+    const log = sheet.querySelector('.install-log');
+    log.textContent = '';
+    log.hidden = false;
+    const ok = [];
+    const failed = [];
+    let stopped = false;
+    for (let i = 0; i < list.length && !stopped; i++) {
+      const a = list[i];
+      current = { agentId: a.id, label: a.label, install: a.install, unlisten: null };
+      sheet.querySelector('h2').textContent = `Installing ${a.label} (${i + 1} of ${list.length})…`;
+      appendLog(`\n=== ${a.label}: ${a.install}\n`);
+      current.unlisten = await listen(`install-out:${a.id}`, (e) => appendLog(e.payload));
+      let done = null;
+      try {
+        done = await invoke('install_agent', { agentId: a.id });
+      } catch (err) {
+        appendLog(`\n${String(err)}\n`);
+      }
+      safe(current.unlisten);
+      if (done && done.cancelled) stopped = true;
+      if (done && done.resolved) {
+        ok.push(a.label);
+        appendLog(`\n✓ ${a.label} is installed.\n`);
+      } else {
+        failed.push(a.label);
+        appendLog(`\n✗ ${a.label} did not install${stopped ? ' (stopped)' : ''}.\n`);
+      }
+    }
+    busy = false;
+    stopBtn.hidden = true;
+    await reloadAgents();
+    if (typeof renderOnboarding === 'function' && $('onboardingSheet') && $('onboardingSheet').open) renderOnboarding();
+    sheet.querySelector('h2').textContent = failed.length ? `Installed ${ok.length} of ${list.length}` : 'All agents are installed';
+    appendLog(`\nDone. Installed: ${ok.join(', ') || 'none'}.${failed.length ? ` Not installed: ${failed.join(', ')}. Their log is above; you can retry each from its Install button.` : ''}\n`);
+    toast(failed.length ? `Installed ${ok.length} of ${list.length} agents.` : `All ${ok.length} agents are installed.`, failed.length ? 'error' : 'ok');
+  }
+
+  function openAll() {
+    if (busy) return;
+    const list = missing();
+    if (!list.length) {
+      toast('Every agent is already installed.', 'ok');
+      return;
+    }
+    open(list[0].id); // builds the sheet
+    current = null;
+    sheet.querySelector('h2').textContent = `Install ${list.length} agent${list.length === 1 ? '' : 's'}?`;
+    sheet.querySelector('.install-body').innerHTML = `<p class="note">ezCLI will run these commands one after another, the same ones you'd run in a terminal. If this PC has no Node.js, it is installed first (winget, or the official portable Node.js from nodejs.org, checked against its published SHA-256). Each agent brings its own models; you sign in to each one the first time you start it.</p>
+      <pre class="install-cmd">${list.map((a) => `${esc(a.label)}:  ${esc(a.install)}`).join('\n')}</pre>`;
+    const act = sheet.querySelector('[data-run]');
+    act.hidden = false;
+    act.disabled = false;
+    act.textContent = 'Install all';
+    // swap the single-agent handler for this run only
+    const fresh = act.cloneNode(true);
+    act.replaceWith(fresh);
+    fresh.addEventListener('click', () => runAll(list), { once: true });
+    sheet.addEventListener(
+      'close',
+      () => {
+        const again = sheet.querySelector('[data-run]');
+        const plain = again.cloneNode(true);
+        again.replaceWith(plain);
+        plain.addEventListener('click', run);
+      },
+      { once: true }
+    );
+  }
+
+  return { open, openAll, missing };
 })();
 
 hooks.boot.push(() => {
@@ -120,5 +207,18 @@ hooks.boot.push(() => {
   document.body.addEventListener('click', (e) => {
     const b = e.target.closest('[data-install-agent]');
     if (b) Installer.open(b.dataset.installAgent);
+    if (e.target.closest('[data-install-all]')) Installer.openAll();
   });
+  // the button's label says how many are left, and it hides when there are none
+  const sync = () => {
+    const n = Installer.missing().length;
+    document.querySelectorAll('[data-install-all]').forEach((b) => {
+      b.hidden = n === 0;
+      b.textContent = `Install all agents (${n})`;
+    });
+  };
+  sync();
+  setInterval(sync, 4000);
 });
+
+registerCommand({ group: 'App', label: 'Install all agents', run: () => Installer.openAll() });

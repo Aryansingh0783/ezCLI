@@ -201,6 +201,17 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.8.0
+
+- **Install every agent in one click.** "Install all agents" (in first-run setup, Settings, Agents,
+  and the command palette) lists every agent this PC is missing, shows the exact commands, and on
+  one click installs them one after another in a single log, Node.js first if it's needed. One
+  failing agent doesn't stop the rest; the summary says what was installed and what to retry.
+  Each agent brings its own models; you sign in to each the first time you start it.
+- **Agents that need their own setup step work with the newest npm.** npm 11.16 skips every
+  package's install script by default, which can leave OpenCode without its program. ezCLI now
+  allows the script of only the package being installed, never its dependencies.
+
 ### New in 5.7.2
 
 - **Install ezCLI with one line** in PowerShell (see Install above): it finds the newest release,
