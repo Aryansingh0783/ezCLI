@@ -309,8 +309,10 @@
     <dialog class="sheet onboarding-sheet" id="onboardingSheet" aria-labelledby="onboardingTitle">
       <h2 id="onboardingTitle">Start with a working CLI</h2>
       <p class="note" id="onboardingSummary"></p>
-      <div class="onboarding-install"><button class="btn primary" type="button" data-install-all hidden>Install all agents</button><span>One click installs every agent this PC is missing, and Node.js if needed.</span></div>
-      <label class="onboarding-name"><span>What should we call you?</span><input type="text" id="onboardingName" placeholder="Your name" maxlength="24" autocomplete="given-name" spellcheck="false" /></label>
+      <div class="onboarding-intro">
+        <label class="onboarding-name"><span>Your name</span><input type="text" id="onboardingName" placeholder="What should we call you?" maxlength="24" autocomplete="given-name" spellcheck="false" /></label>
+        <div class="onboarding-install"><span>Some agents aren’t installed yet. Add them all in one go, with Node.js if this PC needs it.</span><button class="btn" type="button" data-install-all hidden>Install all agents</button></div>
+      </div>
       <div class="onboarding-scroll">
       <details class="backend-found">
         <summary id="backendFoundSummary">What ezCLI found</summary>
@@ -390,7 +392,7 @@
         <h3>Agents</h3>
         <p class="note">Launch commands live in <code id="agentsPath">~/.ezcli/agents.json</code>. Edit it, then reload.</p>
         <div class="row-actions">
-          <button class="btn primary" data-install-all hidden>Install all agents</button>
+          <button class="btn" data-install-all hidden>Install all agents</button>
           <button class="btn" id="openConfig">Open config folder</button>
           <button class="btn" id="reloadAgents">Reload agents</button>
         </div>

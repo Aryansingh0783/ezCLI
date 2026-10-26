@@ -15,6 +15,7 @@ const ChatView = {
   sig: '',
   open: new Set(),
   shut: new Set(),
+  expanded: new Set(),
   cache: new Map(),
   FEED: new Set(['claude-code', 'claude-chat', 'codex', 'opencode', 'deepseek', 'freebuff']),
   /** How often each feed is read. OpenCode runs a command to export, so it is read less often. */
@@ -441,8 +442,15 @@ const ChatView = {
     this.cur = items;
     for (const it of items) {
       const when = this.when(it.ts);
-      if (it.k === 'user') h += `<div class="cm cm-user"><div class="cm-bubble">${esc(it.text)}</div><div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
-      else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
+      if (it.k === 'user') {
+        // A long paste (a log, a file) folds to a preview instead of filling the screen.
+        const lines = it.text.split('\n').length;
+        const long = lines > 14 || it.text.length > 1400;
+        const open = this.expanded.has(it.key);
+        const more = long ? `<button type="button" class="cm-more" data-act="more" data-key="${it.key}">${open ? 'Show less' : `Show all ${lines} lines`}</button>` : '';
+        h += `<div class="cm cm-user"><div class="cm-bubble${long && !open ? ' folded' : ''}">${esc(it.text)}</div>${more}`;
+        h += `<div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
+      } else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
       else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
       else if (it.k === 'tools') h += this.toolsHtml(it);
     }
@@ -472,6 +480,17 @@ const ChatView = {
       }
       const act = e.target.closest('[data-act]');
       if (act) {
+        if (act.dataset.act === 'more') {
+          if (this.expanded.has(act.dataset.key)) this.expanded.delete(act.dataset.key);
+          else this.expanded.add(act.dataset.key);
+          // redraw, but stay where you were reading instead of jumping to the newest message
+          const top = this.el.scrollTop;
+          this.sig = '';
+          this.apply(false);
+          this.el.scrollTop = top;
+          this.syncLatest();
+          return;
+        }
         if (act.dataset.act === 'retry') {
           const users = (this.cur || []).filter((x) => x.k === 'user');
           const last = users[users.length - 1];

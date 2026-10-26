@@ -157,3 +157,12 @@ html[data-layout='calm'] .session-head > .head-view { opacity: 1 !important; }
 .cm-stop-acts button { height: 28px; padding: 0 12px; border: 1px solid var(--line, var(--border)); border-radius: 8px; background: transparent; color: var(--ink-soft, var(--muted)); font: inherit; font-size: 12.5px; cursor: pointer; }
 .cm-stop-acts button:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); color: var(--ink, var(--text)); }
 .cm-elapsed { margin-left: 8px; color: var(--ink-faint, var(--faint)); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* a long pasted message folds to a preview */
+.cm-bubble.folded {
+  max-height: 15.5em; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+.cm-user { flex-direction: column; align-items: flex-start; }
+.cm-more { margin-top: 4px; border: 0; padding: 2px 8px; border-radius: 6px; background: transparent; color: var(--brand); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.cm-more:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }

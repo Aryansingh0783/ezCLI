@@ -201,6 +201,14 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.9.0
+
+- **Long pastes fold.** A message with a long log or file folds to a short preview with "Show all
+  N lines"; expanding it keeps your place. Copy and Edit still use the whole text.
+- **A tidier first-run setup.** Your name and "Install all agents" now sit in one aligned block
+  instead of crowding the top of the panel, and the install row only appears when something is
+  missing. The install button is a normal button, so the panel's main action stays the clear one.
+
 ### New in 5.8.0
 
 - **Install every agent in one click.** "Install all agents" (in first-run setup, Settings, Agents,
