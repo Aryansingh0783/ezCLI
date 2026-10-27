@@ -50,7 +50,10 @@ const ChatView = {
   /** New events from the CLI's own conversation file, when it keeps one. */
   async feed(s) {
     const c = this.st(s);
-    if (c.busy || !this.FEED.has(s.agentId) || s.status !== 'running') return;
+    // A parked or finished session still has its conversation on disk; show it without restarting the CLI.
+    if (c.busy || !this.FEED.has(s.agentId) || !['running', 'parked', 'exited'].includes(s.status)) return;
+    // Only the live session's log keeps changing; read others once.
+    if (s.status !== 'running' && c.offset > 0) return;
     if (!s.providerSessionId && s.agentId !== 'freebuff') return;
     if (Date.now() - c.feedAt < this.every(s)) return;
     c.feedAt = Date.now();
@@ -454,7 +457,11 @@ const ChatView = {
       else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
       else if (it.k === 'tools') h += this.toolsHtml(it);
     }
-    if (s.working) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
+    // A CLI repaints its screen when you switch to it, which reads as "working"; only show the
+    // indicator while a reply is actually pending (your message or a tool is the last thing).
+    const last = items[items.length - 1];
+    const pending = last && (last.k === 'user' || last.k === 'tools');
+    if (s.working && pending) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
     else if (this.waiting(s)) h += '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>';
     return h;
   },

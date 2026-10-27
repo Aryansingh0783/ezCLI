@@ -201,6 +201,22 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.9.1
+
+Fixes found by using the app the way you do, with real Claude Code sessions instead of sample data:
+
+- **Your first message no longer shows twice.** Claude Code also logs a copy of each request, and
+  the chat was reading it as a second message.
+- **No more spinning dots on a finished reply.** Switching to a tab makes the CLI redraw, which
+  counted as "working" and showed dots and a timer under an answer that was already done. The
+  indicator now shows only while a reply is actually pending.
+- **Tabs from last time open as a chat.** Reopening the app showed a parked tab as its old,
+  garbled terminal screen. It now shows the conversation straight away, and typing a message
+  resumes the session and sends it once the CLI is ready, instead of saying "not running".
+- **Messages no longer get stuck in the CLI's input box.** A CLI that is still loading can drop
+  the Enter, leaving your message typed but unsent. ezCLI now notices and presses Enter again (at
+  most twice). It never acts on Claude Code's greyed-out prompt suggestion.
+
 ### New in 5.9.0
 
 - **Long pastes fold.** A message with a long log or file folds to a short preview with "Show all

@@ -2192,8 +2192,15 @@ function relativeTo(p, base) {
  *  real paste (one atomic insert), wait for the UI to take it, then press
  *  Enter. Without bracketed paste we type the text on one line instead.
  *  Per-agent overrides live in agents.json under "submit". */
+/** How many times `text` appears as your message in the CLI's own log (when the chat reads one). */
+function logged(s, text) {
+  const t = String(text).trim();
+  return s.chat ? s.chat.events.filter((e) => e.kind === 'user' && e.text.trim() === t).length : 0;
+}
+
 function sendText(s, text) {
   if (!s.ptyId) return Promise.resolve(false);
+  const loggedBefore = logged(s, text);
   emit('sent', s, text);
   const cfg = (agent(s.agentId) || {}).submit || {};
   const bracketed = Boolean(s.term.modes && s.term.modes.bracketedPasteMode);
@@ -2210,8 +2217,53 @@ function sendText(s, text) {
       if (s.ptyId !== ptyId) return resolve(false);
       await out('\r');
       resolve(true);
+      // A CLI that is still loading (a resumed conversation, a slow start) can drop that Enter
+      // and leave the message sitting in its input box. Check, and press Enter again if so.
+      // "Working" can't tell us: a CLI with text in its box redraws its blinking cursor
+      // constantly. Instead, if the same text is still sitting in the box on two checks a second
+      // apart, the Enter was lost; press it again (at most twice).
+      const head = text.replace(/\s+/g, ' ').trim().slice(0, 24);
+      let presses = 0;
+      let seen = 0;
+      for (let t = 0; t < 30 && head && presses < 2; t++) {
+        await sleep(1000);
+        if (s.ptyId !== ptyId) return;
+        // It reached the CLI's own conversation log: done.
+        if (logged(s, text) > loggedBefore) return;
+        if (!stillInInput(s, head)) {
+          seen = 0;
+          if (t > 3) return; // it went through
+          continue;
+        }
+        if (++seen < 2) continue;
+        await out('\r');
+        presses++;
+        seen = 0;
+        await sleep(1500);
+      }
     }, usePaste ? delay : Math.max(120, delay));
   });
+}
+
+/** Is `head` still on the CLI's input line (the last few rows, after its prompt sign)? */
+function stillInInput(s, head) {
+  // Only the last prompt line counts: earlier ones are the CLI echoing messages already sent.
+  const b = s.term.buffer.active;
+  for (let i = b.length - 1; i >= Math.max(0, b.length - 8); i--) {
+    const line = b.getLine(i);
+    if (!line) continue;
+    const raw = line.translateToString(true);
+    const t = raw.replace(/\s+/g, ' ');
+    const at = t.search(/[>❯›] /);
+    if (at < 0) continue;
+    if (!t.slice(at + 2).trimStart().startsWith(head)) return false;
+    // Claude Code shows a dimmed suggestion of your next prompt in the same box; that is not
+    // typed text, and Enter must never be pressed for it.
+    const col = raw.indexOf(head.slice(0, 8));
+    const cell = col >= 0 ? line.getCell(col) : null;
+    return !(cell && cell.isDim());
+  }
+  return false;
 }
 
 function pushHistory(text) {
@@ -2240,6 +2292,18 @@ async function sendComposer() {
   const files = Array.isArray(s.context) ? s.context : [];
   const images = attachmentsOf(s);
   if (!v.trim() && !files.length && !images.length) return;
+  // A tab restored from last time: typing into it resumes the conversation and sends the
+  // message once the CLI is ready, instead of refusing with "not running".
+  if (s.status === 'parked' && v.trim() && !files.length && !images.length) {
+    pushHistory(v);
+    s.pendingPrompt = v.trim();
+    s.draft = '';
+    el.value = '';
+    autoGrow(el);
+    await launch(s);
+    deliverPending(s);
+    return;
+  }
   if (s.status !== 'running') {
     toast('This session is not running.', 'error', () => restartSession(s));
     return;

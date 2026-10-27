@@ -166,6 +166,11 @@ pub fn claude_events(line: &str, out: &mut Vec<ChatEvent>) {
     if v.get("isMeta").and_then(Value::as_bool).unwrap_or(false) || v.get("isSidechain").and_then(Value::as_bool).unwrap_or(false) {
         return;
     }
+    // Only real turns. Claude Code also logs copies of each request (`api-request-blob`)
+    // that repeat your message, which showed it twice.
+    if !matches!(v.get("type").and_then(Value::as_str), Some("user" | "assistant")) {
+        return;
+    }
     let Some(msg) = v.get("message") else { return };
     let role = msg.get("role").and_then(Value::as_str).unwrap_or("");
     let Some(content) = msg.get("content") else { return };
@@ -381,6 +386,14 @@ mod tests {
         assert_eq!(out[2].text, "git status");
         assert_eq!(out[3].id, "tu1");
         assert_eq!(out[3].text, "clean");
+    }
+
+    #[test]
+    fn logged_request_copies_are_not_messages() {
+        let mut out = Vec::new();
+        claude_events(r#"{"type":"user","message":{"role":"user","content":"hello"}}"#, &mut out);
+        claude_events(r#"{"type":"api-request-blob","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>x</system-reminder>"},{"type":"text","text":"hello"}]}}"#, &mut out);
+        assert_eq!(out.len(), 1);
     }
 
     #[test]
