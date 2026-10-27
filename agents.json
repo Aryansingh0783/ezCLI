@@ -865,6 +865,7 @@
       "tier": "free",
       "_tier_note": "Free and ad-supported; picks its models server-side. The first run downloads a ~46 MB binary.",
       "args": [],
+      "submit": { "paste": "never" },
       "modes": [
         {
           "id": "default",

@@ -166,3 +166,18 @@ html[data-layout='calm'] .session-head > .head-view { opacity: 1 !important; }
 .cm-user { flex-direction: column; align-items: flex-start; }
 .cm-more { margin-top: 4px; border: 0; padding: 2px 8px; border-radius: 6px; background: transparent; color: var(--brand); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .cm-more:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+
+.cm-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  padding: 18vh 0 0;
+  text-align: center;
+  color: var(--ink-soft, var(--muted));
+}
+.cm-empty b {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink, inherit);
+}

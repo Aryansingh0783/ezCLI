@@ -17,7 +17,7 @@ const ChatView = {
   shut: new Set(),
   expanded: new Set(),
   cache: new Map(),
-  FEED: new Set(['claude-code', 'claude-chat', 'codex', 'opencode', 'deepseek', 'freebuff']),
+  FEED: new Set(['claude-code', 'claude-chat', 'codex', 'opencode', 'deepseek', 'freebuff', 'gemini']),
   /** How often each feed is read. OpenCode runs a command to export, so it is read less often. */
   every(s) {
     if (s.agentId === 'opencode' || s.agentId === 'deepseek') return s.working ? 4000 : 12000;
@@ -54,7 +54,7 @@ const ChatView = {
     if (c.busy || !this.FEED.has(s.agentId) || !['running', 'parked', 'exited'].includes(s.status)) return;
     // Only the live session's log keeps changing; read others once.
     if (s.status !== 'running' && c.offset > 0) return;
-    if (!s.providerSessionId && s.agentId !== 'freebuff') return;
+    if (!s.providerSessionId && !['freebuff', 'gemini'].includes(s.agentId)) return;
     if (Date.now() - c.feedAt < this.every(s)) return;
     c.feedAt = Date.now();
     c.busy = true;
@@ -131,7 +131,12 @@ const ChatView = {
     const c = this.st(s);
     let items = [];
     if (c.events.length) items = this.fromEvents(c);
-    else if (c.turns.length) items = this.fromTurns(s, c);
+    else if (c.turns.length && this.FEED.has(s.agentId)) {
+      // The CLI keeps its own log, which is the only trustworthy source of the reply. Until it
+      // arrives, show what you sent (never terminal text, which is mostly menus and status lines).
+      items = c.turns.map((t, i) => ({ k: 'user', key: `u${i}`, text: t.text, ts: t.at }));
+    } else if (c.turns.length) items = this.fromTurns(s, c);
+    else if (this.ready(s)) items = [{ k: 'empty', key: 'empty' }];
     // Keys name a message across redraws; scoped to the session so open/closed groups never leak between tabs.
     for (const it of items) it.key = `${s.id}:${it.key}`;
     // A CLI that redraws its screen can hide the reply for a moment; keep showing the last good view.
@@ -140,6 +145,28 @@ const ChatView = {
       c.shown = true;
     } else if (c.shown && c.last) return c.last;
     return items;
+  },
+
+  /** A CLI sitting at its normal prompt with nothing sent yet: show an empty chat, not its start screen. */
+  ready(s) {
+    if (!this.FEED.has(s.agentId) || s.status !== 'running' || s.working) return false;
+    if (Date.now() - (s.startedAt || Date.now()) < 3500) return false;
+    if (this.waiting(s)) return false;
+    // sign-in, trust and setup screens are for the terminal
+    const b = s.term.buffer.active;
+    const rows = [];
+    for (let i = Math.max(0, b.length - 30); i < b.length; i++) {
+      const l = b.getLine(i);
+      if (l) rows.push(l.translateToString(true));
+    }
+    return !/sign in|log in|login|authentication required|waiting for auth|api key|trust this|do you trust|press enter to|choose (a|the) |select (a|the) |paste (the )?code|oauth|device code/i.test(rows.join(String.fromCharCode(10)));
+  },
+
+  /** No reply log after a while: the terminal is the honest view. */
+  stale(s) {
+    const c = this.st(s);
+    if (!this.FEED.has(s.agentId) || c.events.length || !c.turns.length) return false;
+    return Date.now() - c.turns[c.turns.length - 1].at > 25000;
   },
 
   fromEvents(c) {
@@ -412,6 +439,12 @@ const ChatView = {
   },
 
   /** How long the agent has been on this message, from when you sent it. */
+  /** A reply that has been pending for a long time. */
+  slow(s) {
+    const last = this.st(s).turns.slice(-1)[0];
+    return Boolean(last && Date.now() - last.at > 45000);
+  },
+
   elapsed(s) {
     const c = this.st(s);
     const last = c.turns[c.turns.length - 1];
@@ -456,13 +489,15 @@ const ChatView = {
       } else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
       else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
       else if (it.k === 'tools') h += this.toolsHtml(it);
+      else if (it.k === 'empty') h += `<div class="cm cm-empty"><b>${esc((agent(s.agentId) || {}).label || 'Agent')} is ready</b><span>Type below to start. Use Terminal above for its own screen.</span></div>`;
     }
     // A CLI repaints its screen when you switch to it, which reads as "working"; only show the
     // indicator while a reply is actually pending (your message or a tool is the last thing).
     const last = items[items.length - 1];
     const pending = last && (last.k === 'user' || last.k === 'tools');
     if (s.working && pending) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
-    else if (this.waiting(s)) h += '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>';
+    if (last && last.k === 'user' && this.slow(s)) h += `<div class="cm cm-wait"><b>Still waiting on ${esc((agent(s.agentId) || {}).label || 'the agent')}</b><span>It has not answered yet. Its own screen may show why (a limit, a sign-in, a question).</span><button type="button" class="cm-open-term">Open the terminal</button></div>`;
+    else if (!(s.working && pending) && this.waiting(s)) h += '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>';
     return h;
   },
 
@@ -597,7 +632,7 @@ const ChatView = {
     if (!this.el) return;
     const s = active();
     const items = s && prefs.chatView !== false ? this.model(s) : [];
-    const on = Boolean(s && items.length && this.st(s).mode !== 'terminal' && !Team.isOpen());
+    const on = Boolean(s && items.length && this.st(s).mode !== 'terminal' && !Team.isOpen() && !this.stale(s));
     const toggle = $('headView');
     if (toggle) {
       toggle.hidden = !(s && items.length && prefs.chatView !== false);

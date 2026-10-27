@@ -201,6 +201,22 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.9.2
+
+The chat now works the same way for every agent, not just Claude Code:
+
+- **Replies come from the agent's own log, never from scraped terminal text.** Gemini's chat used
+  to show its footer ("workspace, branch, sandbox") as the answer. Gemini now has a real feed,
+  like Claude, Codex, OpenCode and Freebuff.
+- **The chat is there from the start.** OpenCode, Gemini and the others no longer show their raw
+  terminal until you send a first message; a new tab opens as an empty chat. Sign-in, trust and
+  setup screens still stay in the terminal.
+- **Freebuff messages are typed in, not pasted,** because its input box ignored the Enter after a
+  paste. A lost Enter is also noticed in boxed inputs, not only "> " prompts.
+- **No endless dots.** If an agent has not answered after 45 seconds, the chat says so and offers
+  its terminal (a limit, a sign-in or a queued session shows up there). With no log at all after
+  25 seconds, the terminal is shown instead of an empty chat.
+
 ### New in 5.9.1
 
 Fixes found by using the app the way you do, with real Claude Code sessions instead of sample data:

@@ -2254,8 +2254,23 @@ function stillInInput(s, head) {
     if (!line) continue;
     const raw = line.translateToString(true);
     const t = raw.replace(/\s+/g, ' ');
-    const at = t.search(/[>❯›] /);
+    // A prompt sign ("> text") or the left edge of a boxed input ("│  text", "┃  text").
+    const boxed = /^s*[│┃║]s+(S.*)$/.exec(t);
+    const at = boxed ? t.length - boxed[1].length - 2 : t.search(/[>❯›] /);
     if (at < 0) continue;
+    if (boxed) {
+      // a boxed line only counts when it is the input: the lowest box on the screen
+      if (!boxed[1].startsWith(head)) continue;
+      let below = false;
+      for (let j = i + 1; j < b.length && j <= i + 3; j++) {
+        const nx = b.getLine(j);
+        if (nx && /^s*[╰└╹▀]/.test(nx.translateToString(true))) below = true;
+      }
+      if (!below) continue;
+      const col = raw.indexOf(head.slice(0, 8));
+      const cell = col >= 0 ? line.getCell(col) : null;
+      return !(cell && cell.isDim());
+    }
     if (!t.slice(at + 2).trimStart().startsWith(head)) return false;
     // Claude Code shows a dimmed suggestion of your next prompt in the same box; that is not
     // typed text, and Enter must never be pressed for it.

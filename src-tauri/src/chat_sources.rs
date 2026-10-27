@@ -310,9 +310,130 @@ pub fn freebuff_page(since_ms: u64, offset: u64) -> Option<ChatPage> {
     Some(whole((text.len() as u64) ^ ((events.len() as u64) << 40), offset, events))
 }
 
+
+/// Gemini CLI: `~/.gemini/tmp/<project>/chats/session-*.jsonl`. Each line is a record; a record
+/// written again later (same `id`) replaces the earlier one. Lines starting `{"$set"` are bookkeeping.
+pub fn gemini_events(jsonl: &str, out: &mut Vec<ChatEvent>) {
+    let mut order: Vec<String> = Vec::new();
+    let mut by_id: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    for line in jsonl.lines() {
+        let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+        let Some(id) = v.get("id").and_then(Value::as_str) else { continue };
+        if !by_id.contains_key(id) {
+            order.push(id.to_string());
+        }
+        by_id.insert(id.to_string(), v);
+    }
+    let text_of = |c: &Value| -> String {
+        match c {
+            Value::String(s) => s.clone(),
+            Value::Array(parts) => parts.iter().filter_map(|p| p.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join(""),
+            _ => String::new(),
+        }
+    };
+    for id in order {
+        let v = &by_id[&id];
+        let when = v.get("timestamp").and_then(Value::as_str).unwrap_or("").to_string();
+        let text = text_of(v.get("content").unwrap_or(&Value::Null));
+        match v.get("type").and_then(Value::as_str).unwrap_or("") {
+            "user" => {
+                // The first record is the CLI's own context preamble, not something the user typed.
+                if !text.trim().is_empty() && !text.contains("<session_context>") {
+                    out.push(ChatEvent { kind: "user".into(), text: truncate(text, MAX_TEXT_CHARS), ts: when, ..Default::default() });
+                }
+            }
+            "gemini" => {
+                if !text.trim().is_empty() {
+                    out.push(ChatEvent { kind: "assistant".into(), text: truncate(text, MAX_TEXT_CHARS), ts: when.clone(), ..Default::default() });
+                }
+                for t in v.get("toolCalls").and_then(Value::as_array).into_iter().flatten() {
+                    let tid = t.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                    let args = t.get("args").unwrap_or(&Value::Null);
+                    out.push(ChatEvent {
+                        kind: "tool".into(),
+                        id: tid.clone(),
+                        tool: t.get("displayName").or_else(|| t.get("name")).and_then(Value::as_str).unwrap_or("tool").into(),
+                        text: tool_summary(args),
+                        detail: edit_detail(args),
+                        ..Default::default()
+                    });
+                    let status = t.get("status").and_then(Value::as_str).unwrap_or("");
+                    if matches!(status, "success" | "error" | "cancelled") {
+                        let body = t.get("resultDisplay").and_then(Value::as_str).map(str::to_string).or_else(|| {
+                            t.pointer("/result/0/functionResponse/response/output").and_then(Value::as_str).map(str::to_string)
+                        });
+                        out.push(ChatEvent { kind: "result".into(), id: tid, text: truncate(body.unwrap_or_default(), MAX_RESULT_CHARS), error: status != "success", ..Default::default() });
+                    }
+                }
+            }
+            "error" if !text.trim().is_empty() => {
+                out.push(ChatEvent { kind: "assistant".into(), text: format!("Stopped: {}", text.trim()), ts: when, ..Default::default() });
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The newest Gemini chat for `cwd` written since this session started.
+fn gemini_file(since_ms: u64, cwd: Option<&str>) -> Option<PathBuf> {
+    let root = dirs::home_dir()?.join(".gemini").join("tmp");
+    let want = cwd.map(|c| c.replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase());
+    let mut best: Option<(u64, PathBuf)> = None;
+    for project in fs::read_dir(&root).ok()?.flatten() {
+        let Ok(rd) = fs::read_dir(project.path().join("chats")) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let m = fs::metadata(&p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64).unwrap_or(0);
+            if m + 5_000 < since_ms || best.as_ref().is_some_and(|(b, _)| m <= *b) {
+                continue;
+            }
+            if let Some(w) = &want {
+                // The first record names the workspace folder.
+                let head = fs::read_to_string(&p).unwrap_or_default();
+                let head: String = head.chars().take(4000).collect();
+                if !head.replace("\\\\", "\\").to_ascii_lowercase().contains(w.as_str()) {
+                    continue;
+                }
+            }
+            best = Some((m, p));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+pub fn gemini_page(since_ms: u64, offset: u64, cwd: Option<&str>) -> Option<ChatPage> {
+    let path = gemini_file(since_ms, cwd)?;
+    if fs::metadata(&path).ok()?.len() > 12 * 1024 * 1024 {
+        return None;
+    }
+    let text = fs::read_to_string(&path).ok()?;
+    let mut events = Vec::new();
+    gemini_events(&text, &mut events);
+    Some(whole((text.len() as u64) ^ ((events.len() as u64) << 40), offset, events))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gemini_records_become_events() {
+        let j = r#"{"sessionId":"s"}
+{"id":"a","type":"user","content":[{"text":"<session_context>x</session_context>"}]}
+{"$set":{"x":1}}
+{"id":"b","type":"user","content":[{"text":"hi"}]}
+{"id":"c","type":"gemini","content":"hello","toolCalls":[{"id":"t1","name":"run_shell_command","args":{"command":"ls"},"status":"success","resultDisplay":"a.txt"}]}
+{"id":"c","type":"gemini","content":"hello there","toolCalls":[{"id":"t1","name":"run_shell_command","args":{"command":"ls"},"status":"success","resultDisplay":"a.txt"}]}"#;
+        let mut out = Vec::new();
+        gemini_events(j, &mut out);
+        let kinds: Vec<&str> = out.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["user", "assistant", "tool", "result"]);
+        assert_eq!(out[1].text, "hello there");
+        assert_eq!(out[3].text, "a.txt");
+    }
 
     #[test]
     fn opencode_export_parts_become_events() {

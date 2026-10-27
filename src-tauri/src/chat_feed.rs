@@ -305,7 +305,7 @@ fn file_for(agent_id: &str, session_id: &str) -> Option<(PathBuf, bool)> {
 
 /// Whether a chat feed exists for this agent at all.
 pub fn supported(agent_id: &str) -> bool {
-    matches!(agent_id, "claude-code" | "claude-chat" | "codex" | "opencode" | "deepseek" | "freebuff")
+    matches!(agent_id, "claude-code" | "claude-chat" | "codex" | "opencode" | "deepseek" | "freebuff" | "gemini")
 }
 
 fn read_from(path: &Path, codex: bool, offset: u64) -> Option<ChatPage> {
@@ -358,6 +358,7 @@ fn read_from(path: &Path, codex: bool, offset: u64) -> Option<ChatPage> {
 pub fn read(agent_id: &str, session_id: &str, offset: u64, since_ms: u64, cwd: Option<&str>) -> Option<ChatPage> {
     match agent_id {
         "freebuff" => crate::chat_sources::freebuff_page(since_ms, offset),
+        "gemini" => crate::chat_sources::gemini_page(since_ms, offset, cwd),
         "opencode" | "deepseek" => crate::chat_sources::opencode_page(session_id, offset, cwd),
         _ => {
             // The id reaches the file system, so accept only a UUID.
