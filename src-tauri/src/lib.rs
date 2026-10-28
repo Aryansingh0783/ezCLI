@@ -8,6 +8,7 @@ mod backends;
 mod capture;
 mod chat_feed;
 mod chat_sources;
+pub mod webview_runtime;
 mod gemini_auth;
 mod features;
 mod health;

@@ -201,6 +201,12 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.9.3
+
+- **Opens even when Windows has lost its WebView2 record.** The "Could not find the WebView2
+  Runtime" error appeared although the runtime files were still on the PC. ezCLI now finds those
+  files itself and starts with them, so nothing needs installing and no setting is needed.
+
 ### New in 5.9.2
 
 The chat now works the same way for every agent, not just Claude Code:
