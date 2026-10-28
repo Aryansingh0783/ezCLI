@@ -2198,10 +2198,11 @@ function logged(s, text) {
   return s.chat ? s.chat.events.filter((e) => e.kind === 'user' && e.text.trim() === t).length : 0;
 }
 
-function sendText(s, text) {
+/** `shown` is what the chat records as your message when more than `text` is sent (web results). */
+function sendText(s, text, shown, opts) {
   if (!s.ptyId) return Promise.resolve(false);
-  const loggedBefore = logged(s, text);
-  emit('sent', s, text);
+  const loggedBefore = logged(s, shown || text);
+  emit('sent', s, shown || text, opts);
   const cfg = (agent(s.agentId) || {}).submit || {};
   const bracketed = Boolean(s.term.modes && s.term.modes.bracketedPasteMode);
   const usePaste = cfg.paste === 'always' || (cfg.paste !== 'never' && bracketed);
@@ -2323,6 +2324,14 @@ async function sendComposer() {
     toast('This session is not running.', 'error', () => restartSession(s));
     return;
   }
+  // Still answering the last message: this one waits its turn above the box and goes out in order.
+  if (v.trim() && !files.length && !images.length && typeof MessageQueue !== 'undefined' && MessageQueue.busy(s)) {
+    MessageQueue.add(s, v);
+    s.draft = '';
+    el.value = '';
+    autoGrow(el);
+    return;
+  }
   const fileRefs = files.map((p) => `@${p}`).join(' ');
   // Local paths in the form this CLI reads; ezCLI never uploads the files.
   const media = attachmentPrompt(s, agent(s.agentId));
@@ -2339,7 +2348,16 @@ async function sendComposer() {
   autoGrow(el);
   renderContext();
   await pasteImagePaths(s, media.pastes);
-  await sendText(s, text);
+  const outgoing = typeof WebSearch !== 'undefined' ? await WebSearch.augment(s, text) : text;
+  await sendText(s, outgoing, outgoing === text ? undefined : text);
+}
+
+/** Send one plain message the way the composer does (used by the message queue). */
+async function sendPlain(s, text) {
+  if (!(await prepareToSend(s))) return false;
+  pushHistory(text);
+  const outgoing = typeof WebSearch !== 'undefined' ? await WebSearch.augment(s, text) : text;
+  return sendText(s, outgoing, outgoing === text ? undefined : text);
 }
 
 let histPos = -1;

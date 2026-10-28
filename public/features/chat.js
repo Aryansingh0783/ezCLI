@@ -31,7 +31,7 @@ const ChatView = {
 
   /* ----------------------------------------------------------- recording */
 
-  onSent(s, text) {
+  onSent(s, text, opts) {
     const c = this.st(s);
     let marker = null;
     try {
@@ -39,7 +39,7 @@ const ChatView = {
     } catch {
       /* the turn is still shown; only its reply is lost */
     }
-    c.turns.push({ text: String(text || ''), marker, at: Date.now() });
+    c.turns.push({ text: String(text || ''), marker, at: Date.now(), auto: Boolean(opts && opts.auto), echo: opts && opts.echo ? String(opts.echo) : '', detail: opts && opts.detail ? String(opts.detail) : '' });
     while (c.turns.length > 300) {
       const old = c.turns.shift();
       if (old.marker) old.marker.dispose();
@@ -103,8 +103,8 @@ const ChatView = {
   /** Terminal chrome that is not part of an answer. */
   clean(lines, ask) {
     const border = /^[\s─-╿▀-▟]*$/;
-    const chrome = /esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
-    const spinner = /^\s*([✢✳✻✽✶·*]\s+\S.*…|[⠀-⣿]\s)/;
+    const chrome = /^\s*>>>\s*(send a message.*|\/\w+.*)?$|^\s*cleared session context\s*$|use ctrl \+ d or \/bye|esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
+    const spinner = /^\s*([✢✳✻✽✶·*]\s+\S.*…|[⠀-⣿](\s|$))/;
     const head = String(ask || '').trim().slice(0, 18);
     const out = [];
     for (const raw of lines) {
@@ -201,7 +201,7 @@ const ChatView = {
     let cursor = 0;
     const at = c.turns.map((t) => {
       if (t.reply != null) return -2; // finished and kept
-      const head = norm(t.text).slice(0, 28);
+      const head = norm(t.echo || t.text).slice(0, 28);
       if (!head) return -1;
       for (let k = cursor; k < flat.length; k++) {
         if (flat[k].includes(head)) {
@@ -213,21 +213,43 @@ const ChatView = {
     });
     const items = [];
     c.turns.forEach((t, i) => {
-      items.push({ k: 'user', key: `u${i}`, text: t.text, ts: t.at });
+      if (t.auto) items.push({ k: 'note', key: `n${i}`, text: t.text, detail: t.detail || '' });
+      else items.push({ k: 'user', key: `u${i}`, text: t.text, ts: t.at });
       if (t.reply != null) {
-        if (t.reply) items.push({ k: 'assistant', key: `a${i}`, text: t.reply, hard: true });
+        if (t.reply) this.pushReply(items, i, t.reply);
         return;
       }
       if (at[i] < 0) return;
       const next = at.slice(i + 1).find((x) => x >= 0);
       const end = next === undefined ? rows.length : next;
-      const text = this.clean(rows.slice(at[i] + 1, end), t.text);
+      // the CLI echoes a long input on several rows, each starting "... "; they are not part of the reply
+      let start = at[i] + 1;
+      while (start < end && (/^\.\.\.(\s|$)/.test(rows[start]) || !rows[start].trim())) start++;
+      const text = this.clean(rows.slice(start, end), t.echo || t.text);
       const sealed = next !== undefined && !s.working;
       if (sealed) t.reply = text;
-      if (text) items.push({ k: 'assistant', key: `a${i}`, text, hard: true });
+      if (text) this.pushReply(items, i, text);
     });
     // Until the agent has answered or started working on it, the terminal may be holding a question; keep showing it.
-    return items.some((x) => x.k === 'assistant') || s.working ? items : [];
+    return items.some((x) => x.k === 'assistant' || x.k === 'thinking') || s.working ? items : [];
+  },
+
+  /** Some local models print their reasoning between "Thinking..." and "...done thinking.". */
+  splitThinking(text) {
+    const at = text.search(/^Thinking\.\.\.[ \t]*$/m);
+    if (at < 0) return { think: '', answer: text };
+    text = text.slice(at);
+    const m = /^\s*Thinking\.\.\.[ \t]*\n([\s\S]*?)(?:\n\s*\.\.\.done thinking\.[ \t]*(?:\n|$)|$)/.exec(text);
+    if (!m) return { think: '', answer: text };
+    const finished = /\.\.\.done thinking\./.test(text);
+    return { think: m[1].trim(), answer: finished ? text.slice(m[0].length).trim() : '', open: !finished };
+  },
+
+  pushReply(items, key, text) {
+    const { think, answer, open } = this.splitThinking(text);
+    if (think || open) items.push({ k: 'thinking', key: 'k' + key, text: think, live: Boolean(open), hard: true });
+    if (/^\s*(SEARCH|SKILL|RUN):/i.test(answer)) items.push({ k: 'hidden', key: 'h' + key, text: answer });
+    else if (answer) items.push({ k: 'assistant', key: 'a' + key, text: answer, hard: true });
   },
 
   /** A question the CLI is waiting on, which only the terminal can answer. */
@@ -353,7 +375,34 @@ const ChatView = {
     return html;
   },
 
+  /** A CLI that wraps its own output at the terminal width leaves a line break in the middle of every
+   *  sentence. Join those lines (a line that runs to the wrap width continues on the next). */
+  unwrap(src) {
+    return src
+      .split(/(```[\s\S]*?(?:```|$))/)
+      .map((part, i) => (i % 2 ? part : this.joinWrapped(part)))
+      .join('');
+  },
+
+  joinWrapped(text) {
+    const lines = text.split('\n');
+    const width = Math.max(0, ...lines.map((l) => l.length));
+    if (width < 40) return text;
+    const startsBlock = /^\s*([-*+•]\s|\d+[.)]\s|#{1,6}\s|>|\||\s{2,}\S)/;
+    const never = /^\s*(#{1,6}\s|\||>)/;
+    const out = [];
+    let prevLen = 0;
+    for (const l of lines) {
+      const prev = out[out.length - 1];
+      if (prev !== undefined && prev.trim() && l.trim() && prevLen >= width * 0.8 && !startsBlock.test(l) && !never.test(prev)) out[out.length - 1] = `${prev.replace(/\s+$/, '')} ${l.trim()}`;
+      else out.push(l);
+      prevLen = l.length;
+    }
+    return out.join('\n');
+  },
+
   md(src, hard) {
+    if (hard) src = this.unwrap(src);
     const re = /```([^\n`]*)\n([\s\S]*?)(```|$)/g;
     let last = 0;
     let html = '';
@@ -439,6 +488,13 @@ const ChatView = {
   },
 
   /** How long the agent has been on this message, from when you sent it. */
+  /** Is the chat waiting on the agent's answer right now (your message, a tool or its thinking is last)? */
+  pendingNow(s) {
+    const items = this.model(s);
+    const last = items[items.length - 1];
+    return Boolean(last && (['user', 'note', 'hidden', 'tools'].includes(last.k) || (last.k === 'thinking' && last.live)));
+  },
+
   /** A reply that has been pending for a long time. */
   slow(s) {
     const last = this.st(s).turns.slice(-1)[0];
@@ -487,15 +543,22 @@ const ChatView = {
         h += `<div class="cm cm-user"><div class="cm-bubble${long && !open ? ' folded' : ''}">${esc(it.text)}</div>${more}`;
         h += `<div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
       } else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
-      else if (it.k === 'assistant') h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
+      else if (it.k === 'assistant') {
+        h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
+        // links the model wrote that were in nothing it was given: likely made up
+        if (s.unverifiedFor === it.key && s.unverified && s.unverified.length) h += `<div class="cm cm-warn" role="note"><b>Check these links.</b> They were not in anything the model was given, so it may have made them up: ${s.unverified.map((u) => `<code>${esc(u)}</code>`).join(' ')}</div>`;
+      }
       else if (it.k === 'tools') h += this.toolsHtml(it);
+      else if (it.k === 'thinking') h += `<details class="cm cm-think" data-key="${it.key}"${this.open.has(it.key) ? ' open' : ''}><summary>${it.live ? 'Thinking' : 'Thought'}</summary><div class="cm-think-body">${this.mdCached(s, it)}</div></details>`;
+      else if (it.k === 'note') h += it.detail ? `<details class="cm cm-note cm-note-out"><summary>${esc(it.text)}</summary><pre>${esc(it.detail)}</pre></details>` : `<div class="cm cm-note">${esc(it.text)}</div>`;
       else if (it.k === 'empty') h += `<div class="cm cm-empty"><b>${esc((agent(s.agentId) || {}).label || 'Agent')} is ready</b><span>Type below to start. Use Terminal above for its own screen.</span></div>`;
     }
     // A CLI repaints its screen when you switch to it, which reads as "working"; only show the
     // indicator while a reply is actually pending (your message or a tool is the last thing).
     const last = items[items.length - 1];
-    const pending = last && (last.k === 'user' || last.k === 'tools');
-    if (s.working && pending) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
+    const pending = last && (last.k === 'user' || last.k === 'note' || last.k === 'hidden' || last.k === 'tools' || (last.k === 'thinking' && last.live));
+    if (s.runAsk) h += `<div class="cm cm-ask" role="alertdialog" aria-label="Run this command?"><b>The model wants to run this on your PC</b><pre>${esc(s.runAsk.cmd)}</pre><div class="cm-ask-acts"><button type="button" data-act="run-ok" class="primary">Run</button><button type="button" data-act="run-no">Skip</button></div></div>`;
+    else if (s.working && pending) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
     if (last && last.k === 'user' && this.slow(s)) h += `<div class="cm cm-wait"><b>Still waiting on ${esc((agent(s.agentId) || {}).label || 'the agent')}</b><span>It has not answered yet. Its own screen may show why (a limit, a sign-in, a question).</span><button type="button" class="cm-open-term">Open the terminal</button></div>`;
     else if (!(s.working && pending) && this.waiting(s)) h += '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>';
     return h;
@@ -512,6 +575,13 @@ const ChatView = {
     el.setAttribute('aria-label', 'Conversation');
     el.innerHTML = '<div class="chat-col" id="chatCol"></div><button type="button" id="chatLatest" class="chat-latest" aria-label="Jump to the latest message" hidden>Latest</button>';
     el.addEventListener('scroll', () => this.syncLatest(), { passive: true });
+    // remember which Thinking blocks are open, so a redraw does not close them
+    el.addEventListener('toggle', (e) => {
+      const d = e.target;
+      if (!d || !d.classList || !d.classList.contains('cm-think')) return;
+      if (d.open) this.open.add(d.dataset.key);
+      else this.open.delete(d.dataset.key);
+    }, true);
     panel.append(el);
     this.el = el;
     el.addEventListener('click', (e) => {
@@ -522,6 +592,11 @@ const ChatView = {
       }
       const act = e.target.closest('[data-act]');
       if (act) {
+        if (act.dataset.act === 'run-ok' || act.dataset.act === 'run-no') {
+          const cur = active();
+          if (cur && typeof WebSearch !== 'undefined') WebSearch.decide(cur, act.dataset.act === 'run-ok');
+          return;
+        }
         if (act.dataset.act === 'more') {
           if (this.expanded.has(act.dataset.key)) this.expanded.delete(act.dataset.key);
           else this.expanded.add(act.dataset.key);
@@ -693,7 +768,7 @@ hooks.boot.push(() => {
   ChatView.mount();
   ChatView.apply();
 });
-hooks.sent.push((s, text) => ChatView.onSent(s, text));
+hooks.sent.push((s, text, opts) => ChatView.onSent(s, text, opts));
 hooks.view.push(() => ChatView.apply(true));
 hooks.tabs.push(() => ChatView.apply());
 hooks.idle.push(() => ChatView.tick());

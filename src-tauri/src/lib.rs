@@ -9,6 +9,8 @@ mod capture;
 mod chat_feed;
 mod chat_sources;
 pub mod webview_runtime;
+mod web_context;
+mod local_tools;
 mod gemini_auth;
 mod features;
 mod health;
@@ -712,6 +714,31 @@ async fn chat_feed(agent_id: String, session_id: String, offset: u64, since_ms: 
 }
 
 /// Whether the chat view can read this agent's conversation.
+/// Search the web and read the top pages for `query`, as one block of text for a model that has no web access.
+#[tauri::command]
+async fn web_context(query: String, today: String) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || web_context::context_for(&query, &today)).await.ok().flatten()
+}
+
+/// The skills on this PC (name and one-line description), for local models.
+#[tauri::command]
+fn local_skills() -> Vec<local_tools::Skill> {
+    local_tools::list_skills()
+}
+
+/// The text of one skill, by name.
+#[tauri::command]
+fn local_skill_text(name: String) -> Option<(String, String)> {
+    local_tools::read_skill(&name)
+}
+
+/// Run one PowerShell command and return what it printed. The chat calls this only after the user clicks
+/// Run on that exact command.
+#[tauri::command]
+async fn run_approved_command(command: String, cwd: String) -> local_tools::CommandResult {
+    tauri::async_runtime::spawn_blocking(move || local_tools::run_command(&command, &cwd, 60)).await.unwrap_or_default()
+}
+
 #[tauri::command]
 fn chat_feed_supported(agent_id: String) -> bool {
     chat_feed::supported(&agent_id)
@@ -982,6 +1009,10 @@ pub fn run() {
             session_usage,
             chat_feed,
             chat_feed_supported,
+            web_context,
+            local_skills,
+            local_skill_text,
+            run_approved_command,
             gemini_status,
             gemini_connect,
             gemini_disconnect,

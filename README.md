@@ -201,6 +201,27 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.10.0
+
+Local models (Ollama) get the things they were missing, and their chat is clean:
+
+- **Web, only when needed.** The model answers from what it knows. When it does not know, it asks
+  for a search, the app searches the web, reads the top pages, and the model answers again from
+  them. Questions about "latest" or "today" are searched straight away. The Web button picks
+  auto, always or off. No account or key.
+- **Skills.** The model can load any of your skills (the ones in `~/.claude/skills`) by name.
+- **Your terminal, when you say so.** Turn on Terminal and the model may propose a PowerShell
+  command. You see the exact command and click Run or Skip. Nothing runs without that click.
+- **It knows who it is.** It no longer says it is Claude after reading about Claude on the web.
+- **Fewer made-up answers.** The model is told not to guess, to name its sources, and links it
+  writes that were in nothing it was given are flagged.
+- **Auto compaction.** When a chat nears the model's memory, the model summarises it, the session
+  is cleared, and the summary starts the fresh context. Your chat stays as it was.
+- **Queued messages.** Keep typing while an agent works; messages wait above the box and go out
+  in order.
+- **A clean chat.** Reasoning sits in a "Thought" dropdown, echoed input and web text no longer
+  appear, and broken line wraps are joined back into sentences.
+
 ### New in 5.9.3
 
 - **Opens even when Windows has lost its WebView2 record.** The "Could not find the WebView2
