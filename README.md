@@ -201,6 +201,16 @@ Every release, newest first.
 - **Safer sending.** One Enter in the composer submits one message. ezCLI never types
   into a CLI's update, trust or sign-in question.
 
+### New in 5.11.0
+
+- **Effort for local models.** An Effort button picks how long the model thinks before it answers.
+  The levels come from the model itself (for example off, low, medium, xhigh). Off answers at once;
+  the others think first. Only shown for a model that can think.
+- **Accurate mode** (on by default). Steadier settings (lower randomness, a tight pool of likely
+  words) and sharper rules: check the work, never describe a name or paper you do not recognise as if
+  it exists, and say so when search results do not contain the answer.
+- **A message you send twice** is matched to its own reply in the chat, not the earlier one.
+
 ### New in 5.10.0
 
 Local models (Ollama) get the things they were missing, and their chat is clean:

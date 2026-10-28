@@ -103,7 +103,7 @@ const ChatView = {
   /** Terminal chrome that is not part of an answer. */
   clean(lines, ask) {
     const border = /^[\s─-╿▀-▟]*$/;
-    const chrome = /^\s*>>>\s*(send a message.*|\/\w+.*)?$|^\s*cleared session context\s*$|use ctrl \+ d or \/bye|esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
+    const chrome = /^\s*>>>\s*(send a message.*|\/\w+.*)?$|^\s*set parameter .*$|^\s*set '?(no)?think'? mode.*$|^\s*cleared session context\s*$|use ctrl \+ d or \/bye|esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
     const spinner = /^\s*([✢✳✻✽✶·*]\s+\S.*…|[⠀-⣿](\s|$))/;
     const head = String(ask || '').trim().slice(0, 18);
     const out = [];
@@ -197,20 +197,26 @@ const ChatView = {
     const from = Math.max(0, b.length - 4000);
     const rows = this.linesBetween(s, from, b.length);
     const flat = rows.map(norm);
-    // Each turn starts where the CLI echoed what was sent, searched in order.
-    let cursor = 0;
-    const at = c.turns.map((t) => {
-      if (t.reply != null) return -2; // finished and kept
+    // Each turn starts where the CLI echoed what was sent. Search from the newest turn backwards, so
+    // a message you send twice is matched to its own echo and not to the earlier one.
+    const at = c.turns.map(() => -1);
+    let limit = flat.length;
+    for (let i = c.turns.length - 1; i >= 0; i--) {
+      const t = c.turns[i];
+      if (t.reply != null) {
+        at[i] = -2; // finished and kept
+        continue;
+      }
       const head = norm(t.echo || t.text).slice(0, 28);
-      if (!head) return -1;
-      for (let k = cursor; k < flat.length; k++) {
+      if (!head) continue;
+      for (let k = limit - 1; k >= 0; k--) {
         if (flat[k].includes(head)) {
-          cursor = k + 1;
-          return k;
+          at[i] = k;
+          limit = k;
+          break;
         }
       }
-      return -1;
-    });
+    }
     const items = [];
     c.turns.forEach((t, i) => {
       if (t.auto) items.push({ k: 'note', key: `n${i}`, text: t.text, detail: t.detail || '' });

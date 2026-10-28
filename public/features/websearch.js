@@ -90,7 +90,8 @@ const WebSearch = {
     }
     s.toolsIntro = true;
     const who = `You are ${s.modelId || 'a local model'}, running on this PC through Ollama. You are not Claude, ChatGPT or any other model, even if web results or the conversation mention them.`;
-    const rules = 'Do not guess. If you are not sure, say so or look it up. Never invent facts, numbers, quotes, links or file names. When you use something from web results, say which source it came from; if the results do not answer the question, say that.';
+    const rules =
+      'Accuracy rules. Work out the answer step by step and check it before you reply. Do not guess: if you are not sure of a fact, say so or look it up. A name, paper, product, person or number you do not recognise may not exist; do not describe it as if it does. Never invent facts, numbers, quotes, links, file names or sources. When you use web results, say which source each fact came from; if they do not answer the question, say that. Keep answers short and direct.';
     const use = tools.length ? ` Tools: when you need one, reply with only one line and nothing else: ${parts.join(' | ')}. Otherwise just answer.` : '';
     return { text: ` [${who} ${rules}${use}]`, tools: tools.length };
   },
@@ -111,6 +112,8 @@ const WebSearch = {
       if (!block) toast('Could not reach the web, so the model answers from memory.');
       else this.remember(s, block);
     }
+    await this.applyTuning(s);
+    await this.applyEffort(s);
     const hint = await this.hint(s);
     if (hint.tools) s.webAsked = (s.chat ? s.chat.turns.length : 0) + 1;
     const out = `${flat}${hint.text}${block ? ` ${block}` : ''}`;
@@ -234,7 +237,7 @@ const WebSearch = {
         const block = await this.fetchBlock(arg);
         if (block) this.remember(s, block);
         const msg = block
-          ? `Here are web results for "${arg}". ${block} Now answer my earlier question using them.`
+          ? `Here are web results for "${arg}". ${block} Now answer my earlier question using only what these results say. Name the source for each fact. If they conflict, say so. If they do not contain the answer, say you could not find it instead of guessing.`
           : 'The web search found nothing. Answer my earlier question as well as you can, and say that you could not check.';
         await this.reply(s, msg, `Searched the web for “${arg}”`);
       } else if (kind === 'SKILL') {
@@ -286,6 +289,90 @@ const WebSearch = {
     }
   },
 
+  /* ----------------------------------------------------------- effort (how long the model thinks) */
+
+  /** The thinking levels this model offers, from `ollama show`: [] when it cannot think at all. */
+  async levels(s) {
+    if (!s.modelId) return [];
+    this.levelCache = this.levelCache || {};
+    if (this.levelCache[s.modelId]) return this.levelCache[s.modelId];
+    let list = [];
+    try {
+      const r = await invoke('run_approved_command', { command: `ollama show ${String(s.modelId).replace(/[^\w.:/-]/g, '')}`, cwd: '' });
+      const text = String(r.output || '');
+      const m = /^\s*levels\s+(.+)$/im.exec(text);
+      if (m) list = m[1].split(',').map((x) => x.trim()).filter(Boolean);
+      else if (/^\s*thinking\s*$/im.test(text)) list = ['false', 'true'];
+    } catch {
+      list = [];
+    }
+    this.levelCache[s.modelId] = list;
+    return list;
+  },
+
+  /* ----------------------------------------------------------- accuracy tuning */
+
+  /** Settings that make a model steadier and less inclined to invent: low randomness, a tight pool of
+   *  likely words, a mild penalty against rambling. Sent to the running session once. */
+  TUNING: [
+    '/set parameter temperature 0.3',
+    '/set parameter top_p 0.85',
+    '/set parameter top_k 30',
+    '/set parameter repeat_penalty 1.05'
+  ],
+
+  accurate() {
+    return prefs.accurate !== false;
+  },
+
+  async applyTuning(s) {
+    if (!this.accurate() || s.tuned || !s.ptyId || s.working) return;
+    s.tuned = true;
+    for (const c of this.TUNING) {
+      await invoke('send_input', { id: s.ptyId, data: `${c}\r` }).catch(() => {});
+      await sleep(450);
+    }
+  },
+
+  effortOf(s) {
+    return (prefs.effort && prefs.effort[s.modelId]) || 'auto';
+  },
+
+  /** The Ollama command for a level: "false" turns thinking off, "true" on, others set the depth. */
+  effortCommand(level) {
+    if (level === 'false') return '/set nothink';
+    if (level === 'true') return '/set think';
+    return `/set think ${level}`;
+  },
+
+  /** Tell the running Ollama session the level, once per level (it keeps it for the session). */
+  async applyEffort(s) {
+    const level = this.effortOf(s);
+    if (level === 'auto' || !s.ptyId || s.effortSent === level || s.working) return;
+    s.effortSent = level;
+    await invoke('send_input', { id: s.ptyId, data: `${this.effortCommand(level)}\r` }).catch(() => {});
+    await sleep(700);
+  },
+
+  async cycleEffort() {
+    const s = active();
+    if (!this.applies(s)) return;
+    const levels = await this.levels(s);
+    if (!levels.length) return;
+    const order = ['auto', ...levels];
+    const next = order[(order.indexOf(this.effortOf(s)) + 1) % order.length];
+    prefs.effort = { ...(prefs.effort || {}), [s.modelId]: next };
+    savePrefs();
+    s.effortSent = '';
+    this.sync();
+    if (next !== 'auto' && s.status === 'running' && !s.working) await this.applyEffort(s);
+    toast(next === 'auto' ? 'Effort: the model decides how long to think.' : next === 'false' ? 'Effort: off. The model answers without thinking first.' : `Effort: ${next}.`);
+  },
+
+  effortLabel(level) {
+    return level === 'auto' ? 'Effort: auto' : level === 'false' ? 'Effort: off' : level === 'true' ? 'Effort: on' : `Effort: ${level}`;
+  },
+
   busy(on) {
     const b = document.getElementById('btnWeb');
     if (b) b.classList.toggle('busy', on);
@@ -298,6 +385,10 @@ const WebSearch = {
     if (!this.applies(s)) {
       if (web) web.hidden = true;
       if (term) term.hidden = true;
+      const eff = document.getElementById('btnEffort');
+      if (eff) eff.hidden = true;
+      const accb = document.getElementById('btnAcc');
+      if (accb) accb.hidden = true;
       return;
     }
     const grow = document.querySelector('#ptyComposer .composer-row .grow');
@@ -346,6 +437,45 @@ const WebSearch = {
     t.dataset.mode = this.terminalOn() ? 'auto' : 'off';
     t.textContent = this.terminalOn() ? 'Terminal: ask' : 'Terminal: off';
     t.title = 'When on, the model can propose a PowerShell command. You see it and click Run, or Skip.';
+    let e = document.getElementById('btnEffort');
+    if (!e) {
+      e = document.createElement('button');
+      e.type = 'button';
+      e.id = 'btnEffort';
+      e.className = 'web-btn';
+      e.hidden = true;
+      e.addEventListener('click', () => this.cycleEffort());
+      grow.before(e);
+    }
+    let acc = document.getElementById('btnAcc');
+    if (!acc) {
+      acc = document.createElement('button');
+      acc.type = 'button';
+      acc.id = 'btnAcc';
+      acc.className = 'web-btn';
+      acc.addEventListener('click', () => {
+        prefs.accurate = !this.accurate();
+        savePrefs();
+        this.sync();
+        toast(this.accurate() ? 'Accurate: on. Steadier answers with less invention. Applies from your next message.' : 'Accurate: off. The model uses its own default settings. Applies to new sessions.');
+        const cur = active();
+        if (cur) cur.tuned = false;
+      });
+      grow.before(acc);
+    }
+    acc.hidden = false;
+    acc.dataset.mode = this.accurate() ? 'auto' : 'off';
+    acc.textContent = this.accurate() ? 'Accurate: on' : 'Accurate: off';
+    acc.title = 'On: lower randomness and a tight word pool, so the model guesses and invents less.';
+    // shown only for a model that can think; the levels come from the model itself
+    this.levels(s).then((levels) => {
+      const cur = active();
+      e.hidden = !(cur && cur.id === s.id && levels.length);
+      const level = this.effortOf(s);
+      e.dataset.mode = level === 'auto' ? 'off' : 'auto';
+      e.textContent = this.effortLabel(level);
+      e.title = `How long the model thinks before it answers. Click to change: auto, ${levels.map((l) => (l === 'false' ? 'off' : l)).join(', ')}.`;
+    });
   }
 };
 
