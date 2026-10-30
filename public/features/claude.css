@@ -41,3 +41,31 @@ html[data-layout='calm'] .home .dash-hero .composer-box:focus-within {
 
 /* Send: Claude's rounded square, not a pill. */
 html[data-layout='calm'] .send-btn { border-radius: 8px; }
+
+/* Greeting with the spark, as on Claude's home. */
+html[data-layout='calm'] .home .greet-row { display: flex; justify-content: center; align-items: center; gap: 14px; }
+html[data-layout='calm'] .home .dash-titles .claude-spark { color: var(--brand); flex: none; }
+html[data-layout='calm'] .home .dash-sub:empty { display: none; }
+
+/* Starter chips: outlined pills with an icon, centred under the box. */
+html[data-layout='calm'] .home-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+html[data-layout='calm'] .starter {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 10px;
+  background: transparent; border: 0.5px solid color-mix(in srgb, var(--text) 20%, transparent);
+  color: color-mix(in srgb, var(--text) 75%, transparent); font-size: 14px;
+}
+
+/* Sidebar: "New chat" as an accent disc, "Recents" as a quiet label, account row at the foot. */
+html[data-layout='calm'] .rail-new { font-weight: 500; }
+html[data-layout='calm'] .rail-new svg { width: 22px; height: 22px; padding: 4px; border-radius: 50%; background: var(--brand); color: #fff; stroke-width: 2.4; }
+html[data-layout='calm'] .rail-sessions-head { font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: color-mix(in srgb, var(--text) 50%, transparent); }
+.rail-account { display: none; }
+html[data-layout='calm'] .rail-account {
+  display: flex; align-items: center; gap: 10px; width: calc(100% - 16px); margin: 8px 8px 6px; padding: 8px; border: 0; border-radius: 10px;
+  background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit;
+}
+html[data-layout='calm'] .rail-account:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.acct-ini { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--text); color: var(--panel); font-size: 12px; font-weight: 600; }
+.acct-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.acct-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-plan { font-size: 12px; color: color-mix(in srgb, var(--text) 50%, transparent); }
