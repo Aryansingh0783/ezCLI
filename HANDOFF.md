@@ -6,6 +6,12 @@ the "Current status" and "Session log" sections before handing back.**
 
 Last updated: 2026-10-15 by Codex (v1.2.1 GitHub release)
 
+> **Staleness notice (2026-10-30):** this file was last updated at v2.1.7 (sections 0-1 describe
+> v1.2.1). The app is now **v5.11.0** (see `src-tauri/tauri.conf.json`); the UI is the Sand/Sand Dark
+> theme, not the lime-on-black shell described below, and agents now include OpenCode, Gemini CLI,
+> Antigravity, Ollama, DeepSeek and Freebuff. For v2.2 to v5.11 history use `git log`. Treat the
+> sections below as historical until they are rewritten.
+
 ---
 
 ## 0. What ezCLI is
