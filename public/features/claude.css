@@ -1,0 +1,43 @@
+/* Claude desktop finish: quieter chrome, weights, radii and shadows that follow the Claude app.
+ * Loaded last. Scoped to the calm layout so the dashboard layout is untouched. */
+
+/* Claude uses its own sans/serif; these stacks fall back to the closest system faces. */
+html[data-layout='calm'] {
+  --claude-sans: 'Anthropic Sans', 'Styrene B', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --claude-serif: 'Anthropic Serif', 'Tiempos Text', Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+}
+html[data-layout='calm'] body { font-family: var(--claude-sans); -webkit-font-smoothing: antialiased; }
+
+/* The content panel sits on the tinted page like Claude's: hairline edge, barely-there shadow. */
+:root:root[data-layout='calm'] .main {
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--text) 12%, transparent), 0 1px 3px rgb(0 0 0 / 3%);
+}
+
+/* Sidebar rows: 14px regular text, 8px radius, soft hover, like Claude's chat list. */
+html[data-layout='calm'] .rail :is(.rail-btn, .rail-label, .space, .space-name) { font-weight: 400; font-size: 14px; }
+html[data-layout='calm'] .rail .rail-btn,
+html[data-layout='calm'] .rail .space { border-radius: 8px; }
+html[data-layout='calm'] .rail .rail-btn:hover,
+html[data-layout='calm'] .rail .space:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+
+/* Greeting: serif, regular weight. */
+html[data-layout='calm'] .home #homeTitle {
+  font-family: var(--claude-serif);
+  font-weight: 400;
+}
+
+/* Message box: 20px radius, hairline border, soft lift on hover and focus. */
+html[data-layout='calm'] .home .dash-hero .composer-box {
+  border: 0.5px solid color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 3.5%);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+html[data-layout='calm'] .home .dash-hero .composer-box:hover { box-shadow: 0 4px 20px rgb(0 0 0 / 6%); }
+html[data-layout='calm'] .home .dash-hero .composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--text) 25%, transparent);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 7%);
+}
+
+/* Send: Claude's rounded square, not a pill. */
+html[data-layout='calm'] .send-btn { border-radius: 8px; }
