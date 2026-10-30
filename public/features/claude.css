@@ -69,3 +69,61 @@ html[data-layout='calm'] .rail-account:hover { background: color-mix(in srgb, va
 .acct-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .acct-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acct-plan { font-size: 12px; color: color-mix(in srgb, var(--text) 50%, transparent); }
+
+/* ===================== chat view, as in the Claude app ===================== */
+html[data-layout='calm'] .chat-view { background: var(--panel); }
+html[data-layout='calm'] .workspace { background: var(--panel); }
+html[data-layout='calm'] .session-head { background: transparent; border-bottom: 0; }
+html[data-layout='calm'] .head-title { font-weight: 500; font-size: 14px; color: color-mix(in srgb, var(--text) 85%, transparent); }
+
+html[data-layout='calm'] .chat-col { max-width: 768px; padding: 24px 24px 40px; font-size: 16px; line-height: 1.6; }
+html[data-layout='calm'] .cm { margin-bottom: 26px; }
+
+/* you: a warm tinted block, left aligned, 12px corners */
+html[data-layout='calm'] .cm-bubble {
+  display: inline-block; padding: 10px 16px; border-radius: 12px; line-height: 1.5;
+  background: color-mix(in srgb, var(--text) 5.5%, var(--panel)); color: var(--text);
+}
+/* Claude: plain serif text on the page, no bubble */
+html[data-layout='calm'] .cm-body { font-family: var(--claude-serif); font-size: 16.5px; line-height: 1.65; color: var(--text); }
+html[data-layout='calm'] .cm-body h2, html[data-layout='calm'] .cm-body h3, html[data-layout='calm'] .cm-body h4 { font-family: var(--claude-sans); font-weight: 600; }
+html[data-layout='calm'] .cm-body code { font-size: 0.85em; border-radius: 6px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+html[data-layout='calm'] .cm-code {
+  border: 0.5px solid color-mix(in srgb, var(--text) 15%, transparent); border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 4%, var(--panel));
+}
+html[data-layout='calm'] .cm-code-head { font-family: var(--claude-sans); }
+
+/* message actions: quiet until you hover, like the row of icons under a Claude reply */
+html[data-layout='calm'] .cm-acts button { font-family: var(--claude-sans); font-size: 12.5px; border-radius: 8px; padding: 3px 9px; }
+
+/* tool and thinking rows read as small grey disclosure lines */
+html[data-layout='calm'] :is(.cm-tools, .cm-think) { font-family: var(--claude-sans); }
+
+/* the reply box: centred 768px column, 24px corners, floating on the page */
+html[data-layout='calm'] .thread-bottom { border-top: 0; background: var(--panel); padding: 0 24px 18px; }
+html[data-layout='calm'] .thread-bottom #ptyComposer {
+  max-width: 768px; margin: 0 auto; border-radius: 24px; padding: 6px 10px 8px;
+  border: 0.5px solid color-mix(in srgb, var(--text) 15%, transparent);
+  background: #fff; box-shadow: 0 4px 20px rgb(0 0 0 / 4%);
+}
+html[data-layout='calm'] .thread-bottom #ptyComposer:focus-within { border-color: color-mix(in srgb, var(--text) 25%, transparent); box-shadow: 0 6px 24px rgb(0 0 0 / 7%); }
+html[data-layout='calm'] #ptyInput { font-size: 16px; }
+
+/* ===================== settings, as in the Claude app ===================== */
+html[data-layout='calm'] #settingsSheet {
+  width: min(1000px, 94vw); height: min(720px, 88vh); padding: 28px 32px 18px; border-radius: 16px;
+  border: 0.5px solid color-mix(in srgb, var(--text) 15%, transparent); background: var(--panel);
+}
+html[data-layout='calm'] #settingsSheet > h2 { font-family: var(--claude-serif); font-size: 26px; font-weight: 400; letter-spacing: -0.01em; margin-bottom: 18px; }
+html[data-layout='calm'] #settingsSheet .settings-layout { grid-template-columns: 200px 1fr; gap: 32px; }
+html[data-layout='calm'] #settingsSheet .settings-nav button { height: 34px; font-size: 14px; font-weight: 400; color: color-mix(in srgb, var(--text) 75%, transparent); }
+html[data-layout='calm'] #settingsSheet .settings-nav button:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+html[data-layout='calm'] #settingsSheet .settings-nav button[aria-selected='true'],
+html[data-layout='calm'] #settingsSheet .settings-nav button.on,
+html[data-layout='calm'] #settingsSheet .settings-nav button.active { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+html[data-layout='calm'] #settingsSheet .settings-section > h3 { font-family: var(--claude-serif); font-size: 20px; font-weight: 400; margin-bottom: 12px; }
+html[data-layout='calm'] #settingsSheet .settings-row { padding: 14px 0; border-bottom: 0.5px solid color-mix(in srgb, var(--text) 12%, transparent); }
+html[data-layout='calm'] #settingsSheet .btn.primary { box-shadow: none; background-image: none; border-radius: 8px; }
+html[data-layout='calm'] .theme-preset { background: transparent; border: 0.5px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 10px; }
+html[data-layout='calm'] .cm-body .cm-code code { background: none; padding: 0; font-size: inherit; }
