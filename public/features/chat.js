@@ -730,7 +730,7 @@ const ChatView = {
     if (box) {
       if (!box.dataset.ph) box.dataset.ph = box.placeholder;
       const a = s && agent(s.agentId);
-      box.placeholder = on && a ? `Reply to ${a.label}. Enter sends, Shift+Enter adds a line.` : box.dataset.ph;
+      box.placeholder = on && a ? `Reply to ${a.label}…` : box.dataset.ph;
     }
     this.el.hidden = !on;
     if (!on) {

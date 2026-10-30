@@ -51,7 +51,7 @@ const RailSessions = {
     if (list.length) {
       const head = document.createElement('div');
       head.className = 'rail-sessions-head';
-      head.textContent = 'Sessions';
+      head.textContent = 'Recents';
       this.box.append(head);
     }
     for (const s of list) {
@@ -134,7 +134,7 @@ function mountNewSessionRow() {
   b.type = 'button';
   b.id = 'railNew';
   b.className = 'rail-new';
-  b.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg><span>New session</span>';
+  b.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg><span>New chat</span>';
   b.addEventListener('click', () => newSession());
   rail.prepend(b);
 }
