@@ -66,7 +66,18 @@ echo
 
 # ---------------------------------------------------------------- helpers
 latest_version() {
-  curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -1
+  # The newest release that already has its Linux package. A release page appears when the build starts,
+  # minutes before the installers are attached, so the newest tag alone can still be empty.
+  local tags t first=""
+  tags="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=8" | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p')" || return 1
+  for t in $tags; do
+    [ -z "$first" ] && first="$t"
+    if curl -fsSL -r 0-0 -o /dev/null "https://github.com/$REPO/releases/download/v$t/ezCLI_${t}_amd64.deb.sha256" 2>/dev/null; then
+      [ "$t" != "$first" ] && printf '  note: %s is still being built (its Linux package is not published yet), using %s instead.\n' "$first" "$t" >&2
+      echo "$t"; return 0
+    fi
+  done
+  return 1
 }
 download_checked() { # url, dest ; checks <url>.sha256
   local url="$1" dest="$2" want got
@@ -81,7 +92,8 @@ download_checked() { # url, dest ; checks <url>.sha256
 
 [ "$(id -u)" = 0 ] && [ "$family" = "arch" ] && die "run this as your normal user, not root: makepkg refuses to run as root. It uses sudo where it needs it."
 command -v curl >/dev/null 2>&1 || die "curl is required"
-ver="$(latest_version)"; [ -n "$ver" ] || die "could not read the latest release from GitHub"
+ver="$(latest_version)" || true
+[ -n "$ver" ] || die "no release with a Linux package was found on GitHub (a new one may still be building: try again in a few minutes)"
 say "Installing ezCLI $ver"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 
@@ -91,7 +103,7 @@ case "$family" in
     run curl -fsSL -o "$tmp/PKGBUILD" "https://raw.githubusercontent.com/$REPO/main/packaging/arch/PKGBUILD"
     if [ "$DRY" = 0 ]; then
       # the PKGBUILD in the repo can lag a release; point it at the latest .deb and its published checksum
-      sum="$(curl -fsSL "https://github.com/$REPO/releases/download/v$ver/ezCLI_${ver}_amd64.deb.sha256" | awk '{print $1}')"
+      sum="$(curl -fsSL "https://github.com/$REPO/releases/download/v$ver/ezCLI_${ver}_amd64.deb.sha256" 2>/dev/null | awk '{print $1}' || true)"
       [ -n "$sum" ] || die "no checksum published for $ver"
       sed -i -E "s/^pkgver=.*/pkgver=$ver/; s/^pkgrel=.*/pkgrel=1/; 0,/^  '[0-9a-f]{64}'/s//  '$sum'/" "$tmp/PKGBUILD"
       ( cd "$tmp" && makepkg -si --noconfirm )
