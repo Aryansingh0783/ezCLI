@@ -350,18 +350,21 @@ fn start_session(
         let mut shown = argv.clone();
         let mut extra_env = Vec::new();
 
-        if want_pc || !connectors.is_empty() {
-            let style = a.mcp_style().ok_or_else(|| {
-                format!(
-                    "{} isn't supported for {} yet.",
-                    if want_pc { "PC control".to_string() } else { "A connector".to_string() },
-                    a.label
-                )
-            })?;
+        // ezCLI's own tool server (web search and page reading always, PC control only when granted) goes to every
+        // agent that can take an MCP server; the others simply go without.
+        let style = a.mcp_style();
+        if style.is_none() && (want_pc || !connectors.is_empty()) {
+            return Err(format!(
+                "{} isn't supported for {} yet.",
+                if want_pc { "PC control" } else { "A connector" },
+                a.label
+            ));
+        }
+        if let Some(style) = style {
             // ezCLI's own URL is minted and registered per launch; a
             // connector's URL is whatever the user configured in Settings,
             // used as-is.
-            let pc_url = if want_pc { Some(mcp.register(&id).map_err(|e| e.to_string())?) } else { None };
+            let pc_url = Some(mcp.register_with(&id, want_pc).map_err(|e| e.to_string())?);
             let mut taken = std::collections::HashSet::new();
             if pc_url.is_some() {
                 taken.insert("ezcli".to_string());
@@ -369,7 +372,7 @@ fn start_session(
             let slugs: Vec<String> = connectors.iter().enumerate().map(|(i, c)| slugify_connector_name(&c.name, i, &mut taken)).collect();
             let mut entries = Vec::new();
             if let Some(u) = &pc_url {
-                entries.push(McpEntry { name: "ezcli", url: u, shown_as: "ezcli PC control" });
+                entries.push(McpEntry { name: "ezcli", url: u, shown_as: "ezcli tools" });
             }
             for (c, slug) in connectors.iter().zip(slugs.iter()) {
                 entries.push(McpEntry { name: slug, url: &c.url, shown_as: &c.name });
@@ -377,9 +380,7 @@ fn start_session(
             let (attach, attach_shown, env) = match mcp_attach_args(style, &id, &entries) {
                 Ok(v) => v,
                 Err(e) => {
-                    if want_pc {
-                        detach_pc_control(&state, &mcp, &id);
-                    }
+                    detach_pc_control(&state, &mcp, &id);
                     return Err(e);
                 }
             };
@@ -448,9 +449,7 @@ fn start_session(
     let pid = match spawned {
         Ok(pid) => pid,
         Err(e) => {
-            if want_pc {
-                detach_pc_control(&state, &mcp, &id);
-            }
+            detach_pc_control(&state, &mcp, &id);
             return Err(e.to_string());
         }
     };
