@@ -52,7 +52,7 @@ pub struct InstallDone {
 /// its download script fails. The shown command stays the agent's own.
 pub fn prepare(command_line: &str) -> String {
     if !cfg!(windows) {
-        return command_line.to_string();
+        return prepare_unix(command_line);
     }
     const TLS: &str = "try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}";
     let trimmed = command_line.trim();
@@ -66,6 +66,75 @@ pub fn prepare(command_line: &str) -> String {
     }
     format!("{TLS}\n{trimmed}")
 }
+
+/// The Linux and macOS form of an agent's install command. `agents.json` carries the Windows
+/// spelling (`irm ... | iex`), which `sh` cannot run, so the same installers are mapped to their
+/// Unix scripts, and npm installs go to a folder the user can write to (a system Node on Arch,
+/// Debian or Fedora keeps its global folder under /usr, where a normal user gets EACCES).
+fn prepare_unix(command_line: &str) -> String {
+    let trimmed = command_line.trim();
+    if trimmed.starts_with("npm ") {
+        return format!("{NPM_PREAMBLE}\n{}", allow_own_script(trimmed));
+    }
+    if trimmed.contains("antigravity.google/cli/install.ps1") {
+        return "curl -fsSL https://antigravity.google/cli/install.sh | bash".to_string();
+    }
+    if trimmed.contains("ollama.com/install.ps1") {
+        return OLLAMA_UNIX.to_string();
+    }
+    trimmed.to_string()
+}
+
+/// What the install dialog shows on this platform: the command that will actually run (Windows
+/// keeps `agents.json`'s own text).
+pub fn display(command_line: &str) -> String {
+    if cfg!(windows) {
+        return command_line.to_string();
+    }
+    let trimmed = command_line.trim();
+    if trimmed.contains("antigravity.google/cli/install.ps1") {
+        return "curl -fsSL https://antigravity.google/cli/install.sh | bash".to_string();
+    }
+    if trimmed.contains("ollama.com/install.ps1") {
+        return "curl -fsSL https://ollama.com/install.sh | sh".to_string();
+    }
+    trimmed.to_string()
+}
+
+/// Checks for npm first (naming the package-manager command for this distribution when it is
+/// missing) and picks a writable global folder before the install runs.
+const NPM_PREAMBLE: &str = r#"if ! command -v npm >/dev/null 2>&1; then
+  ids="$( . /etc/os-release 2>/dev/null; echo "${ID_LIKE:-} ${ID:-}" )"
+  case "$ids" in
+    *arch*) hint="sudo pacman -S nodejs npm" ;;
+    *debian*|*ubuntu*) hint="sudo apt install nodejs npm" ;;
+    *fedora*|*rhel*) hint="sudo dnf install nodejs npm" ;;
+    *suse*) hint="sudo zypper install nodejs npm" ;;
+    *) hint="install Node.js (it includes npm) with your package manager" ;;
+  esac
+  echo "npm was not found, so Node.js is not installed or is not on the PATH ezCLI sees."
+  echo "Install it, then run this again:  $hint"
+  exit 127
+fi
+prefix="$(npm config get prefix 2>/dev/null)"
+if [ ! -w "$prefix/lib" ] && [ ! -w "$prefix" ]; then
+  export NPM_CONFIG_PREFIX="$HOME/.local"
+  mkdir -p "$HOME/.local/bin" "$HOME/.local/lib"
+  echo "npm's global folder ($prefix) is not writable, installing into $HOME/.local instead."
+fi"#;
+
+/// Ollama's own Linux script needs root. A GUI app has no terminal to type a sudo password into, so
+/// use root directly, a graphical polkit prompt, or passwordless sudo, and otherwise say what to run.
+const OLLAMA_UNIX: &str = r#"if ! command -v curl >/dev/null 2>&1; then echo "curl is required to install Ollama."; exit 127; fi
+run='curl -fsSL https://ollama.com/install.sh | sh'
+if [ "$(id -u)" = 0 ]; then sh -c "$run"
+elif command -v pkexec >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then pkexec sh -c "$run"
+elif sudo -n true 2>/dev/null; then sudo sh -c "$run"
+else
+  echo "Ollama's installer needs administrator rights and ezCLI cannot ask for a password here."
+  echo "Open a terminal and run:  $run"
+  exit 1
+fi"#;
 
 /// npm 11.16 skips every package's install script unless it is allowed, and some agents need
 /// theirs (OpenCode's places its program). Allow only the package being installed, never its
@@ -311,6 +380,18 @@ mod tests {
             assert!(p.trim_end().ends_with("npm install -g opencode-ai --allow-scripts=opencode-ai"));
             assert!(prepare("irm https://ollama.com/install.ps1 | iex").contains("winget install --id Ollama.Ollama"));
         }
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn unix_installs_use_the_unix_scripts() {
+        assert_eq!(prepare("irm https://antigravity.google/cli/install.ps1 | iex"), "curl -fsSL https://antigravity.google/cli/install.sh | bash");
+        assert!(prepare("irm https://ollama.com/install.ps1 | iex").contains("install.sh"));
+        let p = prepare("npm install -g opencode-ai");
+        assert!(p.contains("command -v npm"));
+        assert!(p.trim_end().ends_with("npm install -g opencode-ai --allow-scripts=opencode-ai"));
+        assert_eq!(display("irm https://ollama.com/install.ps1 | iex"), "curl -fsSL https://ollama.com/install.sh | sh");
+        assert_eq!(display("npm install -g freebuff"), "npm install -g freebuff");
     }
 
     #[test]

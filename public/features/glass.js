@@ -3,7 +3,9 @@
  * spotlights, a see-through terminal, and the Solid/Liquid glass setting. */
 
 const Glass = (() => {
-  const isGlass = () => (prefs.style || 'glass') === 'glass';
+  // Blurred glass and the displacement filter are very slow in WebKitGTK, so Linux starts on Solid.
+  const DEFAULT_STYLE = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent) ? 'solid' : 'glass';
+  const isGlass = () => (prefs.style || DEFAULT_STYLE) === 'glass';
 
   function mountScene() {
     if (!document.querySelector('.ambient')) {
@@ -44,7 +46,7 @@ const Glass = (() => {
       s.term.options.theme = { ...terminalTheme(), cursor: s.term.options.theme && s.term.options.theme.cursor };
     }
     document.querySelectorAll('[data-style-opt]').forEach((b) => {
-      const on = b.dataset.styleOpt === (prefs.style || 'glass');
+      const on = b.dataset.styleOpt === (prefs.style || DEFAULT_STYLE);
       b.classList.toggle('on', on);
       b.setAttribute('aria-checked', String(on));
     });

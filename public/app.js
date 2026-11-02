@@ -2300,9 +2300,14 @@ async function pasteImagePaths(s, paths) {
   }
 }
 
+/** Set by Ctrl+Enter or the Queue button: the next send waits its turn instead of going out now. */
+let queueNext = false;
+
 async function sendComposer() {
   const el = $('ptyInput');
   const s = active();
+  const wantQueue = queueNext;
+  queueNext = false;
   if (!s) return;
   const v = el.value;
   const files = Array.isArray(s.context) ? s.context : [];
@@ -2324,8 +2329,9 @@ async function sendComposer() {
     toast('This session is not running.', 'error', () => restartSession(s));
     return;
   }
-  // Still answering the last message: this one waits its turn above the box and goes out in order.
-  if (v.trim() && !files.length && !images.length && typeof MessageQueue !== 'undefined' && MessageQueue.busy(s)) {
+  // Only when you ask for it (Ctrl+Enter or the Queue button): the message waits its turn above the box.
+  // A plain Enter always sends now, the way the CLI's own prompt would take it.
+  if (wantQueue && v.trim() && !files.length && !images.length && typeof MessageQueue !== 'undefined' && MessageQueue.busy(s)) {
     MessageQueue.add(s, v);
     s.draft = '';
     el.value = '';
@@ -3852,6 +3858,7 @@ function wire() {
   pty.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      queueNext = e.ctrlKey || e.metaKey;
       sendComposer();
     } else if (e.key === 'ArrowUp' && (pty.value === '' || histPos > -1) && !pty.value.slice(0, pty.selectionStart).includes('\n')) {
       if (walkHistory(pty, 1)) e.preventDefault();

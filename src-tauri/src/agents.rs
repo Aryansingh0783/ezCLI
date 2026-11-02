@@ -831,6 +831,10 @@ pub fn effective_path() -> OsString {
     if let Some(p) = std::env::var_os("PATH") {
         dirs.extend(std::env::split_paths(&p));
     }
+    // A desktop-launched app on Linux does not get the shell's PATH, so folders that npm, the vendors'
+    // installers and version managers use are added here, after the real PATH.
+    #[cfg(not(windows))]
+    dirs.extend(unix_cli_dirs());
 
     merge_path_dirs(dirs)
 }
@@ -899,6 +903,28 @@ fn registry_paths() -> Vec<String> {
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// Per-user folders where CLI installers and version managers put commands on Linux and macOS.
+#[cfg(not(windows))]
+fn unix_cli_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        out.push(home.join(".local").join("bin")); // Claude Code, Antigravity, `npm -g` with a ~/.local prefix
+        out.push(home.join(".npm-global").join("bin"));
+        out.push(home.join(".bun").join("bin"));
+        out.push(home.join(".volta").join("bin"));
+        out.push(home.join(".cargo").join("bin"));
+        // nvm keeps one folder per Node version; the newest name sorts last
+        if let Ok(rd) = std::fs::read_dir(home.join(".nvm").join("versions").join("node")) {
+            let mut vs: Vec<PathBuf> = rd.flatten().map(|e| e.path().join("bin")).collect();
+            vs.sort();
+            out.extend(vs.into_iter().rev());
+        }
+    }
+    out.push(PathBuf::from("/usr/local/bin"));
+    out.push(PathBuf::from("/snap/bin"));
+    out
 }
 
 /// Per-user folders where popular CLI installers put their commands.
@@ -998,7 +1024,7 @@ pub fn describe(agents: &[AgentDef]) -> Vec<AgentOut> {
                     .models_from
                     .as_ref()
                     .is_some_and(|from| from.require_selection),
-                install: a.install.clone(),
+                install: a.install.as_deref().map(crate::install::display),
                 model_pricing: a.model_pricing.clone(),
                 group_chat: a.headless.is_some(),
                 group_can_edit: a.headless.as_ref().is_some_and(|h| !h.edit.is_empty()),
