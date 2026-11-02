@@ -62,3 +62,6 @@ hooks.boot.push(() => {
   Starters.render();
 });
 hooks.view.push(renderAccountRow);
+
+/* Platform marker for the Linux-only polish in claude.css (WebKitGTK draws its own wide scrollbars and lets the window chrome be selected). */
+if (/linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent)) document.documentElement.dataset.os = 'linux';

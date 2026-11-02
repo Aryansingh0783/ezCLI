@@ -161,3 +161,35 @@ html[data-layout='calm'] #ptyComposer .web-btn { white-space: nowrap; flex: none
   #ptyComposer .composer-row::after { content: ''; order: 5; flex-basis: 100%; height: 0; }
   #ptyComposer .composer-row > .web-btn { order: 6; }
 }
+
+/* ===================== Linux (WebKitGTK) polish ===================== */
+/* Slim, theme-coloured scrollbars instead of the wide GTK ones. */
+html[data-os='linux'] ::-webkit-scrollbar { width: 12px; height: 12px; }
+html[data-os='linux'] ::-webkit-scrollbar-track, html[data-os='linux'] ::-webkit-scrollbar-corner { background: transparent; }
+html[data-os='linux'] ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text) 26%, transparent); border: 3px solid transparent; border-radius: 8px; background-clip: content-box;
+}
+html[data-os='linux'] ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text) 40%, transparent); background-clip: content-box; }
+/* The window chrome is not text: dragging across it should not select labels. */
+html[data-os='linux'] :is(.tabbar, .rail, .session-head, .statusbar, .composer-row, button, .head-title) { -webkit-user-select: none; user-select: none; }
+/* Bigger, easier window buttons. */
+html[data-os='linux'] .window-control { min-width: 44px; }
+
+/* ===================== small windows ===================== */
+/* Settings: the panel keeps its height, the section list and content scroll inside it, and "Done" stays visible. */
+html[data-layout='calm'] #settingsSheet[open] { display: flex; flex-direction: column; overflow: hidden; }
+html[data-layout='calm'] #settingsSheet > h2 { flex: none; }
+html[data-layout='calm'] #settingsSheet .settings-layout { flex: 1 1 auto; min-height: 0; overflow: hidden; grid-template-rows: minmax(0, 1fr); }
+html[data-layout='calm'] #settingsSheet .settings-body { min-height: 0; max-height: none; overflow-y: auto; padding-right: 6px; }
+html[data-layout='calm'] #settingsSheet > form { flex: none; }
+/* theme tiles reflow by width instead of squeezing their names onto two lines */
+html[data-layout='calm'] #themePresets { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
+html[data-layout='calm'] .theme-preset { white-space: nowrap; }
+@media (max-height: 560px) { html[data-layout='calm'] #settingsSheet { padding: 18px 22px 12px; } }
+
+/* Under 980 px the sidebar is a narrow icon strip: no labels (they cannot fit; each button has a tooltip), a centred avatar for the account. */
+@media (max-width: 979px) {
+  html[data-layout='calm'] .rail .rail-btn .rail-label { display: none; }
+  html[data-layout='calm'] #railAccount { width: 44px; margin: 6px auto; padding: 4px; justify-content: center; }
+  html[data-layout='calm'] #railAccount .acct-text { display: none; }
+}
