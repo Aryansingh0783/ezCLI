@@ -107,7 +107,7 @@ const ChatView = {
   /** Terminal chrome that is not part of an answer. */
   clean(lines, ask) {
     const border = /^[\s─-╿▀-▟]*$/;
-    const chrome = /^\s*>>>\s*(send a message.*|\/\w+.*)?$|^\s*set parameter .*$|^\s*set '?(no)?think'? mode.*$|^\s*cleared session context\s*$|use ctrl \+ d or \/bye|esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
+    const chrome = /previous cli conversation ended|^\s*(\.\.\.\s*)?press enter to send\s*$|^\s*>>>\s*(send a message.*|\/\w+.*)?$|^\s*set parameter .*$|^\s*set '?(no)?think'? mode.*$|^\s*cleared session context\s*$|use ctrl \+ d or \/bye|esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
     const spinner = /^\s*([✢✳✻✽✶·*]\s+\S.*…|[⠀-⣿](\s|$))/;
     const head = String(ask || '').trim().slice(0, 18);
     const out = [];
