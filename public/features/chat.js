@@ -741,9 +741,25 @@ const ChatView = {
           return;
         }
         if (act.dataset.act === 'up' || act.dataset.act === 'down') {
+          const was = this.rating(act.dataset.key);
           this.rate(act.dataset.key, act.dataset.act);
           this.sig = '';
           this.apply(false);
+          // A thumbs-down is only useful if the agent hears about it: start a correction in the message
+          // box (never sent for you, and never over something you were already typing).
+          if (act.dataset.act === 'down' && was !== 'down') {
+            const box = $('ptyInput');
+            if (box && !box.value.trim()) {
+              box.value = "That wasn't right. ";
+              autoGrow(box);
+              const cur = active();
+              if (cur) cur.draft = box.value;
+            }
+            if (box) {
+              box.focus();
+              box.setSelectionRange(box.value.length, box.value.length);
+            }
+          }
           return;
         }
         if (act.dataset.act === 'regen') {
