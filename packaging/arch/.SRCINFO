@@ -1,6 +1,6 @@
 pkgbase = ezcli-bin
 	pkgdesc = A desktop window for coding CLIs: Claude Code, Codex, OpenCode, Gemini, Ollama and more
-	pkgver = 5.12.2
+	pkgver = 5.12.3
 	pkgrel = 1
 	url = https://github.com/Aryansingh0783/ezCLI
 	arch = x86_64
@@ -10,12 +10,12 @@ pkgbase = ezcli-bin
 	depends = libayatana-appindicator
 	provides = ezcli
 	conflicts = ezcli
-	noextract = ezCLI_5.12.2_amd64.deb
+	noextract = ezCLI_5.12.3_amd64.deb
 	options = !strip
 	options = !debug
-	source = https://github.com/Aryansingh0783/ezCLI/releases/download/v5.12.2/ezCLI_5.12.2_amd64.deb
-	source = LICENSE::https://raw.githubusercontent.com/Aryansingh0783/ezCLI/v5.12.2/LICENSE
-	sha256sums = 356e1769c01f74ba8024e29e28e309500077429b3eee0b2bce3bfb98e923e0fc
+	source = https://github.com/Aryansingh0783/ezCLI/releases/download/v5.12.3/ezCLI_5.12.3_amd64.deb
+	source = LICENSE::https://raw.githubusercontent.com/Aryansingh0783/ezCLI/v5.12.3/LICENSE
+	sha256sums = 32f7b006e77f28c440a8d2660518e731288610c68c8c61c6a9e47da13f5df4e2
 	sha256sums = 5e5d3e0401dec4d090df4e2e337f3c4c353786298d2b32e5ec1d8d210935c4d9
 
 pkgname = ezcli-bin
