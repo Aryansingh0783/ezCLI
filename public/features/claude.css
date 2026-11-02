@@ -140,3 +140,24 @@ html[data-layout='calm'] #settingsSheet .settings-row { padding: 14px 0; border-
 html[data-layout='calm'] #settingsSheet .btn.primary { box-shadow: none; background-image: none; border-radius: 8px; }
 html[data-layout='calm'] .theme-preset { background: transparent; border: 0.5px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 10px; }
 html[data-layout='calm'] .cm-body .cm-code code { background: none; padding: 0; font-size: inherit; }
+
+/* ===================== session composer bar: nothing breaks mid-label ===================== */
+/* Everything in the bar keeps its text on one line; when the bar is too narrow it wraps whole items to a
+ * second row instead of splitting "Web: auto" or "1m 00s" in two, and a long model name is cut with an
+ * ellipsis (its full name is in the tooltip) instead of running over the usage label. */
+html[data-layout='calm'] #ptyComposer .composer-row { flex-wrap: wrap; align-items: center; column-gap: 6px; row-gap: 6px; }
+html[data-layout='calm'] #ptyComposer .composer-row > * { white-space: nowrap; flex: none; }
+html[data-layout='calm'] #ptyComposer .composer-right { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+html[data-layout='calm'] #ptyComposer .composer-right .composer-meta { max-width: 100%; min-width: 0; }
+html[data-layout='calm'] #ptyComposer .composer-meta .meta-model {
+  display: block; max-width: min(260px, 100%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+html[data-layout='calm'] #ptyComposer .composer-right .usage-ring { white-space: nowrap; }
+html[data-layout='calm'] #ptyComposer .working-ind { white-space: nowrap; flex: none; }
+html[data-layout='calm'] #ptyComposer .web-btn { white-space: nowrap; flex: none; padding: 3px 10px; line-height: 1.3; }
+/* in a narrower bar the four small settings drop to their own row under the message instead of squeezing the model name and Send */
+@container composer (max-width: 900px) {
+  #ptyComposer .composer-row > .send-btn { order: 4; }
+  #ptyComposer .composer-row::after { content: ''; order: 5; flex-basis: 100%; height: 0; }
+  #ptyComposer .composer-row > .web-btn { order: 6; }
+}
