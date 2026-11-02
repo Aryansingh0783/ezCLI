@@ -377,8 +377,16 @@ fn start_session(
             for (c, slug) in connectors.iter().zip(slugs.iter()) {
                 entries.push(McpEntry { name: slug, url: &c.url, shown_as: &c.name });
             }
+            // The web tools are a bonus: if they cannot be attached (a config folder that is not writable, say) the
+            // session still starts, just without them. PC control and the user's own connectors were asked for, so
+            // for those a failure is reported.
+            let only_the_bonus = !want_pc && connectors.is_empty();
             let (attach, attach_shown, env) = match mcp_attach_args(style, &id, &entries) {
                 Ok(v) => v,
+                Err(_) if only_the_bonus => {
+                    detach_pc_control(&state, &mcp, &id);
+                    (Vec::new(), Vec::new(), Vec::new())
+                }
                 Err(e) => {
                     detach_pc_control(&state, &mcp, &id);
                     return Err(e);
