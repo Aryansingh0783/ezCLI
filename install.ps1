@@ -14,10 +14,18 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::S
 
 $repo = 'Aryansingh0783/ezCLI'
 Write-Host 'Looking up the latest ezCLI release...'
-$release = Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'ezcli-installer' } "https://api.github.com/repos/$repo/releases/latest"
-$msi = $release.assets | Where-Object { $_.name -like '*_x64_en-US.msi' } | Select-Object -First 1
-$sum = $release.assets | Where-Object { $_.name -eq "$($msi.name).sha256" } | Select-Object -First 1
-if (-not $msi -or -not $sum) { throw "The latest release ($($release.tag_name)) has no Windows installer yet. Try again in a few minutes, or download it from https://github.com/$repo/releases" }
+# A release page appears when its build starts, minutes before the installers are attached, so look through
+# the newest few for the first one that already has its Windows installer and checksum.
+$releases = @(Invoke-RestMethod -UseBasicParsing -Headers @{ 'User-Agent' = 'ezcli-installer' } "https://api.github.com/repos/$repo/releases?per_page=8")
+$release = $null; $msi = $null; $sum = $null
+foreach ($r in $releases) {
+  $m = $r.assets | Where-Object { $_.name -like '*_x64_en-US.msi' } | Select-Object -First 1
+  if (-not $m) { continue }
+  $s = $r.assets | Where-Object { $_.name -eq "$($m.name).sha256" } | Select-Object -First 1
+  if ($s) { $release = $r; $msi = $m; $sum = $s; break }
+}
+if (-not $release) { throw "No ezCLI release with a Windows installer was found yet. Try again in a few minutes, or download one from https://github.com/$repo/releases" }
+if ($releases[0].tag_name -ne $release.tag_name) { Write-Host "$($releases[0].tag_name) is still being built (its Windows installer is not published yet), so installing $($release.tag_name) instead." }
 
 $dir = Join-Path $env:TEMP 'ezcli-install'
 New-Item -ItemType Directory -Force $dir | Out-Null
