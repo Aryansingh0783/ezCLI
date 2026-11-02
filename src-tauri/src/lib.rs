@@ -22,6 +22,7 @@ mod graphify;
 mod import;
 mod input;
 mod install;
+pub mod linux_env;
 mod mcp_server;
 mod media;
 mod open_in;
