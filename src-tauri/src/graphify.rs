@@ -44,14 +44,19 @@ fn installer_command() -> Option<String> {
         Some("uv tool install graphifyy".into())
     } else if agents::resolve_command("pipx").is_some() {
         Some("pipx install graphifyy".into())
-    } else if agents::resolve_command("python").is_some() {
+    } else if cfg!(windows) && agents::resolve_command("python").is_some() {
         Some("python -m pip install --user graphifyy".into())
-    } else if agents::resolve_command("python3").is_some() {
-        Some("python3 -m pip install --user graphifyy".into())
+    } else if !cfg!(windows) && agents::resolve_command("python3").is_some() {
+        Some(VENV_INSTALL.into())
     } else {
         None
     }
 }
+
+/// Arch, Debian 12+, Fedora and others mark the system Python "externally managed" (PEP 668), so
+/// `pip install --user` is refused. Graphify gets its own virtual environment instead, and its
+/// command is linked into ~/.local/bin, which ezCLI already searches.
+const VENV_INSTALL: &str = "python3 -m venv \"$HOME/.local/share/ezcli/graphify-venv\" && \"$HOME/.local/share/ezcli/graphify-venv/bin/pip\" install graphifyy && mkdir -p \"$HOME/.local/bin\" && ln -sf \"$HOME/.local/share/ezcli/graphify-venv/bin/graphify\" \"$HOME/.local/bin/graphify\"";
 
 fn graph_html(folder: &Path) -> PathBuf {
     folder.join("graphify-out").join("graph.html")
@@ -123,7 +128,12 @@ fn obsidian_install_command() -> Option<&'static str> {
 fn plan(action: &str, state: &AppState) -> Result<String, String> {
     match action {
         "install" => installer_command().ok_or_else(|| {
-            "Graphify needs Python. Install uv (https://docs.astral.sh/uv/) or Python 3, then try again.".to_string()
+            (if cfg!(windows) {
+                "Graphify needs Python. Install uv (https://docs.astral.sh/uv/) or Python 3, then try again."
+            } else {
+                "Graphify needs Python 3 (or uv or pipx). On Arch: sudo pacman -S python uv. On Debian or Ubuntu: sudo apt install python3-venv pipx. Then try again."
+            })
+            .to_string()
         }),
         "setup" => {
             let targets = setup_targets(state);
@@ -452,13 +462,24 @@ fn obsidian_installed() -> bool {
         .unwrap_or(false)
 }
 
+/// Obsidian is installed if its command is on the PATH (AppImage wrappers, distro packages), its
+/// Flatpak has data, or it has been run before and left its settings folder.
 #[cfg(not(windows))]
 fn obsidian_installed() -> bool {
-    false
+    agents::resolve_command("obsidian").is_some()
+        || dirs::home_dir().is_some_and(|h| h.join(".var/app/md.obsidian.Obsidian").is_dir())
+        || dirs::config_dir().is_some_and(|d| d.join("obsidian").is_dir())
 }
 
-/// Obsidian's per-user vault list.
+/// Obsidian's per-user vault list. The Flatpak keeps its own copy under ~/.var/app.
 fn obsidian_config_path() -> Option<PathBuf> {
+    #[cfg(not(windows))]
+    if let Some(h) = dirs::home_dir() {
+        let flatpak = h.join(".var/app/md.obsidian.Obsidian/config/obsidian");
+        if flatpak.is_dir() {
+            return Some(flatpak.join("obsidian.json"));
+        }
+    }
     dirs::config_dir().map(|d| d.join("obsidian").join("obsidian.json"))
 }
 
@@ -518,7 +539,11 @@ fn obsidian_running() -> bool {
 
 #[cfg(not(windows))]
 fn obsidian_running() -> bool {
-    false
+    std::process::Command::new("pgrep")
+        .args(["-x", "obsidian"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -695,6 +720,14 @@ pub async fn graphify_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(not(windows))]
+    fn the_python_fallback_does_not_use_pip_user() {
+        assert!(!VENV_INSTALL.contains("--user"));
+        assert!(VENV_INSTALL.starts_with("python3 -m venv"));
+        assert!(VENV_INSTALL.contains(".local/bin/graphify"));
+    }
 
     #[test]
     fn only_agents_with_a_graphify_target_get_a_setup_command() {

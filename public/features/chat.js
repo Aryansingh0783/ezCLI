@@ -21,7 +21,10 @@ const ChatView = {
   /** How often each feed is read. OpenCode runs a command to export, so it is read less often. */
   every(s) {
     if (s.agentId === 'opencode' || s.agentId === 'deepseek') return s.working ? 4000 : 12000;
-    return 1200;
+    // Reading the tail of one log file is cheap, so while an answer is on its way look every 100 ms.
+    // The other agents scan their data folders for the session, so they are read a little less often.
+    if (['claude-code', 'claude-chat', 'codex'].includes(s.agentId)) return s.working ? 100 : 1000;
+    return s.working ? 350 : 1500;
   },
 
   st(s) {
@@ -150,6 +153,51 @@ const ChatView = {
       c.shown = true;
     } else if (c.shown && c.last) return c.last;
     return items;
+  },
+
+  /** The reply as the terminal is drawing it right now, until the CLI's own log has it. The log only
+   *  gets a message once it is finished, so without this the chat waits for a whole answer while the
+   *  terminal shows it word by word. Shown only for an inline (non-full-screen) terminal, and dropped
+   *  the moment the log delivers the real message. */
+  live(s) {
+    const c = this.st(s);
+    const t = c.turns[c.turns.length - 1];
+    if (!t || !s.working || prefs.chatLive === false || !this.FEED.has(s.agentId)) return '';
+    let b;
+    try {
+      b = s.term.buffer.active;
+    } catch {
+      return '';
+    }
+    if (!b || b.type === 'alternate') return '';
+    const now = Date.now();
+    if (c.liveAt && now - c.liveAt < 60) return c.liveText || '';
+    c.liveAt = now;
+    const norm = (x) => String(x).replace(/\s+/g, ' ').trim();
+    const rows = this.linesBetween(s, Math.max(0, b.length - 500), b.length);
+    const flat = rows.map(norm);
+    const head = norm(t.echo || t.text).slice(0, 28);
+    let at = -1;
+    if (head) for (let k = flat.length - 1; k >= 0; k--) if (flat[k].includes(head)) { at = k; break; }
+    if (at < 0) return (c.liveText = '');
+    let start = at + 1;
+    while (start < rows.length && (/^\.\.\.(\s|$)/.test(rows[start]) || !rows[start].trim())) start++;
+    // tool lines ("Bash(git status)", "⎿ result") come from the log as tool rows; leave them out here
+    const text = this.clean(rows.slice(start), t.echo || t.text)
+      .split('\n')
+      .filter((l) => !/^\s*[A-Z][A-Za-z]*\(.*\)\s*$/.test(l) && !/^\s*⎿/.test(l))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return (c.liveText = text);
+  },
+
+  /** The conversation plus, while a reply is being written, the live text of it. */
+  withLive(s, items) {
+    const last = items[items.length - 1];
+    if (!last || !(last.k === 'user' || last.k === 'tools') || !s.working) return items;
+    const text = this.live(s);
+    return text ? [...items, { k: 'assistant', key: `${s.id}:live`, text, hard: true, live: true }] : items;
   },
 
   /** A CLI sitting at its normal prompt with nothing sent yet: show an empty chat, not its start screen. */
@@ -595,6 +643,11 @@ const ChatView = {
         h += `<div class="cm-acts">${this.act('edit', it.key)}${this.act('copy', it.key)}${when}</div></div>`;
       } else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
       else if (it.k === 'assistant') {
+        if (it.live) {
+          h += `<div class="cm cm-ai cm-live"><div class="cm-body">${this.md(it.text, true)}</div></div>`;
+          parts.push(h.slice(mark));
+          continue;
+        }
         h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts">${this.act('copy', it.key)}${this.act('up', it.key)}${this.act('down', it.key)}${this.act('regen', it.key)}${when}</div></div>`;
         // links the model wrote that were in nothing it was given: likely made up
         if (s.unverifiedFor === it.key && s.unverified && s.unverified.length) h += `<div class="cm cm-warn" role="note"><b>Check these links.</b> They were not in anything the model was given, so it may have made them up: ${s.unverified.map((u) => `<code>${esc(u)}</code>`).join(' ')}</div>`;
@@ -804,7 +857,7 @@ const ChatView = {
   apply(force) {
     if (!this.el) return;
     const s = active();
-    const items = s && prefs.chatView !== false ? this.model(s) : [];
+    const items = s && prefs.chatView !== false ? this.withLive(s, this.model(s)) : [];
     const on = Boolean(s && items.length && this.st(s).mode !== 'terminal' && !Team.isOpen() && !this.stale(s));
     const toggle = $('headView');
     if (toggle) {
@@ -884,7 +937,7 @@ hooks.output.push(() => {
   ChatView.timer = setTimeout(() => {
     ChatView.timer = null;
     ChatView.tick();
-  }, 450);
+  }, 50);
 });
 setInterval(() => ChatView.tick(), 1500);
 registerCommand({ group: 'Session', label: 'Switch between chat and terminal', keys: 'Ctrl Alt T', run: () => ChatView.toggle() });
