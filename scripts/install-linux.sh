@@ -72,9 +72,10 @@ download_checked() { # url, dest ; checks <url>.sha256
   local url="$1" dest="$2" want got
   run curl -fSL --progress-bar -o "$dest" "$url"
   [ "$DRY" = 1 ] && return 0
-  want="$(curl -fsSL "$url.sha256" | awk '{print $1}')"
+  want="$(curl -fsSL "$url.sha256" 2>/dev/null | awk '{print $1}' || true)"
   got="$(sha256sum "$dest" | awk '{print $1}')"
-  [ -n "$want" ] && [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$dest") (expected $want, got $got)"
+  [ -n "$want" ] || die "no published checksum found at $url.sha256, so $(basename "$dest") was not installed"
+  [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$dest") (expected $want, got $got)"
   note "checksum ok"
 }
 
