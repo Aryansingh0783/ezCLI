@@ -86,13 +86,13 @@ const WebSearch = {
     if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)');
     const tools = parts.map((p) => p.split(':')[0]);
     if (s.toolsIntro) {
-      return { text: ` [Reminder: you are ${s.modelId || 'a local model'}, not Claude. Do not guess.${tools.length ? ` Tools as before: ${tools.join(', ')}; reply with only that one line when you use one.` : ''}]`, tools: tools.length };
+      return { text: ` [Reminder: you are ${s.modelId || 'a local model'}, not Claude. Do not guess.${tools.length ? ` Tools as before (real, run by the app; you do have web access through them): ${tools.join(', ')}; reply with only that one line when you use one.` : ''}]`, tools: tools.length };
     }
     s.toolsIntro = true;
     const who = `You are ${s.modelId || 'a local model'}, running on this PC through Ollama. You are not Claude, ChatGPT or any other model, even if web results or the conversation mention them.`;
     const rules =
       'Accuracy rules. Work out the answer step by step and check it before you reply. Do not guess: if you are not sure of a fact, say so or look it up. A name, paper, product, person or number you do not recognise may not exist; do not describe it as if it does. Never invent facts, numbers, quotes, links, file names or sources. When you use web results, say which source each fact came from; if they do not answer the question, say that. Keep answers short and direct.';
-    const use = tools.length ? ` Tools: when you need one, reply with only one line and nothing else: ${parts.join(' | ')}. Otherwise just answer.` : '';
+    const use = tools.length ? ` Tools: these are real. The app runs them for you, so you do have web access through them; do not say you cannot browse. Web results the app already fetched appear in square brackets after the user's message; use them. When you need a tool, reply with only one line and nothing else: ${parts.join(' | ')}. Otherwise just answer.` : '';
     return { text: ` [${who} ${rules}${use}]`, tools: tools.length };
   },
 
