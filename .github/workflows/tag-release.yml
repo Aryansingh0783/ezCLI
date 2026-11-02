@@ -1,0 +1,81 @@
+name: Tag and release
+
+# A button for cutting a release without a local git checkout: Actions > "Tag and release" > Run workflow.
+# It tags the newest commit on main with the version written in the app (src-tauri/tauri.conf.json) and
+# starts the Release workflow on that tag, which builds the installers and attaches them with checksums.
+#
+# A tag pushed with the repository token does not start other workflows, so the Release workflow is
+# started explicitly below; it runs once, on the tag.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Read and check the version
+        id: v
+        shell: bash
+        run: |
+          conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          cargo=$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "tauri.conf.json=$conf Cargo.toml=$cargo"
+          if [ -z "$conf" ] || [ "$conf" != "$cargo" ]; then
+            echo "::error::The app version differs between tauri.conf.json ($conf) and Cargo.toml ($cargo). Fix that on main first."
+            exit 1
+          fi
+          if ! [[ "$conf" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$conf' is not major.minor.patch."
+            exit 1
+          fi
+          echo "version=$conf" >> "$GITHUB_OUTPUT"
+          echo "tag=v$conf" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to overwrite an existing release or tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Bump the version on main to release again."
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::A release for $TAG already exists."
+            exit 1
+          fi
+
+      - name: Tag main
+        shell: bash
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "refs/tags/$TAG"
+          echo "::notice::Tagged $(git rev-parse --short HEAD) as $TAG"
+
+      - name: Start the Release workflow on the tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          gh workflow run release.yml --ref "$TAG"
+          echo "::notice::Release workflow started for $TAG; the installers appear on the Releases page when it finishes."
