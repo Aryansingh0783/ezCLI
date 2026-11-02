@@ -212,3 +212,22 @@ html[data-layout='calm'] .session-head > .head-view { opacity: 1 !important; }
 .queue-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-item b { font-weight: 600; margin-right: 4px; }
 .queue-item button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+
+/* each message is one block; the wrapper adds no box of its own */
+.seg { display: contents; }
+.cm-earlier {
+  display: block; margin: 0 auto 18px; padding: 6px 14px; border: 0.5px solid color-mix(in srgb, var(--ink, #1f1d19) 20%, transparent); border-radius: 999px;
+  background: transparent; color: var(--ink-soft, var(--muted)); font: inherit; font-size: 13px; cursor: pointer;
+}
+.cm-earlier:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); color: var(--ink, var(--text)); }
+
+/* icon buttons under a message */
+.cm-acts { align-items: center; gap: 2px; }
+.cm-acts .cm-act { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 8px; }
+.cm-acts .cm-act svg { pointer-events: none; }
+.cm-acts .cm-act.on { color: var(--brand); opacity: 1; }
+.cm-acts .cm-act.on svg { fill: currentColor; fill-opacity: 0.18; }
+.cm-acts .cm-act.done { color: var(--brand); }
+.cm-ai:has(.cm-act.on) .cm-acts { opacity: 1; }
+.cm-ai .cm-acts { opacity: 0.6; }
+.cm-ai:hover .cm-acts, .cm-ai:focus-within .cm-acts { opacity: 1; }

@@ -77,6 +77,7 @@ const ChatView = {
       }
       if (c.events.length > 4000) c.events = c.events.slice(-3000);
       c.offset = page.offset;
+      c.ver = (c.ver || 0) + 1;
     } catch {
       /* the file may not exist yet; the next poll tries again */
     } finally {
@@ -129,6 +130,9 @@ const ChatView = {
 
   model(s) {
     const c = this.st(s);
+    // The conversation log only changes when the feed brings new events, so the (large) item list is
+    // rebuilt then and not on every redraw, queue check and tick.
+    if (c.events.length && c.memo && c.memo.ver === c.ver) return c.memo.items;
     let items = [];
     if (c.events.length) items = this.fromEvents(c);
     else if (c.turns.length && this.FEED.has(s.agentId)) {
@@ -141,6 +145,7 @@ const ChatView = {
     for (const it of items) it.key = `${s.id}:${it.key}`;
     // A CLI that redraws its screen can hide the reply for a moment; keep showing the last good view.
     if (items.length) {
+      if (c.events.length) c.memo = { ver: c.ver, items };
       c.last = items;
       c.shown = true;
     } else if (c.shown && c.last) return c.last;
@@ -535,10 +540,50 @@ const ChatView = {
     return html;
   },
 
+  ICONS: {
+    copy: ['Copy', '<rect x="9" y="9" width="11" height="11" rx="2.500"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>'],
+    edit: ['Edit', '<path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/><path d="M14 7l3 3"/>'],
+    up: ['Good response', '<path d="M7 11v9H4v-9h3z"/><path d="M7 11l4-7c1.500 0 2.500 1 2.500 2.500V9H19a2 2 0 0 1 2 2.300l-1 6.500a2 2 0 0 1-2 1.700H7"/>'],
+    down: ['Bad response', '<path d="M7 13V4H4v9h3z"/><path d="M7 13l4 7c1.500 0 2.500-1 2.500-2.500V15H19a2 2 0 0 0 2-2.300L20 6.200A2 2 0 0 0 18 4.500H7"/>'],
+    regen: ['Retry', '<path d="M20 12a8 8 0 1 1-2.500-5.800"/><path d="M20 4v5h-5"/>']
+  },
+
+  /** One icon button in the row under a message. */
+  act(name, key) {
+    const [label, path] = this.ICONS[name];
+    const on = (name === 'up' || name === 'down') && this.rating(key) === name ? ' on' : '';
+    return `<button type="button" class="cm-act${on}" data-act="${name}" data-key="${key}" title="${label}" aria-label="${label}"${on ? ' aria-pressed="true"' : ''}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg></button>`;
+  },
+
+  /** Thumbs are a private mark on this PC; nothing is sent anywhere. */
+  rating(key) {
+    return (prefs.chatRatings || {})[key] || '';
+  },
+
+  rate(key, value) {
+    const r = (prefs.chatRatings = prefs.chatRatings || {});
+    if (r[key] === value) delete r[key];
+    else r[key] = value;
+    const keys = Object.keys(r);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 500))) delete r[k];
+    savePrefs();
+  },
+
+  PAGE: 60,
+  lim: new Map(),
+
   html(s, items) {
     let h = '';
     this.cur = items;
-    for (const it of items) {
+    // Only the newest messages are drawn; older ones come back with one click. A long chat is
+    // otherwise thousands of elements rebuilt on every change.
+    const n = this.lim.get(s.id) || this.PAGE;
+    const hidden = Math.max(0, items.length - n);
+    const shown = hidden ? items.slice(hidden) : items;
+    const parts = [];
+    if (hidden) parts.push(`<button type="button" class="cm-earlier" data-act="earlier">Show ${hidden} earlier message${hidden === 1 ? '' : 's'}</button>`);
+    for (const it of shown) {
+      const mark = h.length;
       const when = this.when(it.ts);
       if (it.k === 'user') {
         // A long paste (a log, a file) folds to a preview instead of filling the screen.
@@ -547,10 +592,10 @@ const ChatView = {
         const open = this.expanded.has(it.key);
         const more = long ? `<button type="button" class="cm-more" data-act="more" data-key="${it.key}">${open ? 'Show less' : `Show all ${lines} lines`}</button>` : '';
         h += `<div class="cm cm-user"><div class="cm-bubble${long && !open ? ' folded' : ''}">${esc(it.text)}</div>${more}`;
-        h += `<div class="cm-acts"><button type="button" data-act="edit" data-key="${it.key}">Edit</button><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
+        h += `<div class="cm-acts">${this.act('edit', it.key)}${this.act('copy', it.key)}${when}</div></div>`;
       } else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
       else if (it.k === 'assistant') {
-        h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts"><button type="button" data-act="copy" data-key="${it.key}">Copy</button>${when}</div></div>`;
+        h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts">${this.act('copy', it.key)}${this.act('up', it.key)}${this.act('down', it.key)}${this.act('regen', it.key)}${when}</div></div>`;
         // links the model wrote that were in nothing it was given: likely made up
         if (s.unverifiedFor === it.key && s.unverified && s.unverified.length) h += `<div class="cm cm-warn" role="note"><b>Check these links.</b> They were not in anything the model was given, so it may have made them up: ${s.unverified.map((u) => `<code>${esc(u)}</code>`).join(' ')}</div>`;
       }
@@ -558,7 +603,9 @@ const ChatView = {
       else if (it.k === 'thinking') h += `<details class="cm cm-think" data-key="${it.key}"${this.open.has(it.key) ? ' open' : ''}><summary>${it.live ? 'Thinking' : 'Thought'}</summary><div class="cm-think-body">${this.mdCached(s, it)}</div></details>`;
       else if (it.k === 'note') h += it.detail ? `<details class="cm cm-note cm-note-out"><summary>${esc(it.text)}</summary><pre>${esc(it.detail)}</pre></details>` : `<div class="cm cm-note">${esc(it.text)}</div>`;
       else if (it.k === 'empty') h += `<div class="cm cm-empty"><b>${esc((agent(s.agentId) || {}).label || 'Agent')} is ready</b><span>Type below to start. Use Terminal above for its own screen.</span></div>`;
+      parts.push(h.slice(mark));
     }
+    const tail = h.length;
     // A CLI repaints its screen when you switch to it, which reads as "working"; only show the
     // indicator while a reply is actually pending (your message or a tool is the last thing).
     const last = items[items.length - 1];
@@ -567,7 +614,23 @@ const ChatView = {
     else if (s.working && pending) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
     if (last && last.k === 'user' && this.slow(s)) h += `<div class="cm cm-wait"><b>Still waiting on ${esc((agent(s.agentId) || {}).label || 'the agent')}</b><span>It has not answered yet. Its own screen may show why (a limit, a sign-in, a question).</span><button type="button" class="cm-open-term">Open the terminal</button></div>`;
     else if (!(s.working && pending) && this.waiting(s)) h += '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>';
-    return h;
+    if (h.length > tail) parts.push(h.slice(tail));
+    this.parts = parts;
+    return parts.map((p) => `<div class="seg">${p}</div>`).join('');
+  },
+
+  /** Redraw only from the first message that differs; earlier ones keep their elements (and any selection). */
+  patch(parts) {
+    const col = $('chatCol');
+    const strip = (p) => p.replace(/<span class="cm-elapsed">[^<]*<\/span>/, '<span class="cm-elapsed"></span>');
+    const next = parts.map(strip);
+    const prev = this.segs || [];
+    let i = 0;
+    while (i < next.length && i < prev.length && next[i] === prev[i] && col.children[i]) i++;
+    if (i === next.length && i === prev.length && col.children.length === i) return;
+    while (col.children.length > i) col.lastElementChild.remove();
+    col.insertAdjacentHTML('beforeend', parts.slice(i).map((p) => `<div class="seg">${p}</div>`).join(''));
+    this.segs = next;
   },
 
   mount() {
@@ -614,6 +677,31 @@ const ChatView = {
           this.syncLatest();
           return;
         }
+        if (act.dataset.act === 'earlier') {
+          const cur = active();
+          if (cur) {
+            this.lim.set(cur.id, (this.lim.get(cur.id) || this.PAGE) + this.PAGE);
+            this.keepTop = true;
+            this.sig = '';
+            this.apply(false);
+          }
+          return;
+        }
+        if (act.dataset.act === 'up' || act.dataset.act === 'down') {
+          this.rate(act.dataset.key, act.dataset.act);
+          this.sig = '';
+          this.apply(false);
+          return;
+        }
+        if (act.dataset.act === 'regen') {
+          const cur = active();
+          const users = (this.cur || []).filter((x) => x.k === 'user');
+          const last = users[users.length - 1];
+          if (!cur || !last) return;
+          if (typeof MessageQueue !== 'undefined' && MessageQueue.busy(cur)) return toast('Wait for the current reply to finish, then retry.');
+          sendPlain(cur, last.text);
+          return;
+        }
         if (act.dataset.act === 'retry') {
           const users = (this.cur || []).filter((x) => x.k === 'user');
           const last = users[users.length - 1];
@@ -630,8 +718,12 @@ const ChatView = {
         if (!it) return;
         if (act.dataset.act === 'copy') {
           navigator.clipboard.writeText(it.text).then(() => {
-            act.textContent = 'Copied';
-            setTimeout(() => (act.textContent = 'Copy'), 1200);
+            act.classList.add('done');
+            act.title = 'Copied';
+            setTimeout(() => {
+              act.classList.remove('done');
+              act.title = 'Copy';
+            }, 1200);
           });
         } else {
           const box = $('ptyInput');
@@ -735,6 +827,7 @@ const ChatView = {
     this.el.hidden = !on;
     if (!on) {
       this.sig = '';
+      this.segs = [];
       if (typeof ChatFind !== 'undefined' && ChatFind.isOpen()) ChatFind.close();
       return;
     }
@@ -744,14 +837,22 @@ const ChatView = {
     // The elapsed-time text changes every second; it is patched in place so the page is not
     // redrawn (which would clear a selection) just because a clock moved.
     const stable = html.replace(/<span class="cm-elapsed">[^<]*<\/span>/, '');
+    if (this.segSession !== s.id) {
+      this.segSession = s.id;
+      this.segs = [];
+      $('chatCol').textContent = '';
+    }
     const sig = `${s.id}|${stable.length}|${stable.slice(-200)}|${s.working}`;
     const clock = this.el.querySelector('.cm-elapsed');
     if (clock) clock.textContent = this.elapsed(s);
     if (!force && sig === this.sig) return;
     this.sig = sig;
     const near = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 90;
-    $('chatCol').innerHTML = html;
+    const before = this.el.scrollHeight;
+    this.patch(this.parts);
     if (near || force) this.el.scrollTop = this.el.scrollHeight;
+    else if (this.keepTop) this.el.scrollTop += this.el.scrollHeight - before;
+    this.keepTop = false;
     this.syncLatest();
     if (typeof ChatFind !== 'undefined' && ChatFind.isOpen()) ChatFind.run(false);
   },
