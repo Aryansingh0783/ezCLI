@@ -231,3 +231,7 @@ html[data-layout='calm'] .session-head > .head-view { opacity: 1 !important; }
 .cm-ai:has(.cm-act.on) .cm-acts { opacity: 1; }
 .cm-ai .cm-acts { opacity: 0.6; }
 .cm-ai:hover .cm-acts, .cm-ai:focus-within .cm-acts { opacity: 1; }
+.queue-item .q-now { color: var(--brand); font-weight: 600; }
+.queue-item button { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 6px; }
+.queue-item button:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 10%, transparent); }
+.queue-btn[hidden] { display: none; }
