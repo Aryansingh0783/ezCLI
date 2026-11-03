@@ -73,9 +73,8 @@ fn editor_candidates(id: &str) -> Vec<PathBuf> {
         "zed" => "zed",
         _ => return Vec::new(),
     };
-    std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).map(|d| d.join(bin)).collect())
-        .unwrap_or_default()
+    // a desktop-launched app does not get the shell's PATH: use the fuller search path the rest of ezCLI uses
+    std::env::split_paths(&crate::agents::effective_path()).map(|d| d.join(bin)).collect()
 }
 
 fn find_editor(id: &str) -> Option<PathBuf> {
@@ -183,10 +182,69 @@ fn spawn_terminal(dir: &str) -> Result<()> {
     Ok(())
 }
 
+/// The terminal programs to try, in order, each with the option that makes it start in `dir`. `x-terminal-emulator`
+/// exists only on Debian-style systems; Arch, KDE and Hyprland users have konsole, kitty, foot, alacritty and so on.
+#[cfg(all(not(windows), not(target_os = "macos")))]
+fn terminal_candidates(dir: &str, preferred: Option<&str>) -> Vec<(String, Vec<String>)> {
+    let own = |prog: &str, args: &[&str]| (prog.to_string(), args.iter().map(|a| a.to_string()).collect::<Vec<String>>());
+    let mut v: Vec<(String, Vec<String>)> = Vec::new();
+    // $TERMINAL is the user's own choice (a single program name; one with options is ignored)
+    if let Some(t) = preferred.map(str::trim).filter(|t| !t.is_empty() && !t.contains(char::is_whitespace)) {
+        v.push((t.to_string(), Vec::new()));
+    }
+    let flag = |name: &str| vec![format!("{name}={dir}")];
+    v.extend([
+        own("konsole", &["--workdir", dir]),
+        own("kitty", &["--directory", dir]),
+        own("foot", &["--working-directory", dir]),
+        own("alacritty", &["--working-directory", dir]),
+        own("wezterm", &["start", "--cwd", dir]),
+        ("gnome-terminal".to_string(), flag("--working-directory")),
+        ("xfce4-terminal".to_string(), flag("--working-directory")),
+        ("tilix".to_string(), flag("--working-directory")),
+        own("x-terminal-emulator", &[]),
+        own("xterm", &[]),
+    ]);
+    v
+}
+
 #[cfg(all(not(windows), not(target_os = "macos")))]
 fn spawn_terminal(dir: &str) -> Result<()> {
-    Command::new("x-terminal-emulator")
-        .current_dir(dir)
-        .spawn()?;
-    Ok(())
+    let preferred = std::env::var("TERMINAL").ok();
+    for (prog, args) in terminal_candidates(dir, preferred.as_deref()) {
+        let Some(exe) = crate::agents::resolve_command(&prog) else { continue };
+        // started in the folder either by its own option or, for the plain ones, by inheriting it
+        if Command::new(exe).args(&args).current_dir(dir).spawn().is_ok() {
+            return Ok(());
+        }
+    }
+    Err(anyhow!("No terminal program was found. Install one (konsole, kitty, foot, alacritty, gnome-terminal, xterm) or set the TERMINAL environment variable."))
+}
+
+#[cfg(all(test, not(windows), not(target_os = "macos")))]
+mod linux_tests {
+    use super::*;
+
+    #[test]
+    fn a_terminal_that_exists_on_arch_is_tried_and_each_starts_in_the_folder() {
+        let c = terminal_candidates("/home/u/my project", None);
+        let names: Vec<&str> = c.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"konsole") && names.contains(&"kitty") && names.contains(&"foot") && names.contains(&"alacritty"));
+        let get = |n: &str| c.iter().find(|(p, _)| p == n).unwrap().1.clone();
+        assert_eq!(get("konsole"), ["--workdir", "/home/u/my project"]);
+        assert_eq!(get("kitty"), ["--directory", "/home/u/my project"]);
+        assert_eq!(get("wezterm"), ["start", "--cwd", "/home/u/my project"]);
+        assert_eq!(get("gnome-terminal"), ["--working-directory=/home/u/my project"]);
+        // the Debian-only name is no longer the only choice
+        assert!(names.iter().position(|n| *n == "konsole") < names.iter().position(|n| *n == "x-terminal-emulator"));
+    }
+
+    #[test]
+    fn the_users_own_terminal_comes_first_and_odd_values_are_ignored() {
+        assert_eq!(terminal_candidates("/d", Some("ghostty"))[0], ("ghostty".to_string(), Vec::new()));
+        assert_eq!(terminal_candidates("/d", Some("  foot ")).first().map(|c| c.0.as_str()), Some("foot"));
+        assert_ne!(terminal_candidates("/d", Some("kitty -1"))[0].0, "kitty -1");
+        assert_ne!(terminal_candidates("/d", Some(""))[0].0, "");
+        assert_eq!(terminal_candidates("/d", None)[0].0, "konsole");
+    }
 }
