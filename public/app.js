@@ -508,10 +508,16 @@ function recordUsage(s) {
 /** A syntactically safe saved dynamic-model id. It remains displayable before
  * a live catalog has been refreshed, but it is never enough to launch a
  * require-selection agent by itself. */
+/** Agents whose "model" is a file on this PC. Its id is the file's full path (`M:\\AI\\models\\x.gguf`,
+ *  `/home/me/models/x.gguf`), which the provider/model-name pattern below rejects. The backend stays the real
+ *  gatekeeper: it launches only a path it found itself while scanning. */
+const PATH_MODEL_AGENTS = new Set(['gguf']);
+const looksLikeModelPath = (id) =>
+  typeof id === 'string' && id.length <= 1024 && !/[\u0000-\u001f"]/.test(id) && /\.gguf$/i.test(id) && /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(id);
 const isCatalogModelId = (a, id) => Boolean(
   a && a.dynamic_models &&
   typeof id === 'string' &&
-  /^[A-Za-z0-9][\w.:/@-]*$/.test(id) &&
+  (PATH_MODEL_AGENTS.has(a.id) ? looksLikeModelPath(id) : /^[A-Za-z0-9][\w.:/@-]*$/.test(id)) &&
   !(a.models || []).some((m) => m.id === id)
 );
 
@@ -523,8 +529,16 @@ const isLiveCatalogModel = (a, id) => Boolean(
   state.catalogs[a.id].includes(id)
 );
 
+/** The last folder name and the file name of a model path, for the menu. */
+function modelPathParts(id) {
+  const parts = String(id).split(/[\\/]/).filter(Boolean);
+  const file = (parts.pop() || '').replace(/\.gguf$/i, '');
+  return { file, folder: parts.pop() || '' };
+}
+
 function catalogModelDisplay(a, id) {
   if (a && a.id === 'ollama-cloud') return id;
+  if (a && PATH_MODEL_AGENTS.has(a.id)) return modelPathParts(id).file || String(id);
   const slash = String(id).indexOf('/');
   return slash >= 0 ? String(id).slice(slash + 1) : id;
 }
@@ -540,7 +554,8 @@ function allModels(a) {
     return {
       id,
       label: catalogModelDisplay(a, id),
-      provider: slash >= 0 ? id.slice(0, slash) : ''
+      // for a model file the folder tells two files with the same name apart
+      provider: PATH_MODEL_AGENTS.has(a.id) ? modelPathParts(id).folder : slash >= 0 ? id.slice(0, slash) : ''
     };
   });
   return [...staticModels, ...cat];
@@ -615,7 +630,8 @@ const label = (list, id) => (list.find((x) => x.id === id) || list[0] || { label
  *  Runs only when the user opens the Model menu or presses refresh. */
 async function fetchCatalog(a, { quiet = false } = {}) {
   try {
-    state.catalogs[a.id] = await invoke('agent_models', { agentId: a.id });
+    // a model file's folder may be one the user added: send the saved folders so the scan includes them
+    state.catalogs[a.id] = await invoke('agent_models', { agentId: a.id, folders: PATH_MODEL_AGENTS.has(a.id) ? (Array.isArray(prefs.modelFolders) ? prefs.modelFolders : []) : null });
     // A stored dynamic id is only a display placeholder until it appears in
     // the catalog refreshed for this app run. Do not let a stale preference
     // survive into a required-model launch.
@@ -674,7 +690,7 @@ async function boot() {
   const resetSavedResumeModes = normalizeSavedContinuationModes();
   invoke('open_targets')
     .then((t) => {
-      state.openTargets = t;
+      state.openTargets = Array.isArray(t) ? t : [];
       renderHead();
     })
     .catch(() => {});

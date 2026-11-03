@@ -13,7 +13,17 @@ const { chromium } = require('playwright');
 
 const root = path.join(__dirname, '..', 'public');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json' };
-const agents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'agents.json'), 'utf8')).agents.map((a) => ({ ...a, available: true }));
+// The agents as the backend sends them to the screen (see AgentOut in agents.rs): a live model catalog is
+// `dynamic_models`, and one with no safe default is `requiresModelSelection`.
+const agents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'agents.json'), 'utf8')).agents.map((a) => ({
+  ...a,
+  available: true,
+  dynamic_models: Boolean(a.modelsFrom),
+  requiresModelSelection: Boolean(a.modelsFrom && a.modelsFrom.requireSelection),
+  catalogAvailableWithoutCommand: false
+}));
+const WIN_MODEL = 'M:\\AI\\models\\Qwen3.8-27B-Uncensored-Q4_K_M.gguf';
+const POSIX_MODEL = '/home/demo/models/Qwen3-8B-Q4_K_M.gguf';
 
 const SIZES = [[1280, 800], [900, 600], [760, 480]];
 const SCREENS = [['modelsBtn', 'Local models'], ['settingsBtn', 'Settings'], ['helpBtn', 'Keys'], ['brainBtn', 'Brain']];
@@ -38,6 +48,7 @@ function mockScript(agentList) {
   const answers = {
     list_agents: { agents: agentList, cwd: '/home/demo/project', sep: '/', config_path: '' },
     git_status: { repo: false, files: [] },
+    open_targets: [{ id: 'files', label: 'File manager' }, { id: 'terminal', label: 'Terminal' }],
     graphify_status: { installed: true, installer: '', agents: ['claude'], version: '1' },
     brain_status: { projects: 0, built: false },
     llama_status: { installed: false, path: '', plan: 'the Vulkan build' },
@@ -53,7 +64,16 @@ function mockScript(agentList) {
     const answers = ${JSON.stringify(answers)};
     const win = { label: 'main', onResized: async () => () => {}, isMaximized: async () => false, show: async () => {}, setFocus: async () => {}, listen: async () => () => {}, onCloseRequested: async () => () => {} };
     window.__TAURI__ = {
-      core: { invoke: async (n) => { await new Promise((r) => setTimeout(r, 150)); if (n in answers) return answers[n]; if (/^(list|detect|sessions|spaces)/.test(n)) return []; return null; }, convertFileSrc: (x) => x },
+      core: { invoke: async (n, a) => {
+        (window.__calls = window.__calls || []).push([n, a]);
+        await new Promise((r) => setTimeout(r, 150));
+        // the backend only offers (and launches) model files it found by scanning
+        if (n === 'agent_models') return a && a.agentId === 'gguf' ? ${JSON.stringify([WIN_MODEL, POSIX_MODEL])} : [];
+        if (n === 'start_session') return { command: 'llama-cli', cwd: '/home/demo/project', pcControl: false, connectorsActive: [] };
+        if (n in answers) return answers[n];
+        if (/^(list|detect|sessions|spaces)/.test(n)) return [];
+        return null;
+      }, convertFileSrc: (x) => x },
       event: { listen: async () => () => {}, emit: async () => {} },
       window: { getCurrentWindow: () => win },
       webviewWindow: { getCurrentWebviewWindow: () => win }, dialog: {}, opener: {}
@@ -118,6 +138,45 @@ function mockScript(agentList) {
         }
         await page.keyboard.press('Escape');
         await page.waitForTimeout(120);
+      }
+      if (theme === 'light' && w === 1280) {
+        // Starting a llama.cpp chat on a model FILE (a full path). The screen used to reject every path because
+        // it only accepted provider/model names, so this agent could never start.
+        const launch = await page.evaluate(async ([win, posix]) => {
+          const errors = () => [...document.querySelectorAll('.toast.error')].map((e) => e.textContent);
+          const started = () => (window.__calls || []).filter((c) => c[0] === 'start_session').map((c) => c[1].modelId);
+          const out = {};
+          prefs.modelFolders = ['E:\\Stuff\\LLMs']; // a folder the user added earlier
+          for (const [name, id] of [['windows', win], ['posix', posix]]) {
+            document.querySelectorAll('.toast').forEach((t) => t.remove());
+            const s = await createSession('gguf', { modelId: id });
+            await new Promise((r) => setTimeout(r, 400));
+            out[name] = { created: Boolean(s), sentToBackend: started().includes(id), errors: errors(), label: modelLabel(agent('gguf'), id) };
+          }
+          // a file the scan never found, and a name built to break out of quotes, must be refused
+          for (const [name, id] of [['unknown', 'C:\\somewhere\\else.gguf'], ['quote', 'M:\\x"; calc.gguf']]) {
+            document.querySelectorAll('.toast').forEach((t) => t.remove());
+            const before = started().length;
+            const s = await createSession('gguf', { modelId: id });
+            await new Promise((r) => setTimeout(r, 300));
+            out[name] = { created: Boolean(s), launched: started().length > before, errors: errors().length };
+          }
+          const asked = (window.__calls || []).filter((c) => c[0] === 'agent_models' && c[1] && c[1].agentId === 'gguf');
+          out.foldersSent = asked.length > 0 && asked.every((c) => Array.isArray(c[1].folders) && c[1].folders.includes('E:\\Stuff\\LLMs'));
+          out.otherAgentsGetNoFolders = (window.__calls || []).filter((c) => c[0] === 'agent_models' && c[1] && c[1].agentId !== 'gguf').every((c) => c[1].folders === null);
+          return out;
+        }, [WIN_MODEL, POSIX_MODEL]);
+        if (!launch.foldersSent) problems.push('the saved model folders were not sent with the model-list request');
+        if (!launch.otherAgentsGetNoFolders) problems.push('other agents must not receive model folders');
+        for (const k of ['windows', 'posix']) {
+          const r = launch[k];
+          if (!r.created || !r.sentToBackend || r.errors.length) problems.push(`llama.cpp session on a ${k} model path did not start: ${JSON.stringify(r)}`);
+        }
+        if (launch.windows.label !== 'Qwen3.8-27B-Uncensored-Q4_K_M') problems.push(`model label should be the file name, got "${launch.windows.label}"`);
+        for (const k of ['unknown', 'quote']) {
+          const r = launch[k];
+          if (r.created || r.launched || !r.errors) problems.push(`a ${k} model file must be refused: ${JSON.stringify(r)}`);
+        }
       }
       await page.close();
     }

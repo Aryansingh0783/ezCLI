@@ -55,13 +55,18 @@ pub(crate) fn get(url: &str, max_secs: u32, max_bytes: u64) -> Option<String> {
 }
 
 fn percent_decode(s: &str) -> String {
+    // Works on bytes only: slicing the text at i+1..i+3 panics when that lands inside a multi-byte character
+    // (for example "%aé"), and these addresses come from web pages.
+    fn hex(b: u8) -> Option<u8> {
+        (b as char).to_digit(16).map(|d| d as u8)
+    }
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
+            if let (Some(hi), Some(lo)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push(hi * 16 + lo);
                 i += 3;
                 continue;
             }
@@ -777,5 +782,21 @@ mod tests {
         let e = safe_get("https://httpbin.org/redirect-to?url=http%3A%2F%2F127.0.0.1%3A8080%2Fsecret", 15, 100_000).unwrap_err();
         assert!(e.contains("not fetched") || e.contains("could not be fetched") || e.contains("error"), "{e}");
         assert!(!e.contains("secret body"), "{e}");
+    }
+
+    #[test]
+    fn addresses_with_a_percent_before_non_ascii_text_do_not_crash_the_decoder() {
+        // each of these panicked before: the slice after '%' ended inside a multi-byte character
+        assert_eq!(percent_decode("a%aé"), "a%aé");
+        assert_eq!(percent_decode("100%é!"), "100%é!");
+        assert_eq!(percent_decode("%é%é"), "%é%é");
+        assert_eq!(percent_decode("x%€"), "x%€");
+        // and the normal cases still decode
+        assert_eq!(percent_decode("a%20b+c"), "a b c");
+        assert_eq!(percent_decode("%e2%82%ac"), "€");
+        assert_eq!(percent_decode("https%3A%2F%2Fexample.com%2Fa%3Fx%3D1"), "https://example.com/a?x=1");
+        assert_eq!(percent_decode("bad%zz%4"), "bad%zz%4");
+        assert_eq!(percent_decode("%41"), "A");
+        assert_eq!(percent_decode(""), "");
     }
 }
