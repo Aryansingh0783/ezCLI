@@ -293,15 +293,9 @@ const ChatView = {
     return items.some((x) => x.k === 'assistant' || x.k === 'thinking') || s.working ? items : [];
   },
 
-  /** Some local models print their reasoning between "Thinking..." and "...done thinking.". */
+  /** Local models print their reasoning inside markers; see thinking.js. */
   splitThinking(text) {
-    const at = text.search(/^Thinking\.\.\.[ \t]*$/m);
-    if (at < 0) return { think: '', answer: text };
-    text = text.slice(at);
-    const m = /^\s*Thinking\.\.\.[ \t]*\n([\s\S]*?)(?:\n\s*\.\.\.done thinking\.[ \t]*(?:\n|$)|$)/.exec(text);
-    if (!m) return { think: '', answer: text };
-    const finished = /\.\.\.done thinking\./.test(text);
-    return { think: m[1].trim(), answer: finished ? text.slice(m[0].length).trim() : '', open: !finished };
+    return window.ezCliThinking.splitThinking(text);
   },
 
   pushReply(items, key, text) {
