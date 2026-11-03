@@ -6,6 +6,7 @@
 const Models = {
   dlg: null,
   data: { list: [], loaded: [], server: '', error: '' },
+  pc: { found: [], scanning: false, deep: false, error: '', done: false },
   busy: false,
   settings: { context: '', gpu: 'auto' },
   CONTEXTS: ['', '4096', '8192', '16384', '32768', '65536', '131072'],
@@ -89,6 +90,41 @@ const Models = {
     }
   },
 
+  folders() {
+    return Array.isArray(prefs.modelFolders) ? prefs.modelFolders : [];
+  },
+
+  /** Look for .gguf model files on this PC (read-only: folder listings and file sizes). */
+  async scanPc(deep) {
+    if (this.pc.scanning) return;
+    this.pc = { ...this.pc, scanning: true, deep: Boolean(deep), error: '' };
+    this.render();
+    try {
+      this.pc.found = await invoke('local_models_scan', { folders: this.folders(), deep: Boolean(deep) });
+      this.pc.done = true;
+    } catch (e) {
+      this.pc.error = String(e);
+    }
+    this.pc.scanning = false;
+    this.render();
+  },
+
+  addFolder(path) {
+    const p = String(path || '').trim();
+    if (!p) return;
+    if (!this.folders().includes(p)) {
+      prefs.modelFolders = [...this.folders(), p];
+      savePrefs();
+    }
+    return this.scanPc(false);
+  },
+
+  removeFolder(path) {
+    prefs.modelFolders = this.folders().filter((x) => x !== path);
+    savePrefs();
+    return this.scanPc(false);
+  },
+
   serverOn() {
     const t = this.data.server.toLowerCase();
     return /running|listening|on port/.test(t) && !/not running|stopped|is off/.test(t);
@@ -129,6 +165,19 @@ const Models = {
     return this.el('button', { class: primary ? 'btn primary' : 'btn', type: 'button', text: label, ...attrs });
   },
 
+  /** A note when llama.cpp (the program that runs the files) is not installed. */
+  runtimeNote() {
+    const a = typeof agent === 'function' ? agent('gguf') : null;
+    if (!a || a.available) return null;
+    return this.el(
+      'p',
+      { class: 'merror' },
+      'llama.cpp is not installed, so these files cannot run yet. Windows: ',
+      this.el('code', { text: 'winget install ggml.llamacpp' }),
+      '. Linux or macOS: use your package manager or the builds at github.com/ggml-org/llama.cpp, then restart ezCLI.'
+    );
+  },
+
   render(working) {
     const d = this.dlg;
     if (!d) return;
@@ -159,6 +208,17 @@ const Models = {
           : this.btn('Load', { 'data-load': m.key, title: tooBig ? 'Larger than your memory; it may be very slow or fail' : false }, !tooBig)
       );
     });
+    const pcRows = this.pc.found.map((m) => {
+      const f = this.fit(m.bytes);
+      const meta = [m.quant, this.fmtSize(m.bytes), m.source].filter(Boolean).join(' · ');
+      return $e(
+        'div',
+        { class: 'mrow', title: m.path },
+        $e('div', { class: 'mrow-main' }, $e('div', { class: 'mrow-name', text: m.name }), $e('div', { class: 'mrow-meta', text: meta })),
+        f && $e('span', { class: `mfit ${f.cls}`, text: f.text }),
+        this.btn('Chat', { 'data-gguf': m.path, title: 'Start a chat with this model file' }, f ? f.cls !== 'bad' : true)
+      );
+    });
     const loaded = this.data.loaded.length
       ? [...this.data.loaded.map((m) => $e('span', { class: 'mchip', text: m.name })), this.btn('Unload all', { 'data-unload-all': true })]
       : [$e('span', { class: 'mmuted', text: 'Nothing is loaded. A model loads when you chat with it, or click Load.' })];
@@ -167,6 +227,19 @@ const Models = {
     const label = (text, sel) => $e('label', {}, `${text} `, sel);
     const kids = [
       $e('p', { class: 'mmuted', text: profile }),
+      $e('h3', {}, 'On this PC', $e('span', { class: 'mbtns' }, this.btn(this.pc.scanning && !this.pc.deep ? 'Scanning…' : 'Scan', { 'data-scan': true }), this.btn(this.pc.scanning && this.pc.deep ? 'Searching all drives…' : 'Deep scan', { 'data-scan-deep': true, title: 'Search whole drives (up to about 40 seconds)' }))),
+      $e('p', { class: 'mmuted', text: 'Model files (.gguf) already on this computer, whoever downloaded them. They run with a plain llama.cpp build: no LM Studio or Ollama needed.' }),
+      this.pc.error && $e('p', { class: 'merror', text: this.pc.error }),
+      this.runtimeNote(),
+      $e('div', { class: 'mlist' }, pcRows.length ? pcRows : $e('p', { class: 'mmuted', text: this.pc.scanning ? 'Looking through your folders…' : this.pc.done ? 'No model files found. Add the folder they are in below.' : 'Press Scan to look for model files.' })),
+      $e(
+        'div',
+        { class: 'msettings' },
+        $e('input', { type: 'text', 'data-folder-input': true, placeholder: 'Add a folder to search, e.g. D:\\Models or /home/me/models', class: 'mfolder' }),
+        this.btn('Add folder', { 'data-folder-add': true }),
+        this.folders().map((f) => $e('span', { class: 'mchip' }, f, ' ', this.btn('×', { 'data-folder-rm': f, 'aria-label': `Stop searching ${f}`, class: 'mx' })))
+      ),
+      $e('h3', { text: 'LM Studio (optional)' }),
       this.data.error && $e('p', { class: 'merror', text: this.data.error }),
       $e('h3', { text: 'Local server' }),
       $e(
@@ -213,6 +286,7 @@ const Models = {
     if (!this.dlg) this.build();
     this.dlg.showModal();
     this.refresh();
+    if (!this.pc.done) this.scanPc(false);
   },
 
   build() {
@@ -226,6 +300,17 @@ const Models = {
       if (!t) return;
       if (t.hasAttribute('data-close')) return d.close();
       if (t.hasAttribute('data-refresh')) return this.refresh();
+      if (t.hasAttribute('data-scan')) return void this.scanPc(false);
+      if (t.hasAttribute('data-scan-deep')) return void this.scanPc(true);
+      if (t.hasAttribute('data-folder-add')) {
+        const input = d.querySelector('[data-folder-input]');
+        return void this.addFolder(input && input.value);
+      }
+      if (t.dataset.folderRm) return void this.removeFolder(t.dataset.folderRm);
+      if (t.dataset.gguf) {
+        d.close();
+        return void createSession('gguf', { modelId: t.dataset.gguf });
+      }
       if (t.hasAttribute('data-copy')) return void navigator.clipboard.writeText(`http://localhost:${this.port()}/v1`).then(() => toast('Address copied.'));
       if (t.hasAttribute('data-hf')) return void openAgentBrowser('https://huggingface.co/models?library=gguf&sort=trending');
       if (t.dataset.server) return void this.run(t.dataset.server === 'start' ? 'Starting the server' : 'Stopping the server', `server_${t.dataset.server}`);

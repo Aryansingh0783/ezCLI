@@ -12,6 +12,7 @@ pub mod webview_runtime;
 mod web_context;
 mod local_tools;
 mod lmstudio;
+mod local_models;
 mod gemini_auth;
 mod features;
 mod health;
@@ -662,6 +663,20 @@ fn ollama_cloud_catalog_command() -> Result<(String, Vec<String>), String> {
 /// opening the Model menu or pressing refresh, never per turn.
 #[tauri::command]
 async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let is_gguf = state
+        .agents
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|x| x.id == agent_id)
+        .and_then(|a| a.models_from.as_ref())
+        .is_some_and(|f| f.catalog.as_deref() == Some("gguf"));
+    if is_gguf {
+        let list = tauri::async_runtime::spawn_blocking(|| local_models::scan(false)).await.map_err(|e| e.to_string())?;
+        let ids: Vec<String> = list.into_iter().map(|f| f.path).collect();
+        state.catalogs.lock().unwrap().insert(agent_id, ids.clone());
+        return Ok(ids);
+    }
     let (resolved, args, from, pricing) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
@@ -747,6 +762,16 @@ async fn lms_action(action: String, model: Option<String>, gpu: Option<String>, 
     tauri::async_runtime::spawn_blocking(move || lmstudio::run(&action, model.as_deref(), gpu.as_deref(), context))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Look for model files (GGUF) on this PC and remember them as the "Local models" catalog, so a session can
+/// start from one. `deep` also searches whole drives.
+#[tauri::command]
+async fn local_models_scan(folders: Vec<String>, deep: bool, state: State<'_, AppState>) -> Result<Vec<local_models::Found>, String> {
+    local_models::set_extra(&folders);
+    let found = tauri::async_runtime::spawn_blocking(move || local_models::scan(deep)).await.map_err(|e| e.to_string())?;
+    state.catalogs.lock().unwrap().insert("gguf".to_string(), found.iter().map(|f| f.path.clone()).collect());
+    Ok(found)
 }
 
 /// The skills on this PC (name and one-line description), for local models.
@@ -1010,6 +1035,7 @@ pub fn run() {
             agent_browser_follow,
             web_read,
             lms_action,
+            local_models_scan,
             graphify::graphify_status,
             graphify::graphify_plan,
             graphify::graphify_run,

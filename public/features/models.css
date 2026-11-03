@@ -37,3 +37,8 @@
 }
 .mrow:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .mrow .btn:focus-visible, .mcard .btn:focus-visible, .models-head .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.mfolder { flex: 1; min-width: 180px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; }
+.mchip .mx { padding: 0 5px; min-height: 0; line-height: 1.2; border: 0; background: transparent; cursor: pointer; }
+.models-body .msettings { align-items: center; }
+.mbtns { display: inline-flex; gap: 6px; }

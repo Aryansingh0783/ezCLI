@@ -2912,6 +2912,8 @@ async function modelMenu(anchor, forAgent) {
     ? 'No cloud models were returned. Check your connection and refresh.'
     : a.id === 'ollama'
       ? 'No local models downloaded yet. Run "ollama pull <model>" in a terminal, then refresh. Cloud models are under Ollama Cloud.'
+      : a.id === 'gguf'
+        ? 'No model files (.gguf) found yet. Open Models in the sidebar to scan deeper or add a folder.'
       : a.id === 'lmstudio'
         ? 'No LM Studio models found. Download one in LM Studio, make sure the "lms" command works in a terminal (run "lms bootstrap" once), then refresh.'
         : 'No models were returned. Refresh after the CLI is ready.';

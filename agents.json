@@ -847,6 +847,61 @@
       }
     },
     {
+      "id": "gguf",
+      "label": "Local model (llama.cpp)",
+      "vendor": "llamacpp",
+      "icon": "code",
+      "command": "llama-cli",
+      "tier": "free",
+      "_tier_note": "Runs a model file (GGUF) found on this PC with a plain llama.cpp build: no LM Studio and no Ollama needed. Install llama.cpp once (Windows: winget install ggml.llamacpp; Linux/macOS: your package manager or the releases at github.com/ggml-org/llama.cpp). ezCLI never downloads a model for you.",
+      "args": [],
+      "modes": [
+        {
+          "id": "gpu",
+          "label": "GPU (all layers)",
+          "args": [
+            "-cnv",
+            "-ngl",
+            "99"
+          ]
+        },
+        {
+          "id": "cpu",
+          "label": "CPU only",
+          "args": [
+            "-cnv",
+            "-ngl",
+            "0"
+          ]
+        }
+      ],
+      "models": [
+        {
+          "id": "default",
+          "label": "Choose a model file",
+          "args": []
+        }
+      ],
+      "_modelsFrom_note": "The Model pill lists .gguf files found on this PC (see the Models panel to scan deeper or add folders); the chosen file launches as `llama-cli -m <file>`.",
+      "modelsFrom": {
+        "args": [],
+        "launch": [
+          "-m"
+        ],
+        "catalog": "gguf",
+        "requireSelection": true
+      },
+      "modelPricing": {
+        "default": "free",
+        "note": "Local models run on your PC, so they are free."
+      },
+      "imageTransport": "none",
+      "mcp": "none",
+      "headless": {
+        "args": []
+      }
+    },
+    {
       "id": "ollama-cloud",
       "label": "Ollama Cloud",
       "vendor": "ollama",
