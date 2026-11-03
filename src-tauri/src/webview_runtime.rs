@@ -7,7 +7,7 @@ pub fn point_at_installed_runtime() {
     if std::env::var_os("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER").is_some() {
         return;
     }
-    let roots = ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"].iter().filter_map(|v| std::env::var_os(v)).map(|r| {
+    let roots = ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"].iter().filter_map(std::env::var_os).map(|r| {
         let mut p = std::path::PathBuf::from(r);
         p.push("Microsoft");
         p.push("EdgeWebView");

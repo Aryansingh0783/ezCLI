@@ -1455,11 +1455,11 @@ mod tests {
         std::fs::create_dir_all(&codex_pkg).unwrap();
         std::fs::write(codex_pkg.join("codex.js"), "").unwrap();
         std::fs::write(dir.join("notcodex.cmd"), "").unwrap();
-        assert!(codex_node_launch(&dir.join("notcodex.cmd").to_string_lossy().into_owned()).is_none());
+        assert!(codex_node_launch(&dir.join("notcodex.cmd").to_string_lossy()).is_none());
         std::fs::write(dir.join("CODEX.CMD"), "").unwrap();
         // Filename matching is case-insensitive either way.
         if resolve_command("node").is_some() {
-            assert!(codex_node_launch(&dir.join("CODEX.CMD").to_string_lossy().into_owned()).is_some());
+            assert!(codex_node_launch(&dir.join("CODEX.CMD").to_string_lossy()).is_some());
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1470,7 +1470,7 @@ mod tests {
         let dir = std::env::temp_dir().join("ezcli-codex-no-js");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("codex.cmd"), "").unwrap();
-        assert!(codex_node_launch(&dir.join("codex.cmd").to_string_lossy().into_owned()).is_none());
+        assert!(codex_node_launch(&dir.join("codex.cmd").to_string_lossy()).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

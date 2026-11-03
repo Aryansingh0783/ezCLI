@@ -140,15 +140,14 @@ fn mib_from_bytes(bytes: usize) -> Option<u64> {
 fn windows_profile() -> (Option<u64>, Option<String>, Option<u64>) {
     use std::ffi::c_void;
     use std::mem::size_of;
-    use windows::core::{Interface, PCSTR, PCWSTR};
+    use windows::core::{Interface, PCWSTR};
     use windows::Win32::Foundation::FreeLibrary;
     use windows::Win32::Graphics::Dxgi::{IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE};
     use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
     let total_memory_gib = unsafe {
-        let mut memory = MEMORYSTATUSEX::default();
-        memory.dwLength = size_of::<MEMORYSTATUSEX>() as u32;
+        let mut memory = MEMORYSTATUSEX { dwLength: size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
         if GlobalMemoryStatusEx(&mut memory).is_ok() {
             gib_from_bytes(memory.ullTotalPhys)
         } else {
@@ -168,7 +167,7 @@ fn windows_profile() -> (Option<u64>, Option<String>, Option<u64>) {
         let Ok(module) = LoadLibraryW(PCWSTR(dxgi_name.as_ptr())) else {
             return (total_memory_gib, None, None);
         };
-        let Some(symbol) = GetProcAddress(module, PCSTR(b"CreateDXGIFactory1\0".as_ptr())) else {
+        let Some(symbol) = GetProcAddress(module, windows::core::s!("CreateDXGIFactory1")) else {
             let _ = FreeLibrary(module);
             return (total_memory_gib, None, None);
         };
