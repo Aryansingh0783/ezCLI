@@ -458,6 +458,19 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
                     }
                 }
             }
+            // llama-cli no longer accepts -cnv (that option now belongs to llama-completion, and llama-cli is always
+            // an interactive chat), so a saved copy of the stock llama.cpp modes exits with "invalid argument: -cnv".
+            // Only the unedited stock argument lists are rewritten.
+            if existing.id == "gguf" && existing.command.eq_ignore_ascii_case("llama-cli") {
+                for m in existing.modes.iter_mut() {
+                    if m.id == "gpu" && m.args == ["-cnv", "-ngl", "99"] {
+                        m.args = vec!["-ngl".into(), "99".into()];
+                    }
+                    if m.id == "cpu" && m.args == ["-cnv", "-ngl", "0"] {
+                        m.args = vec!["-ngl".into(), "0".into()];
+                    }
+                }
+            }
             // Codex dropped --full-auto entirely ("unrecognized flag"); its
             // modern equivalent is --approve-for-me. Migrate an unedited
             // stock "Full auto" mode and the matching headless.edit flag.
@@ -2124,5 +2137,43 @@ mod tests {
         let (status, output) = run_in_native_pty(launch);
         assert!(status.success(), "opencode exited with {}: {output}", status.exit_code());
         assert!(output.chars().any(|c| c.is_ascii_digit()), "unexpected output: {output}");
+    }
+
+    #[test]
+    fn the_llama_cpp_agent_never_passes_options_that_llama_cli_rejects() {
+        let builtin = serde_json::from_str::<AgentsFile>(BUILTIN).unwrap().agents;
+        let gguf = builtin.iter().find(|a| a.id == "gguf").expect("the llama.cpp agent");
+        assert_eq!(gguf.command, "llama-cli");
+        let everything: Vec<&String> = gguf.args.iter().chain(gguf.modes.iter().flat_map(|m| m.args.iter())).collect();
+        // -cnv/--conversation belong to llama-completion; llama-cli answers "invalid argument" and exits
+        for bad in ["-cnv", "--conversation", "-no-cnv", "--no-conversation"] {
+            assert!(!everything.iter().any(|a| a.as_str() == bad), "llama-cli rejects {bad}");
+        }
+        let args = |id: &str| gguf.modes.iter().find(|m| m.id == id).unwrap().args.clone();
+        assert_eq!(args("gpu"), ["-ngl", "99"]);
+        assert_eq!(args("cpu"), ["-ngl", "0"]);
+        // the model file goes in with -m
+        assert_eq!(gguf.models_from.as_ref().unwrap().launch, ["-m"]);
+    }
+
+    #[test]
+    fn a_saved_llama_cpp_config_with_the_rejected_flag_is_repaired_but_edits_are_kept() {
+        let builtin = serde_json::from_str::<AgentsFile>(BUILTIN).unwrap().agents;
+        let mut saved = builtin.iter().find(|a| a.id == "gguf").unwrap().clone();
+        for m in saved.modes.iter_mut() {
+            let mut a = vec!["-cnv".to_string()];
+            a.extend(m.args.iter().cloned());
+            m.args = a;
+        }
+        // the user changed the CPU mode on purpose: that one must stay exactly as they wrote it
+        saved.modes.iter_mut().find(|m| m.id == "cpu").unwrap().args = vec!["-cnv".into(), "-ngl".into(), "0".into(), "-c".into(), "4096".into()];
+        let mut user = vec![saved];
+        merge_builtin(&mut user);
+        let mode = |id: &str| user[0].modes.iter().find(|m| m.id == id).unwrap().args.clone();
+        assert_eq!(mode("gpu"), ["-ngl", "99"], "the stock GPU mode must lose -cnv");
+        assert_eq!(mode("cpu"), ["-cnv", "-ngl", "0", "-c", "4096"], "an edited mode must be left alone");
+        // running the repair again changes nothing
+        merge_builtin(&mut user);
+        assert_eq!(user[0].modes.iter().find(|m| m.id == "gpu").unwrap().args, ["-ngl", "99"]);
     }
 }
