@@ -168,6 +168,70 @@ pub fn run_command(command: &str, cwd: &str, limit_secs: u64) -> CommandResult {
     CommandResult { output, exit: status.and_then(|s| s.code()), timed_out }
 }
 
+/// `~` and `~/x` mean the home folder; anything else is taken as written.
+fn expand_home(p: &str) -> PathBuf {
+    let p = p.trim();
+    if p == "~" {
+        return dirs::home_dir().unwrap_or_default();
+    }
+    if let Some(rest) = p.strip_prefix("~/").or_else(|| p.strip_prefix("~\\")) {
+        return dirs::home_dir().unwrap_or_default().join(rest);
+    }
+    PathBuf::from(p)
+}
+
+const LIST_MAX: usize = 200;
+const READ_MAX: u64 = 64 * 1024;
+
+/// The entries of one folder, folders first, for a model that was allowed to look. Read-only.
+pub fn list_dir(path: &str) -> Result<String, String> {
+    let dir = expand_home(path);
+    let rd = std::fs::read_dir(&dir).map_err(|e| format!("Cannot open {}: {e}", dir.display()))?;
+    let mut rows: Vec<(bool, String, u64)> = rd
+        .flatten()
+        .map(|e| {
+            let md = e.metadata().ok();
+            (md.as_ref().is_some_and(|m| m.is_dir()), e.file_name().to_string_lossy().into_owned(), md.map_or(0, |m| m.len()))
+        })
+        .collect();
+    rows.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    let total = rows.len();
+    let mut out = format!("{} ({total} entries)\n", dir.display());
+    for (is_dir, name, size) in rows.into_iter().take(LIST_MAX) {
+        if is_dir {
+            out.push_str(&format!("{name}/\n"));
+        } else {
+            out.push_str(&format!("{name}  ({size} bytes)\n"));
+        }
+    }
+    if total > LIST_MAX {
+        out.push_str(&format!("[only the first {LIST_MAX} of {total} shown]\n"));
+    }
+    Ok(out.trim_end().to_string())
+}
+
+/// The text of one file (first 64 KB), for a model that was allowed to look. Read-only; binary files are refused.
+pub fn read_text(path: &str) -> Result<String, String> {
+    use std::io::Read;
+    let file = expand_home(path);
+    let md = std::fs::metadata(&file).map_err(|e| format!("Cannot open {}: {e}", file.display()))?;
+    if md.is_dir() {
+        return Err(format!("{} is a folder; list it instead.", file.display()));
+    }
+    let mut buf = Vec::new();
+    std::fs::File::open(&file)
+        .and_then(|f| f.take(READ_MAX).read_to_end(&mut buf))
+        .map_err(|e| format!("Cannot read {}: {e}", file.display()))?;
+    if buf.iter().take(8192).any(|b| *b == 0) {
+        return Err(format!("{} is not a text file ({} bytes).", file.display(), md.len()));
+    }
+    let mut text = String::from_utf8_lossy(&buf).into_owned();
+    if md.len() > READ_MAX {
+        text.push_str(&format!("\n[file cut at {} KB of {} KB]", READ_MAX / 1024, md.len() / 1024));
+    }
+    Ok(text)
+}
+
 /// Stop a command and every process it started. Killing only the shell would leave its children holding the
 /// output pipes open, so the command would seem to run on after its time limit.
 fn kill_tree(child: &mut std::process::Child) {
@@ -189,6 +253,41 @@ fn kill_tree(child: &mut std::process::Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("ezcli-pc-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn listing_shows_folders_first_and_files_with_sizes() {
+        let d = scratch("list");
+        std::fs::create_dir(d.join("zeta")).unwrap();
+        std::fs::write(d.join("a.txt"), "hello").unwrap();
+        let out = list_dir(&d.to_string_lossy()).unwrap();
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[1], "zeta/");
+        assert_eq!(lines[2], "a.txt  (5 bytes)");
+        assert!(list_dir(&d.join("nope").to_string_lossy()).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn reading_returns_text_cuts_long_files_and_refuses_binary_and_folders() {
+        let d = scratch("read");
+        std::fs::write(d.join("a.txt"), "héllo").unwrap();
+        assert_eq!(read_text(&d.join("a.txt").to_string_lossy()).unwrap(), "héllo");
+        std::fs::write(d.join("big.txt"), "x".repeat(70_000)).unwrap();
+        let big = read_text(&d.join("big.txt").to_string_lossy()).unwrap();
+        assert!(big.contains("[file cut at 64 KB"));
+        assert!(big.len() < 66_000);
+        std::fs::write(d.join("b.bin"), [0u8, 1, 2, 3]).unwrap();
+        assert!(read_text(&d.join("b.bin").to_string_lossy()).unwrap_err().contains("not a text file"));
+        assert!(read_text(&d.to_string_lossy()).unwrap_err().contains("folder"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn front_matter_values_are_read() {

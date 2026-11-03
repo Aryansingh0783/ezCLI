@@ -5,6 +5,8 @@
  *   SEARCH: <query>   search the web, read the top pages, give the model the text
  *   SKILL: <name>     give the model one of your skills (~/.claude/skills)
  *   RUN: <command>    run one PowerShell command on your PC, but only after you click Run on it
+ *   LIST: <folder>    show what is in one folder, after you click Run on it
+ *   READ: <file>      read one text file, after you click Run on it
  *
  * The "Web" button picks auto (search when the model does not know), always, or off. The "Terminal"
  * button is off until you turn it on; even then every command waits for your click. */
@@ -15,7 +17,7 @@ const WebSearch = {
   MAX_STEPS: 4,
   /** Things a frozen model cannot know, so there is no point asking it first. */
   FRESH: /\b(latest|newest|current(ly)?|today|tonight|yesterday|this (week|month|year)|right now|news|recent(ly)?|just (released|announced)|release date|price of|stock|score|weather|who won|202[5-9]|2030)\b/i,
-  REQUEST: /^\s*(SEARCH|BROWSE|SKILL|RUN):\s*(.+)$/im,
+  REQUEST: /^\s*(SEARCH|BROWSE|SKILL|RUN|LIST|READ):\s*(.+)$/im,
   /** Greetings and thanks need no web. */
   SMALLTALK: /^\s*(hi|hello|hey|yo|thanks?|thank you|ok(ay)?|cool|nice|great|good (morning|evening|night)|bye)\b[\s!.?]*$/i,
   skills: null,
@@ -112,7 +114,7 @@ const WebSearch = {
     const parts = [];
     if (web) parts.push('SEARCH: <query> (look something up on the web when you do not know it or it may be out of date)', 'BROWSE: <https address> (open one web page in the in-app browser and read it)');
     if (skills.length) parts.push(`SKILL: <name> (load one of the user's skills: ${skills.slice(0, 60).map((x) => x.name).join(', ')})`);
-    if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)');
+    if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)', 'LIST: <folder path> (see what is in one folder on their PC; the user approves it first)', 'READ: <file path> (read one text file on their PC, first 64 KB; the user approves it first)');
     const tools = parts.map((p) => p.split(':')[0]);
     if (s.toolsIntro) {
       return { text: ` [Reminder: you are ${s.modelId || 'a local model'}, not Claude. Do not guess.${tools.length ? ` Tools as before (real, run by the app; you do have web access through them): ${tools.join(', ')}; reply with only that one line when you use one.` : ''}]`, tools: tools.length };
@@ -287,11 +289,11 @@ const WebSearch = {
           ? `Skill "${got[0]}": ${got[1].replace(/\s*\n\s*/g, ' ')} Follow this skill for my request.`
           : `There is no skill called "${arg}". Carry on without it.`;
         await this.reply(s, msg, got ? `Loaded the skill “${got[0]}”` : `No skill called “${arg}”`);
-      } else if (kind === 'RUN') {
+      } else if (kind === 'RUN' || kind === 'LIST' || kind === 'READ') {
         if (!this.terminalOn()) {
-          await this.reply(s, 'The terminal is turned off, so you cannot run commands. Tell me what you would have run and that I can turn the Terminal button on.', 'Terminal is off');
+          await this.reply(s, 'The terminal is turned off, so you cannot use this on my PC. Tell me what you would have done and that I can turn the Terminal button on.', 'Terminal is off');
         } else {
-          s.runAsk = { cmd: arg };
+          s.runAsk = { kind, cmd: arg };
           ChatView.apply(true);
         }
       }
@@ -319,6 +321,12 @@ const WebSearch = {
     }
     s.webBusy = true;
     try {
+      if (ask.kind === 'LIST' || ask.kind === 'READ') {
+        const look = ask.kind === 'LIST' ? 'pc_list' : 'pc_read';
+        const text = await invoke(look, { path: ask.cmd }).catch((e) => `Could not do that: ${e}`);
+        await this.reply(s, `${ask.kind === 'LIST' ? 'Folder' : 'File'} ${ask.cmd}: ${String(text).replace(/\s*\n\s*/g, ' | ')} Now continue with my request.`, `${ask.kind === 'LIST' ? 'Looked in' : 'Read'}: ${ask.cmd}`, String(text).slice(0, 1200));
+        return;
+      }
       const r = await invoke('run_approved_command', { command: ask.cmd, cwd: s.cwd || '' });
       const out = r.output || '(no output)';
       const status = r.timedOut ? 'it was stopped after 60 seconds' : `exit code ${r.exit ?? '?'}`;
@@ -470,7 +478,7 @@ const WebSearch = {
         prefs.termMode = this.terminalOn() ? 'off' : 'ask';
         savePrefs();
         this.sync();
-        toast(this.terminalOn() ? 'Terminal: ask. The model may propose a command; nothing runs until you click Run on it.' : 'Terminal: off. The model cannot run commands.');
+        toast(this.terminalOn() ? 'Terminal: ask. The model may propose a command, or ask to look in a folder or read a file; nothing happens until you click Run on it.' : 'Terminal: off. The model cannot run commands.');
       });
       grow.before(t);
     }
