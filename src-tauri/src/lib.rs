@@ -790,8 +790,20 @@ async fn hub_files(repo: String) -> Result<Vec<hub::RepoFile>, String> {
 
 /// Start downloading one model file; progress arrives as `model-download` events.
 #[tauri::command]
-fn hub_download(app: tauri::AppHandle, repo: String, file: String, size: u64, sha256: String) -> Result<String, String> {
-    hub::download_model(app, repo, file, size, sha256)
+fn hub_download(app: tauri::AppHandle, repo: String, file: String, size: u64, sha256: String, dir: Option<String>) -> Result<String, String> {
+    hub::download_model(app, repo, file, size, sha256, dir)
+}
+
+/// The latest state of every download, so the screen can ask instead of relying on events alone.
+#[tauri::command]
+fn hub_status() -> Vec<hub::Progress> {
+    hub::status()
+}
+
+/// The folder models are saved in unless the user picks another.
+#[tauri::command]
+fn hub_default_dir() -> String {
+    hub::models_dir().to_string_lossy().into_owned()
 }
 
 #[tauri::command]
@@ -1076,6 +1088,8 @@ pub fn run() {
             hub_search,
             hub_files,
             hub_download,
+            hub_status,
+            hub_default_dir,
             hub_cancel,
             llama_status,
             llama_install,

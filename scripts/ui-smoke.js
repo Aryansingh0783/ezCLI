@@ -43,6 +43,8 @@ function mockScript(agentList) {
     llama_status: { installed: false, path: '', plan: 'the Vulkan build' },
     detect_system_profile: { logicalCpuCores: 8, totalMemoryGib: 32, gpuName: 'Demo GPU', gpuVramMib: 12288 },
     local_models_scan: [{ path: '/m/a-Q4_K_M.gguf', name: 'a-Q4_K_M', bytes: 5e9, quant: 'Q4_K_M', source: 'Downloads' }],
+    hub_default_dir: '/home/demo/.ezcli/models',
+    hub_status: [],
     hub_files: [{ path: 'm-Q4_K_M.gguf', size: 2.5e9, sha256: 'a', quant: 'Q4_K_M' }],
     hub_search: [{ id: 'demo/Model-GGUF', downloads: 10, likes: 1 }],
     lms_action: '[]'
@@ -103,6 +105,17 @@ function mockScript(agentList) {
         await page.waitForTimeout(450);
         if (!(await page.$('dialog[open]'))) problems.push(`${tag}: ${name} did not open`);
         await overflow(name);
+        if (btn === 'modelsBtn') {
+          // every tab of the Models panel: it must open, draw something, and stay inside the window
+          for (const tabId of ['mine', 'lmstudio', 'discover']) {
+            const tab = await page.$(`[data-tab="${tabId}"]`);
+            if (!tab) { problems.push(`${tag}: Models tab "${tabId}" is missing`); continue; }
+            await tab.click({ timeout: 3000 }).catch(() => problems.push(`${tag}: Models tab "${tabId}" cannot be clicked`));
+            await page.waitForTimeout(250);
+            if (!(await page.$('.models-body > *'))) problems.push(`${tag}: Models tab "${tabId}" is empty`);
+            await overflow(`Models/${tabId}`);
+          }
+        }
         await page.keyboard.press('Escape');
         await page.waitForTimeout(120);
       }
