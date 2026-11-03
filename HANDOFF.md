@@ -4,13 +4,39 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-10-15 by Codex (v1.2.1 GitHub release)
+Last updated: 2026-11-03 by Claude (v5.12.11 release)
 
-> **Staleness notice (2026-10-30):** this file was last updated at v2.1.7 (sections 0-1 describe
-> v1.2.1). The app is now **v5.11.0** (see `src-tauri/tauri.conf.json`); the UI is the Sand/Sand Dark
-> theme, not the lime-on-black shell described below, and agents now include OpenCode, Gemini CLI,
-> Antigravity, Ollama, DeepSeek and Freebuff. For v2.2 to v5.11 history use `git log`. Treat the
-> sections below as historical until they are rewritten.
+> **Staleness notice:** sections 0-6 below describe v1.2.1 and are historical. Use the block below
+> for the current state, and `git log` for history between v2.2 and v5.12.
+
+## Current state (v5.12.11, 2026-11-03)
+
+- **Latest release:** [v5.12.11](https://github.com/Aryansingh0783/ezCLI/releases/tag/v5.12.11): `.msi`, `.deb`,
+  `.AppImage`, `.sha256` files and the VS Code `.vsix`. **No macOS `.dmg`**: its build failed on a cfg bug
+  (`GIB` in `system_profile.rs`), fixed on `main` afterwards, so the next release should include it (untested on macOS).
+- **Open:** draft PR #36 bumps `packaging/arch/PKGBUILD` and `.SRCINFO` from 5.12.8 to 5.12.11 (`.deb` sha256
+  verified). Merge only on the user's request. The 5.12.9 and 5.12.10 releases were skipped in the Arch package.
+- **Stack:** Tauri 2 Rust backend (`src-tauri/src/*.rs`), vanilla-JS frontend in `public/` (classic scripts, no modules).
+- **Local models:**
+  - llama.cpp agent `gguf` in `agents.json`. `llama-cli` is always interactive and rejects `-cnv`; modes are
+    `-ngl 99` (GPU) and `-ngl 0` (CPU). `agents::merge_builtin` repairs saved configs that still carry `-cnv`.
+  - LM Studio agent `lmstudio` plus whitelisted `lms` actions (`lmstudio.rs`).
+  - `local_models.rs` scans the PC for model files (no LM Studio or Ollama needed).
+  - `hub.rs` is the Hugging Face browser/downloader (curl, resume, sha256 check, stall detection) and the in-app
+    llama.cpp installer (latest release holds only `nightly-tag.txt`; the nightly tag release holds the zips).
+  - `public/features/models.js` is the Models panel (Discover / My models / LM Studio) with hardware-based
+    recommendations. `system_profile.rs` reads RAM/GPU on Windows, Linux and macOS.
+- **Release process:** user says "merge pr N" / "release X.Y.Z". Merge (squash), bump the version in
+  `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock`, run the "Tag and release" workflow, wait
+  about 7-10 min, check assets, verify the `.deb` sha256, then bump the Arch PKGBUILD and `.SRCINFO`. Tag pushes via the
+  proxy are blocked (403); no force-push. `release.yml` finds the Tauri CLI with a single `gh api --jq 'first(...)'`
+  (a `| head` pipe used to fail at random with exit 141).
+- **CI** (`.github/workflows/ci.yml`): clippy `-D warnings` and tests on Linux and Windows, JS/JSON/version checks,
+  Playwright UI smoke (`scripts/ui-smoke.js`). macOS is only compiled in the release build, so macOS-only code can
+  break a release without failing CI.
+- **Unverified:** nothing has run on real Windows or Arch hardware or against a real `llama-cli`. If a llama.cpp
+  chat still fails for the user, ask for the on-screen message. The cause of one stalled-download report is unknown
+  (downloads now show stall and give-up notes). `tauri.conf.json` has `csp: null` on purpose.
 
 ---
 
