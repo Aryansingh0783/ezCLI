@@ -1067,6 +1067,11 @@ async function createSession(agentId, opts = {}) {
   const a = agent(agentId);
   if (!a) return null;
   if (!a.available) {
+    // llama.cpp runs the model files found on this PC: offer to install it, and start this chat afterwards
+    if (a.id === 'gguf' && typeof Models !== 'undefined') {
+      Models.needLlama(opts.modelId);
+      return null;
+    }
     notInstalledToast(a);
     return null;
   }

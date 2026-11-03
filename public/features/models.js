@@ -10,6 +10,7 @@ const Models = {
   hub: { query: '', repos: [], repo: '', files: [], loading: false, error: '', searched: false },
   dl: {}, // downloads in progress or finished, by key: { state, bytes, total, path, error }
   llama: { installed: true, plan: '', path: '' },
+  pendingChat: '', // the model file to start chatting with once llama.cpp has been installed
   busy: false,
   settings: { context: '', gpu: 'auto' },
   CONTEXTS: ['', '4096', '8192', '16384', '32768', '65536', '131072'],
@@ -109,6 +110,17 @@ const Models = {
     }
   },
 
+  /** Chat was pressed on a model file but llama.cpp is not there: open the panel at the install button. */
+  async needLlama(modelPath) {
+    this.pendingChat = modelPath || '';
+    toast('llama.cpp is needed to run this model. Press "Install llama.cpp" and the chat starts when it is ready.');
+    if (!this.dlg || !this.dlg.open) this.open();
+    await this.loadLlama();
+    this.render();
+    const card = this.dlg && this.dlg.querySelector('[data-llama-install]');
+    if (card) card.scrollIntoView({ block: 'center' });
+  },
+
   async installLlama() {
     this.dl['llama.cpp'] = { state: 'downloading', bytes: 0, total: 0, error: '' };
     this.render();
@@ -135,6 +147,12 @@ const Models = {
       }
       await this.loadLlama();
       toast('llama.cpp is installed.');
+      if (this.pendingChat) {
+        const path = this.pendingChat;
+        this.pendingChat = '';
+        if (this.dlg && this.dlg.open) this.dlg.close();
+        createSession('gguf', { modelId: path });
+      }
     } else if (p.state === 'done') {
       toast('Download finished and checked.');
       this.scanPc(false);

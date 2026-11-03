@@ -5,7 +5,9 @@
 
 use serde::Serialize;
 
+#[cfg(any(windows, test))]
 const MIB: u64 = 1024 * 1024;
+#[cfg(any(windows, test))]
 const GIB: u64 = 1024 * MIB;
 
 /// Hardware facts that are useful when recommending an Ollama route.
@@ -42,10 +44,12 @@ pub fn detect() -> SystemProfile {
     }
 }
 
+#[cfg(any(windows, test))]
 fn gib_from_bytes(bytes: u64) -> Option<u64> {
     (bytes != 0).then(|| bytes.saturating_add(GIB / 2) / GIB)
 }
 
+#[cfg(any(windows, test))]
 fn mib_from_bytes(bytes: usize) -> Option<u64> {
     let bytes = bytes as u64;
     (bytes != 0).then_some(bytes / MIB)

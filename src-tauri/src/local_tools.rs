@@ -104,8 +104,11 @@ pub fn run_command(command: &str, cwd: &str, limit_secs: u64) -> CommandResult {
     };
     #[cfg(not(windows))]
     let mut cmd = {
+        use std::os::unix::process::CommandExt;
         let mut c = Command::new("sh");
         c.args(["-c", command]);
+        // its own process group, so a timeout can stop the shell and everything it started
+        c.process_group(0);
         c
     };
     if !cwd.is_empty() && std::path::Path::new(cwd).is_dir() {
@@ -138,7 +141,7 @@ pub fn run_command(command: &str, cwd: &str, limit_secs: u64) -> CommandResult {
         match child.try_wait() {
             Ok(Some(st)) => break Some(st),
             Ok(None) if start.elapsed() > Duration::from_secs(limit_secs) => {
-                let _ = child.kill();
+                kill_tree(&mut child);
                 timed_out = true;
                 break child.wait().ok();
             }
@@ -165,6 +168,24 @@ pub fn run_command(command: &str, cwd: &str, limit_secs: u64) -> CommandResult {
     CommandResult { output, exit: status.and_then(|s| s.code()), timed_out }
 }
 
+/// Stop a command and every process it started. Killing only the shell would leave its children holding the
+/// output pipes open, so the command would seem to run on after its time limit.
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        // SAFETY: signals the process group this function's caller created for the child (`process_group(0)`)
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGKILL);
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill").args(["/PID", &child.id().to_string(), "/T", "/F"]).creation_flags(0x0800_0000).output();
+    }
+    let _ = child.kill();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,10 +207,12 @@ mod tests {
 
     #[test]
     fn a_command_returns_its_output_and_stops_on_time() {
-        let r = run_command("Write-Output hello", "", 20);
+        // run_command uses PowerShell on Windows and `sh` elsewhere
+        let (echo, sleep) = if cfg!(windows) { ("Write-Output hello", "Start-Sleep 30") } else { ("echo hello", "sleep 30") };
+        let r = run_command(echo, "", 20);
         assert!(r.output.contains("hello"));
         assert_eq!(r.exit, Some(0));
-        let r = run_command("Start-Sleep 30", "", 1);
+        let r = run_command(sleep, "", 1);
         assert!(r.timed_out);
     }
 }

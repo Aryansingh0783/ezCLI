@@ -507,7 +507,7 @@ fn register_obsidian_vault(vault: &Path) -> Result<String, String> {
         .ok_or("Obsidian's vault list has an unexpected shape, so ezCLI left it alone.")?;
     if let Some((id, _)) = map
         .iter()
-        .find(|(_, v)| v.get("path").and_then(|p| p.as_str()).map_or(false, |p| same_path(p, &path)))
+        .find(|(_, v)| v.get("path").and_then(|p| p.as_str()).is_some_and(|p| same_path(p, &path)))
     {
         return Ok(id.clone());
     }

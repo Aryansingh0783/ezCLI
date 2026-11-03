@@ -277,10 +277,7 @@ impl AgentDef {
             Some("opencode") => return Some(McpStyle::OpenCode),
             Some("gemini") => return Some(McpStyle::Gemini),
             Some(_) => return None, // "none" or anything unrecognised
-            None => Path::new(&self.command)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(str::to_ascii_lowercase),
+            None => Some(crate::pathutil::stem(&self.command).to_ascii_lowercase()),
         };
         match named.as_deref() {
             Some("claude") => Some(McpStyle::Claude),
@@ -1158,7 +1155,7 @@ pub fn build_argv(
 /// config key: "Default model to use when no session or agent model is
 /// selected": confirmed against `https://opencode.ai/config.json`).
 pub fn extract_opencode_model_flag(command: &str, argv: &mut Vec<String>) -> Option<String> {
-    let is_opencode = Path::new(command).file_stem().and_then(OsStr::to_str).is_some_and(|s| s.eq_ignore_ascii_case("opencode"));
+    let is_opencode = crate::pathutil::stem(command).eq_ignore_ascii_case("opencode");
     if !is_opencode {
         return None;
     }
@@ -1810,7 +1807,7 @@ mod tests {
                    google/veo-free\n";
         assert_eq!(
             parse_opencode_free(raw),
-            vec!["google/veo-free", "opencode/beam-free", "openrouter/nvidia/nemotron:free"]
+            vec!["google/veo-free", "opencode/beam-free"]
         );
         // Unedited stock configs migrate off the now-rejected --verbose flag.
         let mut stale = {

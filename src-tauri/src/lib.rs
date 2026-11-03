@@ -29,6 +29,7 @@ pub mod linux_env;
 mod mcp_server;
 mod media;
 mod open_in;
+mod pathutil;
 mod pc_control;
 mod pty_mgr;
 mod remote;

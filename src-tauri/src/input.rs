@@ -303,11 +303,6 @@ pub fn vk_for(name: &str) -> Result<u16> {
     Ok(vk.0)
 }
 
-#[cfg(not(windows))]
-pub fn vk_for(_name: &str) -> Result<u16> {
-    Err(anyhow!("key mapping is only implemented on Windows so far"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

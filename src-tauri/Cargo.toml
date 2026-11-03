@@ -39,6 +39,10 @@ sha2 = "0.10"
 # QR code for the remote view URL, rendered as SVG only.
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
+[target.'cfg(unix)'.dependencies]
+# Stop a timed-out command's whole process group (already in Cargo.lock through tauri).
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
   "Win32_Foundation",
