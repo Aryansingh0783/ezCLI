@@ -129,7 +129,7 @@ const Models = {
           <div class="mrow-main"><div class="mrow-name">${esc2(m.name)}</div><div class="mrow-meta">${esc2(meta)}</div></div>
           ${f ? `<span class="mfit ${f.cls}">${f.text}</span>` : ''}
           <button class="btn" data-chat="${esc2(m.key)}" title="Start a chat with this model">Chat</button>
-          ${isLoaded ? `<button class="btn" data-unload="${esc2(m.key)}">Unload</button>` : `<button class="btn primary" data-load="${esc2(m.key)}">Load</button>`}
+          ${isLoaded ? `<button class="btn" data-unload="${esc2(m.key)}">Unload</button>` : `<button class="btn ${f && f.cls === 'bad' ? '' : 'primary'}" data-load="${esc2(m.key)}" ${f && f.cls === 'bad' ? 'title="Larger than your memory; it may be very slow or fail"' : ''}>Load</button>`}
         </div>`;
       })
       .join('');

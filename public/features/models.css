@@ -21,3 +21,19 @@
 .msettings select { margin-left: 6px; }
 .merror { color: #c23a2f; font-size: 12px; white-space: pre-wrap; }
 .models-body code { font-size: 11px; }
+
+/* Dark surfaces: lighter badge text so it stays readable. */
+:root[data-theme='dark'] .mfit.good { color: #7fd69a; }
+:root[data-theme='dark'] .mfit.ok { color: #e6bf5c; }
+:root[data-theme='dark'] .mfit.bad { color: #f0877d; }
+.msettings select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.mrow:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.mrow .btn:focus-visible, .mcard .btn:focus-visible, .models-head .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
