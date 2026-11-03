@@ -9,7 +9,7 @@
 # ezCLI_<version>_amd64.deb.sha256 asset on the release page. Then run
 # `makepkg --printsrcinfo > .SRCINFO` again before publishing.
 pkgname=ezcli-bin
-pkgver=5.12.3
+pkgver=5.12.4
 pkgrel=1
 pkgdesc="A desktop window for coding CLIs: Claude Code, Codex, OpenCode, Gemini, Ollama and more"
 arch=('x86_64')
@@ -28,7 +28,7 @@ source=(
   "LICENSE::https://raw.githubusercontent.com/Aryansingh0783/ezCLI/v${pkgver}/LICENSE"
 )
 sha256sums=(
-  '32f7b006e77f28c440a8d2660518e731288610c68c8c61c6a9e47da13f5df4e2'
+  '093b7fdba11aa6f0f68aa6d74353ba19bf34e31fd2be010aa2bac4edf4eb82c3'
   '5e5d3e0401dec4d090df4e2e337f3c4c353786298d2b32e5ec1d8d210935c4d9'
 )
 # .deb is an ar archive of nested tarballs; makepkg has no built-in
