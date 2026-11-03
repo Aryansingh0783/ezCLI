@@ -112,55 +112,100 @@ const Models = {
     await this.refresh();
   },
 
+  /** Build an element; text is always set with textContent, never parsed as HTML. */
+  el(tag, props = {}, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (v === false || v == null) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else n.setAttribute(k, v === true ? '' : String(v));
+    }
+    for (const c of kids.flat()) if (c) n.append(c);
+    return n;
+  },
+
+  btn(label, attrs = {}, primary = false) {
+    return this.el('button', { class: primary ? 'btn primary' : 'btn', type: 'button', text: label, ...attrs });
+  },
+
   render(working) {
     const d = this.dlg;
     if (!d) return;
     const body = d.querySelector('.models-body');
-    const esc2 = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const $e = (t, p, ...k) => this.el(t, p, ...k);
     const profile = typeof systemProfileSummary === 'function' ? systemProfileSummary() : '';
     const on = this.serverOn();
     const loadedKeys = new Set(this.data.loaded.map((m) => m.key));
-    const rows = this.data.list
-      .map((m) => {
-        const f = this.fit(m.bytes);
-        const isLoaded = loadedKeys.has(m.key);
-        const meta = [m.params, m.arch, this.fmtSize(m.bytes), m.vision ? 'vision' : '', m.tools ? 'tools' : ''].filter(Boolean).join(' · ');
-        return `<div class="mrow">
-          <div class="mrow-main"><div class="mrow-name">${esc2(m.name)}</div><div class="mrow-meta">${esc2(meta)}</div></div>
-          ${f ? `<span class="mfit ${f.cls}">${f.text}</span>` : ''}
-          <button class="btn" data-chat="${esc2(m.key)}" title="Start a chat with this model">Chat</button>
-          ${isLoaded ? `<button class="btn" data-unload="${esc2(m.key)}">Unload</button>` : `<button class="btn primary" data-load="${esc2(m.key)}">Load</button>`}
-        </div>`;
-      })
-      .join('');
+    // the hardware profile may arrive after the panel opens: draw again once it does
+    if (!state.systemProfile && !this.profileRetry) {
+      this.profileRetry = setTimeout(() => {
+        this.profileRetry = null;
+        if (this.dlg && this.dlg.open) this.render();
+      }, 1500);
+    }
+    const rows = this.data.list.map((m) => {
+      const f = this.fit(m.bytes);
+      const meta = [m.params, m.arch, this.fmtSize(m.bytes), m.vision ? 'vision' : '', m.tools ? 'tools' : ''].filter(Boolean).join(' · ');
+      const tooBig = f && f.cls === 'bad';
+      return $e(
+        'div',
+        { class: 'mrow' },
+        $e('div', { class: 'mrow-main' }, $e('div', { class: 'mrow-name', text: m.name }), $e('div', { class: 'mrow-meta', text: meta })),
+        f && $e('span', { class: `mfit ${f.cls}`, text: f.text }),
+        this.btn('Chat', { 'data-chat': m.key, title: 'Start a chat with this model' }),
+        loadedKeys.has(m.key)
+          ? this.btn('Unload', { 'data-unload': m.key })
+          : this.btn('Load', { 'data-load': m.key, title: tooBig ? 'Larger than your memory; it may be very slow or fail' : false }, !tooBig)
+      );
+    });
     const loaded = this.data.loaded.length
-      ? this.data.loaded.map((m) => `<span class="mchip">${esc2(m.name)}</span>`).join('') + '<button class="btn" data-unload-all>Unload all</button>'
-      : '<span class="mmuted">Nothing is loaded. A model loads when you chat with it, or click Load.</span>';
-    body.innerHTML = `
-      <p class="mmuted">${esc2(profile)}</p>
-      ${this.data.error ? `<p class="merror">${esc2(this.data.error)}</p>` : ''}
-      <h3>Local server</h3>
-      <div class="mcard">
-        <span class="mdot ${on ? 'on' : ''}"></span>
-        <div class="mrow-main"><div class="mrow-name">${on ? 'Running' : 'Stopped'}</div>
-        <div class="mrow-meta">${on ? `OpenAI-compatible API at http://localhost:${this.port()}/v1` : 'Start it to let other apps use your models through an OpenAI-compatible API.'}</div></div>
-        ${on ? '<button class="btn" data-copy>Copy address</button>' : ''}
-        <button class="btn ${on ? '' : 'primary'}" data-server="${on ? 'stop' : 'start'}">${on ? 'Stop' : 'Start'}</button>
-      </div>
-      <h3>Loaded in memory</h3>
-      <div class="mcard mloaded">${loaded}</div>
-      <h3>Downloaded <button class="btn" data-refresh>Refresh</button></h3>
-      <div class="msettings">
-        <label>Context length <select data-ctx>${this.CONTEXTS.map((c) => `<option value="${c}" ${c === this.settings.context ? 'selected' : ''}>${c || 'model default'}</option>`).join('')}</select></label>
-        <label>GPU offload <select data-gpu>${this.GPUS.map(([v, t]) => `<option value="${v}" ${v === this.settings.gpu ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-      </div>
-      <div class="mlist">${rows || `<p class="mmuted">${this.busy ? esc2(working ? `${working}…` : 'Reading your models…') : 'No downloaded chat models found.'}</p>`}</div>
-      <h3>Get more models</h3>
-      <div class="mcard">
-        <div class="mrow-main"><div class="mrow-name">Browse and download</div>
-        <div class="mrow-meta">Search Hugging Face in the in-app browser, then run <code>lms get &lt;model&gt;</code> in a terminal. ezCLI never downloads a model for you.</div></div>
-        <button class="btn" data-hf>Search models</button>
-      </div>`;
+      ? [...this.data.loaded.map((m) => $e('span', { class: 'mchip', text: m.name })), this.btn('Unload all', { 'data-unload-all': true })]
+      : [$e('span', { class: 'mmuted', text: 'Nothing is loaded. A model loads when you chat with it, or click Load.' })];
+    const select = (attr, options, current) =>
+      $e('select', { [attr]: true }, options.map(([v, t]) => $e('option', { value: v, text: t, selected: v === current })));
+    const label = (text, sel) => $e('label', {}, `${text} `, sel);
+    const kids = [
+      $e('p', { class: 'mmuted', text: profile }),
+      this.data.error && $e('p', { class: 'merror', text: this.data.error }),
+      $e('h3', { text: 'Local server' }),
+      $e(
+        'div',
+        { class: 'mcard' },
+        $e('span', { class: on ? 'mdot on' : 'mdot' }),
+        $e(
+          'div',
+          { class: 'mrow-main' },
+          $e('div', { class: 'mrow-name', text: on ? 'Running' : 'Stopped' }),
+          $e('div', { class: 'mrow-meta', text: on ? `OpenAI-compatible API at http://localhost:${this.port()}/v1` : 'Start it to let other apps use your models through an OpenAI-compatible API.' })
+        ),
+        on && this.btn('Copy address', { 'data-copy': true }),
+        this.btn(on ? 'Stop' : 'Start', { 'data-server': on ? 'stop' : 'start' }, !on)
+      ),
+      $e('h3', { text: 'Loaded in memory' }),
+      $e('div', { class: 'mcard mloaded' }, loaded),
+      $e('h3', {}, 'Downloaded', this.btn('Refresh', { 'data-refresh': true })),
+      $e(
+        'div',
+        { class: 'msettings' },
+        label('Context length', select('data-ctx', this.CONTEXTS.map((c) => [c, c || 'model default']), this.settings.context)),
+        label('GPU offload', select('data-gpu', this.GPUS, this.settings.gpu))
+      ),
+      $e('div', { class: 'mlist' }, rows.length ? rows : $e('p', { class: 'mmuted', text: this.busy ? (working ? `${working}…` : 'Reading your models…') : 'No downloaded chat models found.' })),
+      $e('h3', { text: 'Get more models' }),
+      $e(
+        'div',
+        { class: 'mcard' },
+        $e(
+          'div',
+          { class: 'mrow-main' },
+          $e('div', { class: 'mrow-name', text: 'Browse and download' }),
+          $e('div', { class: 'mrow-meta' }, 'Search Hugging Face in the in-app browser, then run ', $e('code', { text: 'lms get <model>' }), ' in a terminal. ezCLI never downloads a model for you.')
+        ),
+        this.btn('Search models', { 'data-hf': true })
+      )
+    ];
+    body.replaceChildren(...kids.filter(Boolean));
     body.querySelectorAll('button').forEach((b) => (b.disabled = this.busy));
   },
 
@@ -173,7 +218,7 @@ const Models = {
   build() {
     const d = document.createElement('dialog');
     d.className = 'sheet wide models-sheet';
-    d.innerHTML = '<div class="models-head"><h2>Local models</h2><button class="btn" data-close>Done</button></div><div class="models-body"></div>';
+    d.append(this.el('div', { class: 'models-head' }, this.el('h2', { text: 'Local models' }), this.btn('Done', { 'data-close': true })), this.el('div', { class: 'models-body' }));
     document.body.appendChild(d);
     this.dlg = d;
     d.addEventListener('click', (e) => {
@@ -210,7 +255,18 @@ hooks.boot.push(() => {
     b.id = 'modelsBtn';
     b.title = 'Local models: downloaded, loaded, and the local server';
     b.setAttribute('aria-label', 'Local models');
-    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="6" rx="1.5" /><rect x="4" y="14" width="16" height="6" rx="1.5" /><path d="M8 7h.01M8 17h.01" /></svg><span class="rail-label">Models</span>';
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    for (const [k, v] of Object.entries({ width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.7 })) svg.setAttribute(k, v);
+    for (const [tag, attrs] of [['rect', { x: 4, y: 4, width: 16, height: 6, rx: 1.5 }], ['rect', { x: 4, y: 14, width: 16, height: 6, rx: 1.5 }], ['path', { d: 'M8 7h.01M8 17h.01' }]]) {
+      const n = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+      svg.append(n);
+    }
+    const label = document.createElement('span');
+    label.className = 'rail-label';
+    label.textContent = 'Models';
+    b.append(svg, label);
     anchor.before(b);
     b.addEventListener('click', () => Models.open());
   }
