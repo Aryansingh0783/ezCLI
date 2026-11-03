@@ -10,7 +10,7 @@
  * button is off until you turn it on; even then every command waits for your click. */
 
 const WebSearch = {
-  AGENTS: new Set(['ollama', 'ollama-cloud', 'lmstudio']),
+  AGENTS: new Set(['ollama', 'ollama-cloud', 'lmstudio', 'gguf']),
   MODES: ['auto', 'always', 'off'],
   MAX_STEPS: 4,
   /** Things a frozen model cannot know, so there is no point asking it first. */

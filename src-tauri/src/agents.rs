@@ -1700,7 +1700,7 @@ mod tests {
         merge_builtin(&mut user);
         assert_eq!(user.iter().filter(|a| a.id == "claude-code").count(), 1);
         assert_eq!(user[0].command, "my-claude", "user's edit wins");
-        for id in ["opencode", "antigravity", "gemini", "ollama", "ollama-cloud", "lmstudio", "freebuff"] {
+        for id in ["opencode", "antigravity", "gemini", "ollama", "ollama-cloud", "lmstudio", "gguf", "freebuff"] {
             assert!(user.iter().any(|a| a.id == id), "missing built-in {id}");
         }
     }
