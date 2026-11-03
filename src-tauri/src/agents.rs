@@ -587,6 +587,7 @@ pub fn parse_catalog(stdout: &str) -> Vec<String> {
 pub fn parse_catalog_for(from: &ModelsFrom, stdout: &str) -> Vec<String> {
     match from.catalog.as_deref() {
         Some("ollama") => parse_ollama_catalog(stdout),
+        Some("lmstudio") => parse_lmstudio_catalog(stdout),
         Some("codex") => parse_codex_catalog(stdout),
         Some("opencode-free") => parse_opencode_free(stdout),
         _ => parse_catalog(stdout),
@@ -672,6 +673,52 @@ fn safe_ollama_model_name(name: &str) -> bool {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || "-_.:/@".contains(c))
         && !name.contains("://")
+}
+
+/// `lms ls` lists the downloaded models in sections ("LLM", then "EMBEDDING"), one model per row with its
+/// key first (`qwen/qwen3-8b (1 variant)  8B  qwen3  4.68 GB`). Only rows of the LLM section whose key is
+/// a plain model name are kept, so headers, summaries and errors can never become a launch argument. Also
+/// accepts the JSON form (`lms ls --json`).
+fn parse_lmstudio_catalog(stdout: &str) -> Vec<String> {
+    let safe = |n: &str| {
+        !n.is_empty() && n.len() <= 200 && !n.starts_with('-') && !n.contains("..") && n.chars().all(|c| c.is_ascii_alphanumeric() || "._/:@-".contains(c))
+    };
+    let mut out: Vec<String> = Vec::new();
+    if stdout.trim_start().starts_with('[') {
+        if let Ok(v) = serde_json::from_str::<Vec<serde_json::Value>>(stdout) {
+            for m in v {
+                if m.get("type").and_then(|t| t.as_str()).is_some_and(|t| t != "llm") {
+                    continue;
+                }
+                if let Some(k) = m.get("modelKey").and_then(|k| k.as_str()) {
+                    if safe(k) {
+                        out.push(k.to_string());
+                    }
+                }
+            }
+        }
+    } else {
+        let mut in_llm = false;
+        for line in stdout.lines() {
+            let t = line.trim();
+            let head = t.split_whitespace().next().unwrap_or("");
+            if head.eq_ignore_ascii_case("LLM") {
+                in_llm = true;
+                continue;
+            }
+            if head.eq_ignore_ascii_case("EMBEDDING") {
+                in_llm = false;
+                continue;
+            }
+            if in_llm && safe(head) && !head.ends_with(':') && t.split_whitespace().count() >= 3 {
+                out.push(head.to_string());
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(1000);
+    out
 }
 
 fn parse_ollama_catalog(stdout: &str) -> Vec<String> {
@@ -915,6 +962,7 @@ fn unix_cli_dirs() -> Vec<PathBuf> {
         out.push(home.join(".bun").join("bin"));
         out.push(home.join(".volta").join("bin"));
         out.push(home.join(".cargo").join("bin"));
+        out.push(home.join(".lmstudio").join("bin")); // LM Studio's `lms`
         // nvm keeps one folder per Node version; the newest name sorts last
         if let Ok(rd) = std::fs::read_dir(home.join(".nvm").join("versions").join("node")) {
             let mut vs: Vec<PathBuf> = rd.flatten().map(|e| e.path().join("bin")).collect();
@@ -939,6 +987,7 @@ fn well_known_cli_dirs() -> Vec<PathBuf> {
         out.push(home.join(".local").join("bin")); // Claude Code native installer
         out.push(home.join(".bun").join("bin"));
         out.push(home.join("scoop").join("shims"));
+        out.push(home.join(".lmstudio").join("bin")); // LM Studio's `lms`
     }
     if let Some(local) = env("LOCALAPPDATA") {
         out.push(local.join("Microsoft").join("WinGet").join("Links"));
@@ -1532,6 +1581,15 @@ mod tests {
     }
 
     #[test]
+    fn lmstudio_catalog_reads_only_llm_rows() {
+        let out = "You have 3 models, taking up 12.3 GB of disk space.\n\nLLM                         PARAMS    ARCH     SIZE\nqwen/qwen3-8b (1 variant)   8B        qwen3    4.68 GB\nmeta-llama-3.1-8b-instruct  8B        llama    4.92 GB\n--evil  1 2\nError: x y\n\nEMBEDDING                   PARAMS    ARCH     SIZE\ntext-embedding-nomic-embed-text-v1.5  Nomic BERT 84 MB\n";
+        let from = ModelsFrom { args: vec!["ls".into()], flag: None, launch: vec!["chat".into()], catalog: Some("lmstudio".into()), require_selection: true };
+        assert_eq!(parse_catalog_for(&from, out), vec!["meta-llama-3.1-8b-instruct".to_string(), "qwen/qwen3-8b".to_string()]);
+        let json = r#"[{"type":"llm","modelKey":"qwen/qwen3-8b"},{"type":"embedding","modelKey":"nomic"},{"type":"llm","modelKey":"--x"}]"#;
+        assert_eq!(parse_catalog_for(&from, json), vec!["qwen/qwen3-8b".to_string()]);
+    }
+
+    #[test]
     fn ollama_catalog_keeps_only_verified_table_rows() {
         let from = ModelsFrom {
             args: vec!["list".into()],
@@ -1642,7 +1700,7 @@ mod tests {
         merge_builtin(&mut user);
         assert_eq!(user.iter().filter(|a| a.id == "claude-code").count(), 1);
         assert_eq!(user[0].command, "my-claude", "user's edit wins");
-        for id in ["opencode", "antigravity", "gemini", "ollama", "ollama-cloud", "freebuff"] {
+        for id in ["opencode", "antigravity", "gemini", "ollama", "ollama-cloud", "lmstudio", "freebuff"] {
             assert!(user.iter().any(|a| a.id == id), "missing built-in {id}");
         }
     }

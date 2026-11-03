@@ -2912,7 +2912,9 @@ async function modelMenu(anchor, forAgent) {
     ? 'No cloud models were returned. Check your connection and refresh.'
     : a.id === 'ollama'
       ? 'No local models downloaded yet. Run "ollama pull <model>" in a terminal, then refresh. Cloud models are under Ollama Cloud.'
-      : 'No models were returned. Refresh after the CLI is ready.';
+      : a.id === 'lmstudio'
+        ? 'No LM Studio models found. Download one in LM Studio, make sure the "lms" command works in a terminal (run "lms bootstrap" once), then refresh.'
+        : 'No models were returned. Refresh after the CLI is ready.';
   if (!allModels(a).length) items.unshift({ label: emptyText, disabled: true });
   if (a.dynamic_models) {
     items.push({ sep: true });
