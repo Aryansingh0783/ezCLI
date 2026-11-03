@@ -1347,6 +1347,16 @@ async function attachPty(s, ptyId, isCurrentLaunch = () => true) {
     s.exitCode = e.payload;
     s.working = false;
     s.term.write(`\r\n\x1b[38;2;106;106;112m── process exited (code ${e.payload}) ──\x1b[0m\r\n`);
+    // llama.cpp itself crashed (Windows access violation, or a segfault/abort elsewhere) while loading the model
+    if (s.agentId === 'gguf' && [3221225477, -1073741819, 139, 134].includes(Number(e.payload))) {
+      s.term.write(
+        '\r\n\x1b[38;2;230;180;80mllama.cpp crashed while loading this model. ezCLI started it correctly; the crash is inside llama.cpp.\r\n' +
+          'Try, in this order:\r\n' +
+          '  1. Change "GPU (all layers)" to CPU (the button under the message box) and start a new chat.\r\n' +
+          '  2. Models > llama.cpp > "CPU-only build" (a GPU driver problem crashes the GPU build).\r\n' +
+          '  3. Try a different model file, for example one from "Recommended for this PC". Models with "MTP" in the name need very new support.\x1b[0m\r\n'
+      );
+    }
     recordUsage(s);
     updateTabMeta(s);
     renderSpaces();

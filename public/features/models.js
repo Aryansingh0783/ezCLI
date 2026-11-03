@@ -28,7 +28,9 @@ const Models = {
   hub: { query: '', repos: [], repo: '', files: [], loading: false, error: '', searched: false },
   rec: { items: [], loading: false, done: false, note: '' },
   dl: {}, // downloads in progress or finished, by key: { state, bytes, total, path, error }
-  llama: { installed: true, plan: '', path: '' },
+  llama: { installed: true, plan: '', path: '', version: '' },
+  latest: { tag: '', checking: false, error: '' }, // the newest llama.cpp release, once asked
+  confirmDel: '', // the model file waiting for a second click to be deleted
   tab: 'discover', // which tab is showing: discover | mine | lmstudio
   defaultDir: '', // where models are saved unless the user picks a folder
   starting: 0, // starts being sent to the backend (polling waits for them)
@@ -271,12 +273,13 @@ const Models = {
     if (card) card.scrollIntoView({ block: 'center' });
   },
 
-  async installLlama() {
+  async installLlama(cpuOnly) {
     this.dl['llama.cpp'] = { state: 'downloading', bytes: 0, total: 0, error: '', note: '' };
+    this.latest = { tag: '', checking: false, error: '' };
     this.render();
     this.starting++;
     try {
-      await invoke('llama_install');
+      await invoke('llama_install', { cpuOnly: Boolean(cpuOnly) });
       this.poll();
     } catch (e) {
       this.dl['llama.cpp'] = { state: 'error', bytes: 0, total: 0, error: String(e), note: '' };
@@ -284,6 +287,34 @@ const Models = {
     } finally {
       this.starting--;
     }
+  },
+
+  async checkLlamaUpdate() {
+    this.latest = { tag: '', checking: true, error: '' };
+    this.render();
+    try {
+      this.latest = { tag: await invoke('llama_latest', { cpuOnly: false }), checking: false, error: '' };
+    } catch (e) {
+      this.latest = { tag: '', checking: false, error: String(e) };
+    }
+    this.render();
+  },
+
+  /** Delete one model file after a second click on the same row. */
+  async deleteModel(path) {
+    if (this.confirmDel !== path) {
+      this.confirmDel = path;
+      return void this.render();
+    }
+    this.confirmDel = '';
+    try {
+      await invoke('model_delete', { path });
+      this.pc.found = this.pc.found.filter((m) => m.path !== path);
+      toast('Model deleted.');
+    } catch (e) {
+      toast(String(e));
+    }
+    this.render();
   },
 
   /** A progress event from the downloader (a model file, or llama.cpp itself). */
@@ -450,9 +481,29 @@ const Models = {
 
   /** llama.cpp runs the model files. When it is missing, offer to install it from the official release. */
   runtimeNote() {
-    if (this.llama.installed) return null;
     const d = this.dl['llama.cpp'];
     const busy = d && (d.state === 'downloading' || d.state === 'verifying');
+    if (this.llama.installed) {
+      const have = this.llama.version;
+      const newer = have && this.latest.tag && this.latest.tag !== have;
+      const status = busy ? 'Installing…' : this.latest.checking ? 'Checking for a newer version…' : newer ? `Update available: ${this.latest.tag} (you have ${have})` : have && this.latest.tag ? `Up to date (${have})` : have ? `Version ${have}` : 'Installed (not by ezCLI, so its version is unknown)';
+      return this.el(
+        'div',
+        { class: 'msetup' },
+        this.el(
+          'div',
+          { class: 'mrow-main' },
+          this.el('div', { class: 'mrow-name', text: 'llama.cpp (runs the model files)' }),
+          this.el('div', { class: 'mrow-meta', title: this.llama.path, text: status }),
+          busy && this.progressBar(d),
+          d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error }),
+          this.latest.error && this.el('div', { class: 'merror', text: this.latest.error })
+        ),
+        !busy && this.btn(newer ? 'Update' : 'Check for update', newer ? { 'data-llama-install': true } : { 'data-llama-check': true }, Boolean(newer)),
+        !busy && this.btn('Reinstall', { 'data-llama-install': true, title: 'Download the newest build again and replace the installed one' }),
+        !busy && this.btn('CPU-only build', { 'data-llama-install': true, 'data-cpu': true, title: 'Install the build without GPU support. Use it if models crash while loading.' })
+      );
+    }
     return this.el(
       'div',
       { class: 'msetup' },
@@ -464,7 +515,8 @@ const Models = {
         busy && this.progressBar(d),
         d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error })
       ),
-      !busy && this.btn(d && d.state === 'error' ? 'Try again' : 'Install llama.cpp', { 'data-llama-install': true }, true)
+      !busy && this.btn(d && d.state === 'error' ? 'Try again' : 'Install llama.cpp', { 'data-llama-install': true }, true),
+      !busy && this.btn('CPU-only build', { 'data-llama-install': true, 'data-cpu': true, title: 'Install the build without GPU support' })
     );
   },
 
@@ -562,7 +614,9 @@ const Models = {
         { class: 'mrow', title: m.path },
         $e('div', { class: 'mrow-main' }, $e('div', { class: 'mrow-name', text: m.name }), $e('div', { class: 'mrow-meta', text: meta })),
         f && $e('span', { class: `mfit ${f.cls}`, text: f.text }),
-        this.btn('Chat', { 'data-gguf': m.path, title: 'Start a chat with this model file' })
+        this.btn('Chat', { 'data-gguf': m.path, title: 'Start a chat with this model file' }),
+        this.confirmDel === m.path && this.btn('Keep', { 'data-gguf-del-no': true }),
+        this.btn(this.confirmDel === m.path ? 'Delete the file?' : 'Uninstall', { 'data-gguf-del': m.path, title: 'Delete this model file from your PC' })
       );
     });
     const searching = this.pc.scanning;
@@ -696,7 +750,13 @@ const Models = {
       if (t.hasAttribute('data-refresh')) return this.refresh();
       if (t.hasAttribute('data-dir-change')) return void this.chooseDir();
       if (t.hasAttribute('data-dir-reset')) return void this.resetDir();
-      if (t.hasAttribute('data-llama-install')) return void this.installLlama();
+      if (t.hasAttribute('data-llama-check')) return void this.checkLlamaUpdate();
+      if (t.hasAttribute('data-llama-install')) return void this.installLlama(t.hasAttribute('data-cpu'));
+      if (t.dataset.ggufDel) return void this.deleteModel(t.dataset.ggufDel);
+      if (t.hasAttribute('data-gguf-del-no')) {
+        this.confirmDel = '';
+        return void this.render();
+      }
       if (t.hasAttribute('data-search')) return void this.searchHub();
       if (t.hasAttribute('data-hub-back')) {
         this.hub = { ...this.hub, repo: '', files: [], error: '' };

@@ -54,6 +54,8 @@ function mockScript(agentList) {
     llama_status: { installed: false, path: '', plan: 'the Vulkan build' },
     detect_system_profile: { logicalCpuCores: 8, totalMemoryGib: 32, gpuName: 'Demo GPU', gpuVramMib: 12288 },
     local_models_scan: [{ path: '/m/a-Q4_K_M.gguf', name: 'a-Q4_K_M', bytes: 5e9, quant: 'Q4_K_M', source: 'Downloads' }],
+    llama_latest: 'b9999',
+    model_delete: '/m/a-Q4_K_M.gguf',
     hub_default_dir: '/home/demo/.ezcli/models',
     hub_status: [],
     hub_files: [{ path: 'm-Q4_K_M.gguf', size: 2.5e9, sha256: 'a', quant: 'Q4_K_M' }],
@@ -135,6 +137,24 @@ function mockScript(agentList) {
             if (!(await page.$('.models-body > *'))) problems.push(`${tag}: Models tab "${tabId}" is empty`);
             await overflow(`Models/${tabId}`);
           }
+          // llama.cpp already installed: the panel offers update/reinstall, and a model file is deleted only on a second click
+          const buttons = await page.evaluate(async () => {
+            Models.llama = { installed: true, plan: '', path: '/x/llama-cli', version: 'b6000' };
+            Models.tab = 'mine';
+            Models.render();
+            const labels = () => [...document.querySelectorAll('.models-setup button, .models-body button')].map((b) => b.textContent.trim());
+            const first = labels();
+            document.querySelector('[data-gguf-del]').click();
+            const afterOne = labels();
+            const deletedEarly = (window.__calls || []).some((c) => c[0] === 'model_delete');
+            document.querySelector('[data-gguf-del]').click();
+            await new Promise((r) => setTimeout(r, 100));
+            return { first, afterOne, deletedEarly, deleted: (window.__calls || []).some((c) => c[0] === 'model_delete') };
+          });
+          for (const want of ['Reinstall', 'CPU-only build', 'Check for update', 'Uninstall']) if (!buttons.first.includes(want)) problems.push(`${tag}: Models panel has no "${want}" button`);
+          if (!buttons.afterOne.includes('Delete the file?')) problems.push(`${tag}: the first Uninstall click did not ask again`);
+          if (buttons.deletedEarly) problems.push(`${tag}: a model file was deleted on the first click`);
+          if (!buttons.deleted) problems.push(`${tag}: the second click did not delete the model file`);
         }
         await page.keyboard.press('Escape');
         await page.waitForTimeout(120);

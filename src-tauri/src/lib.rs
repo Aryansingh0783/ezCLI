@@ -824,8 +824,20 @@ fn llama_status() -> hub::LlamaStatus {
 
 /// Install llama.cpp from its official release; progress arrives as `model-download` events with key `llama.cpp`.
 #[tauri::command]
-fn llama_install(app: tauri::AppHandle) -> Result<String, String> {
-    hub::install_llama(app)
+fn llama_install(app: tauri::AppHandle, cpu_only: Option<bool>) -> Result<String, String> {
+    hub::install_llama(app, cpu_only.unwrap_or(false))
+}
+
+/// The newest llama.cpp release that has a build for this PC, for the Update button.
+#[tauri::command]
+async fn llama_latest(cpu_only: Option<bool>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || hub::latest_llama(cpu_only.unwrap_or(false))).await.map_err(|e| e.to_string())?
+}
+
+/// Delete one model file from this PC. The Models panel calls this only after you confirm that exact file.
+#[tauri::command]
+async fn model_delete(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || hub::delete_model(&path)).await.map_err(|e| e.to_string())?
 }
 
 /// The skills on this PC (name and one-line description), for local models.
@@ -1098,6 +1110,8 @@ pub fn run() {
             hub_cancel,
             llama_status,
             llama_install,
+            llama_latest,
+            model_delete,
             graphify::graphify_status,
             graphify::graphify_plan,
             graphify::graphify_run,
