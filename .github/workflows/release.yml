@@ -72,7 +72,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=$(gh api repos/tauri-apps/tauri/releases --jq '.[] | select(.tag_name | startswith("tauri-cli-v2.")) | .tag_name' | head -n 1)
+          # Let the query itself stop after the first match. Piping into `head -n 1` under `pipefail` made the step
+          # fail at random with exit code 141 (SIGPIPE) whenever `head` closed the pipe while `gh` was still writing,
+          # which dropped the Linux (and so the Arch) packages from a release.
+          tag=$(gh api repos/tauri-apps/tauri/releases --jq 'first(.[] | select(.tag_name | startswith("tauri-cli-v2.")) | .tag_name)')
+          [ -n "$tag" ] || { echo "::error::No tauri-cli v2 release found in tauri-apps/tauri"; exit 1; }
           echo "Using Tauri CLI $tag"
           dir="$RUNNER_TEMP/cargo-tauri"
           mkdir -p "$dir"

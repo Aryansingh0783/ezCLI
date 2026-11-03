@@ -5,9 +5,9 @@
 
 use serde::Serialize;
 
-#[cfg(any(windows, target_os = "linux", test))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos", test))]
 const MIB: u64 = 1024 * 1024;
-#[cfg(any(windows, target_os = "linux", test))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos", test))]
 const GIB: u64 = 1024 * MIB;
 
 /// Hardware facts that are useful when recommending an Ollama route.
