@@ -847,6 +847,18 @@ async fn run_approved_command(command: String, cwd: String) -> local_tools::Comm
     tauri::async_runtime::spawn_blocking(move || local_tools::run_command(&command, &cwd, 60)).await.unwrap_or_default()
 }
 
+/// A folder's entries, for a local model the user allowed to look. Called only after a click on that exact path.
+#[tauri::command]
+async fn pc_list(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || local_tools::list_dir(&path)).await.map_err(|e| e.to_string())?
+}
+
+/// A text file's contents, for a local model the user allowed to look. Called only after a click on that exact path.
+#[tauri::command]
+async fn pc_read(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || local_tools::read_text(&path)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn chat_feed_supported(agent_id: String) -> bool {
     chat_feed::supported(&agent_id)
@@ -1133,6 +1145,8 @@ pub fn run() {
             local_skills,
             local_skill_text,
             run_approved_command,
+            pc_list,
+            pc_read,
             gemini_status,
             gemini_connect,
             gemini_disconnect,
