@@ -204,6 +204,10 @@ pub fn scan(deep: bool) -> Vec<Found> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for r in roots {
+        // a disconnected network drive can make even "does this folder exist" slow: stop looking when time is up
+        if started.elapsed() > budget {
+            break;
+        }
         if r.is_dir() && seen.insert(r.clone()) {
             walk(&r, if deep { 9 } else { 7 }, &started, budget, &mut seen, &mut out);
         }

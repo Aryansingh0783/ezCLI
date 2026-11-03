@@ -664,7 +664,7 @@ fn ollama_cloud_catalog_command() -> Result<(String, Vec<String>), String> {
 /// list; Ollama Cloud queries its documented public catalog. Triggered only by
 /// opening the Model menu or pressing refresh, never per turn.
 #[tauri::command]
-async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Vec<String>, String> {
+async fn agent_models(agent_id: String, folders: Option<Vec<String>>, state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let is_gguf = state
         .agents
         .lock()
@@ -674,6 +674,11 @@ async fn agent_models(agent_id: String, state: State<'_, AppState>) -> Result<Ve
         .and_then(|a| a.models_from.as_ref())
         .is_some_and(|f| f.catalog.as_deref() == Some("gguf"));
     if is_gguf {
+        // the folders the user added are saved by the screen and sent with every request, so a model in one of
+        // them is still offered (and launchable) after the app restarts
+        if let Some(f) = folders {
+            local_models::set_extra(&f);
+        }
         let list = tauri::async_runtime::spawn_blocking(|| local_models::scan(false)).await.map_err(|e| e.to_string())?;
         let ids: Vec<String> = list.into_iter().map(|f| f.path).collect();
         state.catalogs.lock().unwrap().insert(agent_id, ids.clone());
