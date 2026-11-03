@@ -860,7 +860,6 @@
           "id": "gpu",
           "label": "GPU (all layers)",
           "args": [
-            "-cnv",
             "-ngl",
             "99"
           ]
@@ -869,7 +868,6 @@
           "id": "cpu",
           "label": "CPU only",
           "args": [
-            "-cnv",
             "-ngl",
             "0"
           ]
@@ -899,7 +897,8 @@
       "mcp": "none",
       "headless": {
         "args": []
-      }
+      },
+      "_modes_note": "llama-cli is always an interactive chat for a chat model, so it takes no conversation flag: the current llama-cli rejects -cnv (that option now belongs to llama-completion). -ngl 99 puts every layer on the GPU on old and new builds alike; -ngl 0 keeps it on the CPU."
     },
     {
       "id": "ollama-cloud",
