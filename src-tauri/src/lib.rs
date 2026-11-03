@@ -16,6 +16,7 @@ mod local_models;
 mod gemini_auth;
 mod features;
 mod health;
+mod hub;
 mod files_api;
 mod git_api;
 mod group;
@@ -774,6 +775,41 @@ async fn local_models_scan(folders: Vec<String>, deep: bool, state: State<'_, Ap
     Ok(found)
 }
 
+/// Search Hugging Face for GGUF models.
+#[tauri::command]
+async fn hub_search(query: String) -> Result<Vec<hub::Repo>, String> {
+    tauri::async_runtime::spawn_blocking(move || hub::search(&query)).await.map_err(|e| e.to_string())?
+}
+
+/// The downloadable model files of one Hugging Face repo.
+#[tauri::command]
+async fn hub_files(repo: String) -> Result<Vec<hub::RepoFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || hub::files(&repo)).await.map_err(|e| e.to_string())?
+}
+
+/// Start downloading one model file; progress arrives as `model-download` events.
+#[tauri::command]
+fn hub_download(app: tauri::AppHandle, repo: String, file: String, size: u64, sha256: String) -> Result<String, String> {
+    hub::download_model(app, repo, file, size, sha256)
+}
+
+#[tauri::command]
+fn hub_cancel(key: String) {
+    hub::cancel(&key)
+}
+
+/// Is llama.cpp (the program that runs model files) installed, and what would the installer fetch?
+#[tauri::command]
+fn llama_status() -> hub::LlamaStatus {
+    hub::llama_status()
+}
+
+/// Install llama.cpp from its official release; progress arrives as `model-download` events with key `llama.cpp`.
+#[tauri::command]
+fn llama_install(app: tauri::AppHandle) -> Result<String, String> {
+    hub::install_llama(app)
+}
+
 /// The skills on this PC (name and one-line description), for local models.
 #[tauri::command]
 fn local_skills() -> Vec<local_tools::Skill> {
@@ -1036,6 +1072,12 @@ pub fn run() {
             web_read,
             lms_action,
             local_models_scan,
+            hub_search,
+            hub_files,
+            hub_download,
+            hub_cancel,
+            llama_status,
+            llama_install,
             graphify::graphify_status,
             graphify::graphify_plan,
             graphify::graphify_run,

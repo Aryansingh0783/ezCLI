@@ -42,3 +42,9 @@
 .mchip .mx { padding: 0 5px; min-height: 0; line-height: 1.2; border: 0; background: transparent; cursor: pointer; }
 .models-body .msettings { align-items: center; }
 .mbtns { display: inline-flex; gap: 6px; }
+
+.mbar { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; margin-top: 6px; }
+.mbar-fill { height: 100%; background: var(--accent); transition: width .3s; }
+.mprog { margin-top: 2px; }
+.mclick { cursor: pointer; }
+.mclick:hover, .mclick:focus-visible { border-color: var(--accent); outline: none; }

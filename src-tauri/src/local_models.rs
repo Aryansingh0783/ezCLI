@@ -44,7 +44,7 @@ pub fn default_roots() -> Vec<PathBuf> {
         for p in [
             ".lmstudio/models", ".cache/lm-studio/models", ".cache/huggingface/hub", ".cache/llama.cpp", "AppData/Local/llama.cpp", "jan/models",
             ".local/share/nomic.ai/GPT4All", "AppData/Local/nomic.ai/GPT4All", "models", "Models", "llama.cpp/models", "koboldcpp", "text-generation-webui/models",
-            "Downloads", "Documents", "Desktop",
+            ".ezcli/models", "Downloads", "Documents", "Desktop",
         ] {
             v.push(h.join(p));
         }
@@ -93,6 +93,7 @@ fn source_of(path: &Path) -> String {
         ("gpt4all", "GPT4All"),
         ("/jan/", "Jan"),
         ("koboldcpp", "KoboldCpp"),
+        (".ezcli/models", "Downloaded in ezCLI"),
         ("llama.cpp", "llama.cpp"),
         ("/downloads/", "Downloads"),
         ("/documents/", "Documents"),

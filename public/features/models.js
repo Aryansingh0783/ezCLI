@@ -7,6 +7,9 @@ const Models = {
   dlg: null,
   data: { list: [], loaded: [], server: '', error: '' },
   pc: { found: [], scanning: false, deep: false, error: '', done: false },
+  hub: { query: '', repos: [], repo: '', files: [], loading: false, error: '', searched: false },
+  dl: {}, // downloads in progress or finished, by key: { state, bytes, total, path, error }
+  llama: { installed: true, plan: '', path: '' },
   busy: false,
   settings: { context: '', gpu: 'auto' },
   CONTEXTS: ['', '4096', '8192', '16384', '32768', '65536', '131072'],
@@ -94,6 +97,98 @@ const Models = {
     return Array.isArray(prefs.modelFolders) ? prefs.modelFolders : [];
   },
 
+  gb(bytes) {
+    return `${(bytes / 1073741824).toFixed(bytes >= 1073741824 * 10 ? 0 : 1)} GB`;
+  },
+
+  async loadLlama() {
+    try {
+      this.llama = await invoke('llama_status');
+    } catch {
+      this.llama = { installed: true, plan: '', path: '' };
+    }
+  },
+
+  async installLlama() {
+    this.dl['llama.cpp'] = { state: 'downloading', bytes: 0, total: 0, error: '' };
+    this.render();
+    try {
+      await invoke('llama_install');
+    } catch (e) {
+      this.dl['llama.cpp'] = { state: 'error', bytes: 0, total: 0, error: String(e) };
+      this.render();
+    }
+  },
+
+  /** A progress event from the downloader (a model file, or llama.cpp itself). */
+  async onProgress(p) {
+    const prev = this.dl[p.key] || {};
+    this.dl[p.key] = { state: p.state, bytes: p.bytes || prev.bytes || 0, total: p.total || prev.total || 0, path: p.path || prev.path || '', error: p.error || '' };
+    const ended = p.state === 'done' || p.state === 'error' || p.state === 'cancelled';
+    if (p.key === 'llama.cpp' && p.state === 'done') {
+      // the agent list tells the app which programs exist: refresh it so the new one counts
+      try {
+        const info = await invoke('list_agents');
+        state.agents = info.agents;
+      } catch {
+        /* the next start will see it */
+      }
+      await this.loadLlama();
+      toast('llama.cpp is installed.');
+    } else if (p.state === 'done') {
+      toast('Download finished and checked.');
+      this.scanPc(false);
+    } else if (p.state === 'error') {
+      toast(p.error || 'The download failed.', 'error');
+    }
+    // progress ticks redraw at most twice a second; the end of a download redraws at once
+    if (ended || !this.drawAt || Date.now() - this.drawAt > 500) {
+      this.drawAt = Date.now();
+      this.render();
+    }
+  },
+
+  async searchHub() {
+    const input = this.dlg && this.dlg.querySelector('[data-search-input]');
+    const q = (input ? input.value : this.hub.query).trim();
+    this.hub = { ...this.hub, query: q, loading: true, error: '', repo: '', files: [], searched: true };
+    this.render();
+    try {
+      this.hub.repos = await invoke('hub_search', { query: q });
+    } catch (e) {
+      this.hub.error = String(e);
+      this.hub.repos = [];
+    }
+    this.hub.loading = false;
+    this.render();
+  },
+
+  async openRepo(id) {
+    this.hub = { ...this.hub, repo: id, files: [], loading: true, error: '' };
+    this.render();
+    try {
+      this.hub.files = await invoke('hub_files', { repo: id });
+    } catch (e) {
+      this.hub.error = String(e);
+    }
+    this.hub.loading = false;
+    this.render();
+  },
+
+  async download(file) {
+    const f = this.hub.files.find((x) => x.path === file);
+    if (!f) return;
+    const key = `${this.hub.repo}/${f.path}`;
+    this.dl[key] = { state: 'downloading', bytes: 0, total: f.size, error: '' };
+    this.render();
+    try {
+      await invoke('hub_download', { repo: this.hub.repo, file: f.path, size: f.size, sha256: f.sha256 });
+    } catch (e) {
+      this.dl[key] = { state: 'error', bytes: 0, total: f.size, error: String(e) };
+      this.render();
+    }
+  },
+
   /** Look for .gguf model files on this PC (read-only: folder listings and file sizes). */
   async scanPc(deep) {
     if (this.pc.scanning) return;
@@ -165,23 +260,74 @@ const Models = {
     return this.el('button', { class: primary ? 'btn primary' : 'btn', type: 'button', text: label, ...attrs });
   },
 
-  /** A note when llama.cpp (the program that runs the files) is not installed. */
+  progressBar(d) {
+    const pct = d.total ? Math.min(100, Math.round((d.bytes / d.total) * 100)) : 0;
+    const bar = this.el('div', { class: 'mbar' }, this.el('div', { class: 'mbar-fill', style: `width:${d.state === 'verifying' ? 100 : pct}%` }));
+    const label = d.state === 'verifying' ? 'Checking the file…' : d.total ? `${this.gb(d.bytes)} of ${this.gb(d.total)} (${pct}%)` : 'Downloading…';
+    return this.el('div', { class: 'mprog' }, bar, this.el('span', { class: 'mmuted', text: label }));
+  },
+
+  /** llama.cpp runs the model files. When it is missing, offer to install it from the official release. */
   runtimeNote() {
-    const a = typeof agent === 'function' ? agent('gguf') : null;
-    if (!a || a.available) return null;
+    if (this.llama.installed) return null;
+    const d = this.dl['llama.cpp'];
+    const busy = d && (d.state === 'downloading' || d.state === 'verifying');
     return this.el(
-      'p',
-      { class: 'merror' },
-      'llama.cpp is not installed, so these files cannot run yet. Windows: ',
-      this.el('code', { text: 'winget install ggml.llamacpp' }),
-      '. Linux or macOS: use your package manager or the builds at github.com/ggml-org/llama.cpp, then restart ezCLI.'
+      'div',
+      { class: 'mcard' },
+      this.el(
+        'div',
+        { class: 'mrow-main' },
+        this.el('div', { class: 'mrow-name', text: 'llama.cpp is not installed' }),
+        this.el('div', { class: 'mrow-meta', text: `It is the program that runs these files. ezCLI can install ${this.llama.plan || 'it'} into your own folder (no admin rights).` }),
+        busy && this.progressBar(d),
+        d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error })
+      ),
+      !busy && this.btn('Install llama.cpp', { 'data-llama-install': true }, true)
     );
+  },
+
+  /** The Hugging Face browser: search, pick a model, pick a file, download. */
+  browser(esc) {
+    const h = this.hub;
+    const rows = h.repo
+      ? h.files.map((f) => {
+          const key = `${h.repo}/${f.path}`;
+          const d = this.dl[key];
+          const fit = this.fit(f.size);
+          const busy = d && (d.state === 'downloading' || d.state === 'verifying');
+          const done = d && d.state === 'done';
+          const base = f.path.split('/').pop();
+          return this.el(
+            'div',
+            { class: 'mrow' },
+            this.el('div', { class: 'mrow-main' }, this.el('div', { class: 'mrow-name', text: base }), this.el('div', { class: 'mrow-meta', text: [f.quant, this.gb(f.size), f.sha256 ? 'checksum verified after download' : ''].filter(Boolean).join(' · ') }), busy && this.progressBar(d), d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error })),
+            fit && this.el('span', { class: `mfit ${fit.cls}`, text: fit.text }),
+            busy ? this.btn('Cancel', { 'data-dl-cancel': key }) : done ? this.btn('Chat', { 'data-gguf': d.path }, true) : this.btn('Download', { 'data-dl': f.path }, !fit || fit.cls !== 'bad')
+          );
+        })
+      : h.repos.map((r) =>
+          this.el('div', { class: 'mrow mclick', 'data-repo': r.id, role: 'button', tabindex: '0' }, this.el('div', { class: 'mrow-main' }, this.el('div', { class: 'mrow-name', text: r.id }), this.el('div', { class: 'mrow-meta', text: `${r.downloads.toLocaleString()} downloads · ${r.likes.toLocaleString()} likes` })), this.el('span', { class: 'mmuted', text: 'Files ›' }))
+        );
+    return [
+      this.el('h3', { text: 'Find models' }),
+      this.el('p', { class: 'mmuted', text: 'Search Hugging Face for GGUF models and download one here. Files are checked against Hugging Face\'s checksum and saved in your ezCLI folder.' }),
+      this.el('div', { class: 'msettings' }, this.el('input', { type: 'text', 'data-search-input': true, class: 'mfolder', placeholder: 'Search, e.g. qwen3 8b, llama 3.1, gemma', value: h.query }), this.btn(h.loading && !h.repo ? 'Searching…' : 'Search', { 'data-search': true }), h.repo && this.btn('‹ Back to results', { 'data-hub-back': true })),
+      h.error && this.el('p', { class: 'merror', text: h.error }),
+      h.repo && this.el('p', { class: 'mmuted', text: `${h.repo}: pick a size. Smaller files (Q4) run on less memory; larger ones are more exact.` }),
+      this.el('div', { class: 'mlist' }, rows.length ? rows : this.el('p', { class: 'mmuted', text: h.loading ? 'Loading…' : h.searched ? 'Nothing found. Try another name.' : 'Type a model name and press Search.' }))
+    ];
   },
 
   render(working) {
     const d = this.dlg;
     if (!d) return;
     const body = d.querySelector('.models-body');
+    const keep = { top: body.scrollTop, vals: {}, focus: document.activeElement && d.contains(document.activeElement) ? document.activeElement.getAttribute('data-search-input') !== null ? 'search' : document.activeElement.getAttribute('data-folder-input') !== null ? 'folder' : '' : '' };
+    for (const k of ['search-input', 'folder-input']) {
+      const i = body.querySelector(`[data-${k}]`);
+      if (i) keep.vals[k] = i.value;
+    }
     const $e = (t, p, ...k) => this.el(t, p, ...k);
     const profile = typeof systemProfileSummary === 'function' ? systemProfileSummary() : '';
     const on = this.serverOn();
@@ -239,6 +385,7 @@ const Models = {
         this.btn('Add folder', { 'data-folder-add': true }),
         this.folders().map((f) => $e('span', { class: 'mchip' }, f, ' ', this.btn('×', { 'data-folder-rm': f, 'aria-label': `Stop searching ${f}`, class: 'mx' })))
       ),
+      ...this.browser(),
       $e('h3', { text: 'LM Studio (optional)' }),
       this.data.error && $e('p', { class: 'merror', text: this.data.error }),
       $e('h3', { text: 'Local server' }),
@@ -265,26 +412,24 @@ const Models = {
         label('GPU offload', select('data-gpu', this.GPUS, this.settings.gpu))
       ),
       $e('div', { class: 'mlist' }, rows.length ? rows : $e('p', { class: 'mmuted', text: this.busy ? (working ? `${working}…` : 'Reading your models…') : 'No downloaded chat models found.' })),
-      $e('h3', { text: 'Get more models' }),
-      $e(
-        'div',
-        { class: 'mcard' },
-        $e(
-          'div',
-          { class: 'mrow-main' },
-          $e('div', { class: 'mrow-name', text: 'Browse and download' }),
-          $e('div', { class: 'mrow-meta' }, 'Search Hugging Face in the in-app browser, then run ', $e('code', { text: 'lms get <model>' }), ' in a terminal. ezCLI never downloads a model for you.')
-        ),
-        this.btn('Search models', { 'data-hf': true })
-      )
     ];
     body.replaceChildren(...kids.filter(Boolean));
+    for (const [k, v] of Object.entries(keep.vals)) {
+      const i = body.querySelector(`[data-${k}]`);
+      if (i && v) i.value = v;
+    }
+    body.scrollTop = keep.top;
+    if (keep.focus) {
+      const f = body.querySelector(keep.focus === 'search' ? '[data-search-input]' : '[data-folder-input]');
+      if (f) f.focus();
+    }
     body.querySelectorAll('button').forEach((b) => (b.disabled = this.busy));
   },
 
   open() {
     if (!this.dlg) this.build();
     this.dlg.showModal();
+    this.loadLlama().then(() => this.render());
     this.refresh();
     if (!this.pc.done) this.scanPc(false);
   },
@@ -300,6 +445,14 @@ const Models = {
       if (!t) return;
       if (t.hasAttribute('data-close')) return d.close();
       if (t.hasAttribute('data-refresh')) return this.refresh();
+      if (t.hasAttribute('data-llama-install')) return void this.installLlama();
+      if (t.hasAttribute('data-search')) return void this.searchHub();
+      if (t.hasAttribute('data-hub-back')) {
+        this.hub = { ...this.hub, repo: '', files: [], error: '' };
+        return void this.render();
+      }
+      if (t.dataset.dl) return void this.download(t.dataset.dl);
+      if (t.dataset.dlCancel) return void invoke('hub_cancel', { key: t.dataset.dlCancel });
       if (t.hasAttribute('data-scan')) return void this.scanPc(false);
       if (t.hasAttribute('data-scan-deep')) return void this.scanPc(true);
       if (t.hasAttribute('data-folder-add')) {
@@ -325,6 +478,16 @@ const Models = {
         createSession('lmstudio', { modelId: t.dataset.chat });
       }
     });
+    d.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-repo]');
+      if (row && !e.target.closest('button')) this.openRepo(row.dataset.repo);
+    });
+    d.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (e.target.matches('[data-search-input]')) this.searchHub();
+      else if (e.target.matches('[data-folder-input]')) this.addFolder(e.target.value);
+      else if (e.target.matches('[data-repo]')) this.openRepo(e.target.dataset.repo);
+    });
     d.addEventListener('change', (e) => {
       if (e.target.matches('[data-ctx]')) this.settings.context = e.target.value;
       if (e.target.matches('[data-gpu]')) this.settings.gpu = e.target.value;
@@ -333,6 +496,11 @@ const Models = {
 };
 
 hooks.boot.push(() => {
+  try {
+    listen('model-download', (e) => Models.onProgress(e.payload));
+  } catch {
+    /* no event bridge: downloads still run, progress just is not shown */
+  }
   const anchor = document.getElementById('browserBtn');
   if (anchor && !document.getElementById('modelsBtn')) {
     const b = document.createElement('button');

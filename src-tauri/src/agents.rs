@@ -963,6 +963,7 @@ fn unix_cli_dirs() -> Vec<PathBuf> {
         out.push(home.join(".volta").join("bin"));
         out.push(home.join(".cargo").join("bin"));
         out.push(home.join(".lmstudio").join("bin")); // LM Studio's `lms`
+        out.push(home.join(".ezcli").join("llama.cpp").join("bin")); // llama.cpp installed from the app
         // nvm keeps one folder per Node version; the newest name sorts last
         if let Ok(rd) = std::fs::read_dir(home.join(".nvm").join("versions").join("node")) {
             let mut vs: Vec<PathBuf> = rd.flatten().map(|e| e.path().join("bin")).collect();
@@ -988,6 +989,7 @@ fn well_known_cli_dirs() -> Vec<PathBuf> {
         out.push(home.join(".bun").join("bin"));
         out.push(home.join("scoop").join("shims"));
         out.push(home.join(".lmstudio").join("bin")); // LM Studio's `lms`
+        out.push(home.join(".ezcli").join("llama.cpp").join("bin")); // llama.cpp installed from the app
     }
     if let Some(local) = env("LOCALAPPDATA") {
         out.push(local.join("Microsoft").join("WinGet").join("Links"));
