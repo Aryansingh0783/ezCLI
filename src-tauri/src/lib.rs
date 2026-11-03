@@ -11,6 +11,7 @@ mod chat_sources;
 pub mod webview_runtime;
 mod web_context;
 mod local_tools;
+mod lmstudio;
 mod gemini_auth;
 mod features;
 mod health;
@@ -740,6 +741,14 @@ async fn web_context(query: String, today: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || web_context::context_for(&query, &today)).await.ok().flatten()
 }
 
+/// One LM Studio action from the Models panel (list, load, unload, server). See `lmstudio::build_args`.
+#[tauri::command]
+async fn lms_action(action: String, model: Option<String>, gpu: Option<String>, context: Option<u32>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || lmstudio::run(&action, model.as_deref(), gpu.as_deref(), context))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// The skills on this PC (name and one-line description), for local models.
 #[tauri::command]
 fn local_skills() -> Vec<local_tools::Skill> {
@@ -1000,6 +1009,7 @@ pub fn run() {
             open_agent_browser,
             agent_browser_follow,
             web_read,
+            lms_action,
             graphify::graphify_status,
             graphify::graphify_plan,
             graphify::graphify_run,
