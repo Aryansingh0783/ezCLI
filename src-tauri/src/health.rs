@@ -155,7 +155,7 @@ fn sign_in(a: &AgentDef) -> (&'static str, Option<String>) {
         ),
         // OpenCode, Ollama Local and Freebuff work without a sign-in, or
         // finish their own setup inside the CLI on first run.
-        "opencode" | "ollama" | "freebuff" => ("yes", None),
+        "opencode" | "ollama" | "lmstudio" | "freebuff" => ("yes", None),
         _ => ("unknown", None),
     }
 }

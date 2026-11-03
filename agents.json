@@ -803,6 +803,50 @@
       }
     },
     {
+      "id": "lmstudio",
+      "label": "LM Studio Local",
+      "vendor": "lmstudio",
+      "icon": "code",
+      "command": "lms",
+      "tier": "free",
+      "_tier_note": "Chats with models already downloaded in LM Studio (the `lms` command ships with LM Studio; run `lms bootstrap` once if it is not on PATH). ezCLI never downloads a model for you. Web search and the in-app browser work like Ollama Local.",
+      "args": [],
+      "modes": [
+        {
+          "id": "default",
+          "label": "Chat",
+          "args": []
+        }
+      ],
+      "models": [
+        {
+          "id": "default",
+          "label": "Choose a local model",
+          "args": []
+        }
+      ],
+      "_modelsFrom_note": "The Model pill is filled from `lms ls`; select one before starting and it launches as `lms chat <model>`.",
+      "modelsFrom": {
+        "args": [
+          "ls"
+        ],
+        "launch": [
+          "chat"
+        ],
+        "catalog": "lmstudio",
+        "requireSelection": true
+      },
+      "modelPricing": {
+        "default": "free",
+        "note": "Local models run on your PC, so they are free."
+      },
+      "imageTransport": "none",
+      "mcp": "none",
+      "headless": {
+        "args": []
+      }
+    },
+    {
       "id": "ollama-cloud",
       "label": "Ollama Cloud",
       "vendor": "ollama",
@@ -865,7 +909,9 @@
       "tier": "free",
       "_tier_note": "Free and ad-supported; picks its models server-side. The first run downloads a ~46 MB binary.",
       "args": [],
-      "submit": { "paste": "never" },
+      "submit": {
+        "paste": "never"
+      },
       "modes": [
         {
           "id": "default",
