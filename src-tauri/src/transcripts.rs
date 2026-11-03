@@ -150,7 +150,7 @@ pub fn list() -> Vec<Meta> {
             }
         }
     }
-    out.sort_by(|a, b| b.ended_at.cmp(&a.ended_at));
+    out.sort_by_key(|t| std::cmp::Reverse(t.ended_at));
     out
 }
 

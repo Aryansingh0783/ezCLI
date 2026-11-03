@@ -13,7 +13,7 @@ pub struct Hit {
     pub snippet: String,
 }
 
-fn curl_path() -> Option<String> {
+pub(crate) fn curl_path() -> Option<String> {
     #[cfg(windows)]
     {
         let p = std::path::PathBuf::from(std::env::var_os("SystemRoot")?).join("System32").join("curl.exe");
@@ -25,7 +25,7 @@ fn curl_path() -> Option<String> {
     }
 }
 
-fn get(url: &str, max_secs: u32, max_bytes: u64) -> Option<String> {
+pub(crate) fn get(url: &str, max_secs: u32, max_bytes: u64) -> Option<String> {
     let curl = curl_path()?;
     let mut cmd = Command::new(curl);
     cmd.args([
@@ -72,7 +72,7 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn percent_encode(s: &str) -> String {
+pub(crate) fn percent_encode(s: &str) -> String {
     let mut out = String::new();
     for &c in s.as_bytes() {
         if c.is_ascii_alphanumeric() || b"-_.~".contains(&c) {

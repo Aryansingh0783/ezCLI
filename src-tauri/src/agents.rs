@@ -277,10 +277,7 @@ impl AgentDef {
             Some("opencode") => return Some(McpStyle::OpenCode),
             Some("gemini") => return Some(McpStyle::Gemini),
             Some(_) => return None, // "none" or anything unrecognised
-            None => Path::new(&self.command)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(str::to_ascii_lowercase),
+            None => Some(crate::pathutil::stem(&self.command).to_ascii_lowercase()),
         };
         match named.as_deref() {
             Some("claude") => Some(McpStyle::Claude),
@@ -963,6 +960,7 @@ fn unix_cli_dirs() -> Vec<PathBuf> {
         out.push(home.join(".volta").join("bin"));
         out.push(home.join(".cargo").join("bin"));
         out.push(home.join(".lmstudio").join("bin")); // LM Studio's `lms`
+        out.push(home.join(".ezcli").join("llama.cpp").join("bin")); // llama.cpp installed from the app
         // nvm keeps one folder per Node version; the newest name sorts last
         if let Ok(rd) = std::fs::read_dir(home.join(".nvm").join("versions").join("node")) {
             let mut vs: Vec<PathBuf> = rd.flatten().map(|e| e.path().join("bin")).collect();
@@ -988,6 +986,7 @@ fn well_known_cli_dirs() -> Vec<PathBuf> {
         out.push(home.join(".bun").join("bin"));
         out.push(home.join("scoop").join("shims"));
         out.push(home.join(".lmstudio").join("bin")); // LM Studio's `lms`
+        out.push(home.join(".ezcli").join("llama.cpp").join("bin")); // llama.cpp installed from the app
     }
     if let Some(local) = env("LOCALAPPDATA") {
         out.push(local.join("Microsoft").join("WinGet").join("Links"));
@@ -1156,7 +1155,7 @@ pub fn build_argv(
 /// config key: "Default model to use when no session or agent model is
 /// selected": confirmed against `https://opencode.ai/config.json`).
 pub fn extract_opencode_model_flag(command: &str, argv: &mut Vec<String>) -> Option<String> {
-    let is_opencode = Path::new(command).file_stem().and_then(OsStr::to_str).is_some_and(|s| s.eq_ignore_ascii_case("opencode"));
+    let is_opencode = crate::pathutil::stem(command).eq_ignore_ascii_case("opencode");
     if !is_opencode {
         return None;
     }
@@ -1456,11 +1455,11 @@ mod tests {
         std::fs::create_dir_all(&codex_pkg).unwrap();
         std::fs::write(codex_pkg.join("codex.js"), "").unwrap();
         std::fs::write(dir.join("notcodex.cmd"), "").unwrap();
-        assert!(codex_node_launch(&dir.join("notcodex.cmd").to_string_lossy().into_owned()).is_none());
+        assert!(codex_node_launch(&dir.join("notcodex.cmd").to_string_lossy()).is_none());
         std::fs::write(dir.join("CODEX.CMD"), "").unwrap();
         // Filename matching is case-insensitive either way.
         if resolve_command("node").is_some() {
-            assert!(codex_node_launch(&dir.join("CODEX.CMD").to_string_lossy().into_owned()).is_some());
+            assert!(codex_node_launch(&dir.join("CODEX.CMD").to_string_lossy()).is_some());
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1471,7 +1470,7 @@ mod tests {
         let dir = std::env::temp_dir().join("ezcli-codex-no-js");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("codex.cmd"), "").unwrap();
-        assert!(codex_node_launch(&dir.join("codex.cmd").to_string_lossy().into_owned()).is_none());
+        assert!(codex_node_launch(&dir.join("codex.cmd").to_string_lossy()).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1808,7 +1807,7 @@ mod tests {
                    google/veo-free\n";
         assert_eq!(
             parse_opencode_free(raw),
-            vec!["google/veo-free", "opencode/beam-free", "openrouter/nvidia/nemotron:free"]
+            vec!["google/veo-free", "opencode/beam-free"]
         );
         // Unedited stock configs migrate off the now-rejected --verbose flag.
         let mut stale = {

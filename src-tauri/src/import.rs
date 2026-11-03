@@ -204,7 +204,7 @@ pub fn discover() -> Result<Discovery> {
         });
     }
 
-    entries.sort_by(|a, b| b.summary.updated_at.cmp(&a.summary.updated_at));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.summary.updated_at));
     let catalog = ImportCatalog {
         sources,
         conversations: entries.iter().map(|e| e.summary.clone()).collect(),
@@ -249,7 +249,7 @@ fn collect_files(root: &Path, source: Source) -> (Vec<(u64, u64, PathBuf)>, usiz
             found.push((mtime_ms(&meta), meta.len(), path));
         }
     }
-    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.sort_by_key(|f| std::cmp::Reverse(f.0));
     (found, skipped)
 }
 
@@ -361,7 +361,7 @@ fn summarize(path: &Path, source: Source, mtime: u64, size: u64) -> Option<Summa
     let project = if cwd.is_empty() {
         path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("Unknown folder").to_string()
     } else {
-        Path::new(&cwd).file_name().and_then(|n| n.to_str()).map(str::to_string).unwrap_or_else(|| cwd.clone())
+        Some(crate::pathutil::last_component(&cwd)).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| cwd.clone())
     };
     Some(Summary::Chat(ImportSummary {
         id: opaque_id(path, source),

@@ -44,7 +44,7 @@ pub fn default_roots() -> Vec<PathBuf> {
         for p in [
             ".lmstudio/models", ".cache/lm-studio/models", ".cache/huggingface/hub", ".cache/llama.cpp", "AppData/Local/llama.cpp", "jan/models",
             ".local/share/nomic.ai/GPT4All", "AppData/Local/nomic.ai/GPT4All", "models", "Models", "llama.cpp/models", "koboldcpp", "text-generation-webui/models",
-            "Downloads", "Documents", "Desktop",
+            ".ezcli/models", "Downloads", "Documents", "Desktop",
         ] {
             v.push(h.join(p));
         }
@@ -93,6 +93,7 @@ fn source_of(path: &Path) -> String {
         ("gpt4all", "GPT4All"),
         ("/jan/", "Jan"),
         ("koboldcpp", "KoboldCpp"),
+        (".ezcli/models", "Downloaded in ezCLI"),
         ("llama.cpp", "llama.cpp"),
         ("/downloads/", "Downloads"),
         ("/documents/", "Documents"),
@@ -107,14 +108,14 @@ fn source_of(path: &Path) -> String {
 
 /// `Q4_K_M`, `IQ3_XXS`, `Q8_0`, `F16`, `BF16`… read from the file name; empty when none is there.
 pub fn quant_of(name: &str) -> String {
-    let up = name.to_uppercase().replace('-', "_").replace('.', "_");
+    let up = name.to_uppercase().replace(['-', '.'], "_");
     let toks: Vec<&str> = up.split('_').collect();
     for (i, t) in toks.iter().enumerate() {
-        let is_q = (t.starts_with('Q') || t.starts_with("IQ")) && t.chars().skip(if t.starts_with("IQ") { 2 } else { 1 }).next().is_some_and(|c| c.is_ascii_digit());
+        let is_q = (t.starts_with('Q') || t.starts_with("IQ")) && t.chars().nth(if t.starts_with("IQ") { 2 } else { 1 }).is_some_and(|c| c.is_ascii_digit());
         if is_q {
             let mut q = t.to_string();
             for next in toks.iter().skip(i + 1).take(2) {
-                if matches!(*next, "K" | "M" | "S" | "L" | "XS" | "XXS" | "0" | "1" | "NL") {
+                if matches!(*next, "K" | "M" | "S" | "L" | "XL" | "XS" | "XXS" | "0" | "1" | "NL") {
                     q.push('_');
                     q.push_str(next);
                 } else {
@@ -210,7 +211,7 @@ pub fn scan(deep: bool) -> Vec<Found> {
     // the same file can be reached by two routes (a shortcut, a nested root): keep one
     let mut keys = HashSet::new();
     out.retain(|f| keys.insert(std::fs::canonicalize(&f.path).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| f.path.clone())));
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_cached_key(|f| f.name.to_lowercase());
     out
 }
 
@@ -224,6 +225,7 @@ mod tests {
         assert_eq!(quant_of("llama-3.1-8b-instruct.Q8_0.gguf"), "Q8_0");
         assert_eq!(quant_of("model-IQ3_XXS.gguf"), "IQ3_XXS");
         assert_eq!(quant_of("gemma-2b-f16.gguf"), "F16");
+        assert_eq!(quant_of("gemma-3-12b-it-UD-Q8_K_XL.gguf"), "Q8_K_XL");
         assert_eq!(quant_of("plain.gguf"), "");
     }
 

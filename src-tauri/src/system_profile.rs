@@ -5,7 +5,9 @@
 
 use serde::Serialize;
 
+#[cfg(any(windows, target_os = "linux", test))]
 const MIB: u64 = 1024 * 1024;
+#[cfg(any(windows, target_os = "linux", test))]
 const GIB: u64 = 1024 * MIB;
 
 /// Hardware facts that are useful when recommending an Ollama route.
@@ -21,8 +23,9 @@ pub struct SystemProfile {
     pub gpu_vram_mib: Option<u64>,
 }
 
-/// Collect a minimal local hardware profile. This is safe to call repeatedly
-/// and does not invoke a shell or any third-party executable.
+/// Collect a minimal local hardware profile. This is safe to call repeatedly. On Windows it reads system
+/// APIs; on Linux it reads `/proc` and `/sys` and, when an NVIDIA driver is installed, asks `nvidia-smi` for
+/// the card's name and memory (read-only, a few seconds at most).
 pub fn detect() -> SystemProfile {
     let logical_cpu_cores = std::thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
@@ -31,8 +34,14 @@ pub fn detect() -> SystemProfile {
     #[cfg(windows)]
     let (total_memory_gib, gpu_name, gpu_vram_mib) = windows_profile();
 
-    #[cfg(not(windows))]
-    let (total_memory_gib, gpu_name, gpu_vram_mib) = (None, None, None);
+    #[cfg(target_os = "linux")]
+    let (total_memory_gib, gpu_name, gpu_vram_mib) = linux_profile();
+
+    #[cfg(target_os = "macos")]
+    let (total_memory_gib, gpu_name, gpu_vram_mib) = macos_profile();
+
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    let (total_memory_gib, gpu_name, gpu_vram_mib): (Option<u64>, Option<String>, Option<u64>) = (None, None, None);
 
     SystemProfile {
         logical_cpu_cores,
@@ -42,10 +51,86 @@ pub fn detect() -> SystemProfile {
     }
 }
 
+/// `MemTotal:  32768000 kB` from `/proc/meminfo`, in whole GiB.
+#[cfg(any(target_os = "linux", test))]
+fn parse_meminfo(text: &str) -> Option<u64> {
+    let kb: u64 = text.lines().find_map(|l| l.strip_prefix("MemTotal:"))?.split_whitespace().next()?.parse().ok()?;
+    gib_from_bytes(kb.saturating_mul(1024))
+}
+
+/// First line of `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`: the card and its MiB.
+#[cfg(any(target_os = "linux", test))]
+fn parse_nvidia_smi(text: &str) -> Option<(String, u64)> {
+    let mut best: Option<(String, u64)> = None;
+    for line in text.lines() {
+        let (name, mem) = line.rsplit_once(',')?;
+        let mib: u64 = mem.trim().parse().ok()?;
+        if !name.trim().is_empty() && best.as_ref().map_or(true, |b| mib > b.1) {
+            best = Some((name.trim().to_string(), mib));
+        }
+    }
+    best
+}
+
+/// macOS: RAM from `sysctl`. Apple Silicon shares that memory with its GPU ("unified"), so the GPU has no
+/// memory figure of its own: callers see a GPU name and no VRAM, and size models against RAM.
+#[cfg(target_os = "macos")]
+fn macos_profile() -> (Option<u64>, Option<String>, Option<u64>) {
+    let ram = std::process::Command::new("sysctl")
+        .args(["-n", "hw.memsize"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u64>().ok())
+        .and_then(gib_from_bytes);
+    let gpu = (std::env::consts::ARCH == "aarch64").then(|| "Apple Silicon (unified memory)".to_string());
+    (ram, gpu, None)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_profile() -> (Option<u64>, Option<String>, Option<u64>) {
+    let ram = std::fs::read_to_string("/proc/meminfo").ok().and_then(|t| parse_meminfo(&t));
+    if let Some((name, mib)) = nvidia_gpu() {
+        return (ram, Some(name), Some(mib));
+    }
+    // AMD (and some Intel) cards report their memory in sysfs, in bytes
+    let mut best: Option<u64> = None;
+    if let Ok(rd) = std::fs::read_dir("/sys/class/drm") {
+        for e in rd.flatten() {
+            let bytes = std::fs::read_to_string(e.path().join("device/mem_info_vram_total")).ok().and_then(|t| t.trim().parse::<u64>().ok());
+            if let Some(b) = bytes {
+                best = best.max(Some(b));
+            }
+        }
+    }
+    match best.and_then(|b| mib_from_bytes(b as usize)) {
+        Some(mib) => (ram, Some("AMD GPU".to_string()), Some(mib)),
+        None => (ram, None, None),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn nvidia_gpu() -> Option<(String, u64)> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+    let exe = crate::agents::resolve_command("nvidia-smi")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let out = Command::new(exe)
+            .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        let _ = tx.send(out.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned()));
+    });
+    parse_nvidia_smi(&rx.recv_timeout(Duration::from_secs(4)).ok()??)
+}
+
+#[cfg(any(windows, target_os = "linux", target_os = "macos", test))]
 fn gib_from_bytes(bytes: u64) -> Option<u64> {
     (bytes != 0).then(|| bytes.saturating_add(GIB / 2) / GIB)
 }
 
+#[cfg(any(windows, target_os = "linux", test))]
 fn mib_from_bytes(bytes: usize) -> Option<u64> {
     let bytes = bytes as u64;
     (bytes != 0).then_some(bytes / MIB)
@@ -55,15 +140,14 @@ fn mib_from_bytes(bytes: usize) -> Option<u64> {
 fn windows_profile() -> (Option<u64>, Option<String>, Option<u64>) {
     use std::ffi::c_void;
     use std::mem::size_of;
-    use windows::core::{Interface, PCSTR, PCWSTR};
+    use windows::core::{Interface, PCWSTR};
     use windows::Win32::Foundation::FreeLibrary;
     use windows::Win32::Graphics::Dxgi::{IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE};
     use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
     let total_memory_gib = unsafe {
-        let mut memory = MEMORYSTATUSEX::default();
-        memory.dwLength = size_of::<MEMORYSTATUSEX>() as u32;
+        let mut memory = MEMORYSTATUSEX { dwLength: size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
         if GlobalMemoryStatusEx(&mut memory).is_ok() {
             gib_from_bytes(memory.ullTotalPhys)
         } else {
@@ -83,7 +167,7 @@ fn windows_profile() -> (Option<u64>, Option<String>, Option<u64>) {
         let Ok(module) = LoadLibraryW(PCWSTR(dxgi_name.as_ptr())) else {
             return (total_memory_gib, None, None);
         };
-        let Some(symbol) = GetProcAddress(module, PCSTR(b"CreateDXGIFactory1\0".as_ptr())) else {
+        let Some(symbol) = GetProcAddress(module, windows::core::s!("CreateDXGIFactory1")) else {
             let _ = FreeLibrary(module);
             return (total_memory_gib, None, None);
         };
@@ -164,5 +248,21 @@ mod tests {
     #[test]
     fn profile_always_has_a_cpu_count() {
         assert!(detect().logical_cpu_cores >= 1);
+    }
+
+    #[test]
+    fn linux_memory_and_gpu_text_is_read() {
+        assert_eq!(parse_meminfo("MemFree: 1 kB\nMemTotal:       32768000 kB\n"), Some(31));
+        assert_eq!(parse_meminfo("nothing"), None);
+        assert_eq!(parse_nvidia_smi("NVIDIA GeForce RTX 4070, 12282\n"), Some(("NVIDIA GeForce RTX 4070".to_string(), 12282)));
+        assert_eq!(parse_nvidia_smi("A, 8192\nB, 24576\n"), Some(("B".to_string(), 24576)));
+        assert_eq!(parse_nvidia_smi("No devices were found"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn this_linux_machine_reports_its_memory() {
+        let p = detect();
+        assert!(p.total_memory_gib.is_some_and(|g| g >= 1), "RAM was not read from /proc/meminfo: {p:?}");
     }
 }

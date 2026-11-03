@@ -991,6 +991,7 @@ dependencies = [
  "dashmap",
  "dirs 5.0.1",
  "getrandom 0.2.17",
+ "libc",
  "png 0.17.16",
  "portable-pty",
  "qrcode",

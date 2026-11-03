@@ -853,7 +853,7 @@
       "icon": "code",
       "command": "llama-cli",
       "tier": "free",
-      "_tier_note": "Runs a model file (GGUF) found on this PC with a plain llama.cpp build: no LM Studio and no Ollama needed. Install llama.cpp once (Windows: winget install ggml.llamacpp; Linux/macOS: your package manager or the releases at github.com/ggml-org/llama.cpp). ezCLI never downloads a model for you.",
+      "_tier_note": "Runs a model file (GGUF) found on this PC with a plain llama.cpp build: no LM Studio and no Ollama needed. The Models panel can install llama.cpp from its official release and download models from Hugging Face. ezCLI only downloads when you click.",
       "args": [],
       "modes": [
         {

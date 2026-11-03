@@ -3,10 +3,33 @@
  * loaded in memory, load settings (context length, GPU offload), and the local OpenAI-compatible server.
  * Everything goes through LM Studio's own `lms` command; ezCLI never downloads a model by itself. */
 
+/** Well-known GGUF models, each checked to exist on Hugging Face with ordinary files. Which one is offered, and in
+ *  which size, is decided by the user's own hardware (see `Models.plan`). */
+const CURATED = [
+  { repo: 'Qwen/Qwen3-4B-GGUF', title: 'Qwen3 4B', kind: 'General', note: 'Small and quick' },
+  { repo: 'Qwen/Qwen3-8B-GGUF', title: 'Qwen3 8B', kind: 'General', note: 'Strong all-rounder' },
+  { repo: 'Qwen/Qwen3-14B-GGUF', title: 'Qwen3 14B', kind: 'General', note: 'Better reasoning' },
+  { repo: 'Qwen/Qwen3-30B-A3B-GGUF', title: 'Qwen3 30B-A3B', kind: 'General', note: 'Large, fast for its size' },
+  { repo: 'unsloth/gpt-oss-20b-GGUF', title: 'gpt-oss 20B', kind: 'General', note: 'OpenAI open-weight model' },
+  { repo: 'unsloth/gemma-3-4b-it-GGUF', title: 'Gemma 3 4B', kind: 'General', note: 'Google, small' },
+  { repo: 'unsloth/gemma-3-12b-it-GGUF', title: 'Gemma 3 12B', kind: 'General', note: 'Google, mid-size' },
+  { repo: 'bartowski/Llama-3.2-3B-Instruct-GGUF', title: 'Llama 3.2 3B', kind: 'General', note: 'Tiny, runs almost anywhere' },
+  { repo: 'bartowski/Meta-Llama-3.1-8B-Instruct-GGUF', title: 'Llama 3.1 8B', kind: 'General', note: 'Meta, popular' },
+  { repo: 'bartowski/Mistral-7B-Instruct-v0.3-GGUF', title: 'Mistral 7B', kind: 'General', note: 'Fast and light' },
+  { repo: 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF', title: 'Qwen2.5 Coder 7B', kind: 'Coding', note: 'Code-tuned' },
+  { repo: 'Qwen/Qwen2.5-Coder-14B-Instruct-GGUF', title: 'Qwen2.5 Coder 14B', kind: 'Coding', note: 'Code-tuned, larger' },
+  { repo: 'unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF', title: 'Qwen3 Coder 30B-A3B', kind: 'Coding', note: 'Best local coding model here' }
+];
+
 const Models = {
   dlg: null,
   data: { list: [], loaded: [], server: '', error: '' },
   pc: { found: [], scanning: false, deep: false, error: '', done: false },
+  hub: { query: '', repos: [], repo: '', files: [], loading: false, error: '', searched: false },
+  rec: { items: [], loading: false, done: false, note: '' },
+  dl: {}, // downloads in progress or finished, by key: { state, bytes, total, path, error }
+  llama: { installed: true, plan: '', path: '' },
+  pendingChat: '', // the model file to start chatting with once llama.cpp has been installed
   busy: false,
   settings: { context: '', gpu: 'auto' },
   CONTEXTS: ['', '4096', '8192', '16384', '32768', '65536', '131072'],
@@ -94,6 +117,186 @@ const Models = {
     return Array.isArray(prefs.modelFolders) ? prefs.modelFolders : [];
   },
 
+  /** What this PC can run: the memory a model may use, and whether that is the GPU or the system RAM. */
+  budget() {
+    const p = state.systemProfile;
+    if (!p) return null;
+    const ram = Number(p.totalMemoryGib ?? p.total_memory_gib) || 0;
+    const vram = (Number(p.gpuVramMib ?? p.gpu_vram_mib) || 0) / 1024;
+    const gpu = String(p.gpuName ?? p.gpu_name ?? '');
+    if (vram >= 2) return { gpuGib: vram, ramGib: ram * 0.5, where: 'GPU' };
+    if (/apple/i.test(gpu) && ram) return { gpuGib: ram * 0.65, ramGib: ram * 0.65, where: 'unified memory' };
+    if (ram) return { gpuGib: 0, ramGib: ram * 0.5, where: 'CPU' };
+    return null;
+  },
+
+  /** Rank of a quantisation: higher is closer to the original model. Anything below Q4_K or above Q8 is left out. */
+  quantRank(q) {
+    const u = String(q || '').toUpperCase();
+    if (u.startsWith('Q8')) return 4;
+    if (u.startsWith('Q6')) return 3;
+    if (u.startsWith('Q5')) return 2;
+    if (u.startsWith('Q4_K')) return 1;
+    return 0;
+  },
+
+  /** The best file of one model for a budget: the highest-quality quantisation that fits the GPU, otherwise
+   *  the smallest good one that fits system RAM (slower). Null when nothing fits. */
+  pick(files, b) {
+    const ok = files.filter((f) => this.quantRank(f.quant) > 0);
+    const need = (f) => (f.size / 1073741824) * 1.15;
+    const gpu = ok.filter((f) => b.gpuGib && need(f) <= b.gpuGib).sort((x, y) => this.quantRank(y.quant) - this.quantRank(x.quant) || y.size - x.size)[0];
+    if (gpu) return { file: gpu, tier: b.where === 'CPU' ? 'cpu' : 'gpu' };
+    const ram = ok.filter((f) => this.quantRank(f.quant) === 1 && need(f) <= b.ramGib).sort((x, y) => x.size - y.size)[0];
+    return ram ? { file: ram, tier: 'slow' } : null;
+  },
+
+  /** Choose which curated models to offer: only ones that run on this machine, the most capable first. */
+  plan(entries, b) {
+    const rows = entries.map((e) => ({ ...e, ...(this.pick(e.files, b) || {}) })).filter((r) => r.file);
+    const order = { gpu: 0, cpu: 0, slow: 1 };
+    rows.sort((x, y) => order[x.tier] - order[y.tier] || y.file.size - x.file.size);
+    const perKind = {};
+    return rows.filter((r) => ((perKind[r.kind] = (perKind[r.kind] || 0) + 1) <= 3)).slice(0, 6);
+  },
+
+  async loadRecommended() {
+    if (this.rec.loading || this.rec.done) return;
+    this.rec.loading = true;
+    for (let i = 0; i < 12 && !state.systemProfile; i++) await new Promise((r) => setTimeout(r, 250)); // the hardware scan may still be running
+    const b = this.budget();
+    if (!b) {
+      this.rec = { items: [], loading: false, done: true, note: "ezCLI could not read this PC's memory, so it cannot tell which models fit. Use Find models below and check each file's size against your memory." };
+      return this.render();
+    }
+    const entries = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < CURATED.length) {
+        const e = CURATED[next++];
+        try {
+          const files = await invoke('hub_files', { repo: e.repo });
+          if (Array.isArray(files)) entries.push({ ...e, files });
+        } catch {
+          /* a repo that cannot be read right now is simply not offered */
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    const items = this.plan(entries, b);
+    const note = entries.length === 0 ? 'Could not reach Hugging Face to look up models. Check your connection, then reopen this panel.' : items.length ? '' : 'No ready-made model fits this PC comfortably. Use Find models below and look for small files (under 2 GB).';
+    this.rec = { items, loading: false, done: entries.length > 0, note };
+    this.render();
+  },
+
+  gb(bytes) {
+    return `${(bytes / 1073741824).toFixed(bytes >= 1073741824 * 10 ? 0 : 1)} GB`;
+  },
+
+  async loadLlama() {
+    try {
+      this.llama = await invoke('llama_status');
+    } catch {
+      this.llama = { installed: true, plan: '', path: '' };
+    }
+  },
+
+  /** Chat was pressed on a model file but llama.cpp is not there: open the panel at the install button. */
+  async needLlama(modelPath) {
+    this.pendingChat = modelPath || '';
+    toast('llama.cpp is needed to run this model. Press "Install llama.cpp" and the chat starts when it is ready.');
+    if (!this.dlg || !this.dlg.open) this.open();
+    await this.loadLlama();
+    this.render();
+    const card = this.dlg && this.dlg.querySelector('[data-llama-install]');
+    if (card) card.scrollIntoView({ block: 'center' });
+  },
+
+  async installLlama() {
+    this.dl['llama.cpp'] = { state: 'downloading', bytes: 0, total: 0, error: '' };
+    this.render();
+    try {
+      await invoke('llama_install');
+    } catch (e) {
+      this.dl['llama.cpp'] = { state: 'error', bytes: 0, total: 0, error: String(e) };
+      this.render();
+    }
+  },
+
+  /** A progress event from the downloader (a model file, or llama.cpp itself). */
+  async onProgress(p) {
+    const prev = this.dl[p.key] || {};
+    this.dl[p.key] = { state: p.state, bytes: p.bytes || prev.bytes || 0, total: p.total || prev.total || 0, path: p.path || prev.path || '', error: p.error || '' };
+    const ended = p.state === 'done' || p.state === 'error' || p.state === 'cancelled';
+    if (p.key === 'llama.cpp' && p.state === 'done') {
+      // the agent list tells the app which programs exist: refresh it so the new one counts
+      try {
+        const info = await invoke('list_agents');
+        state.agents = info.agents;
+      } catch {
+        /* the next start will see it */
+      }
+      await this.loadLlama();
+      toast('llama.cpp is installed.');
+      if (this.pendingChat) {
+        const path = this.pendingChat;
+        this.pendingChat = '';
+        if (this.dlg && this.dlg.open) this.dlg.close();
+        createSession('gguf', { modelId: path });
+      }
+    } else if (p.state === 'done') {
+      toast('Download finished and checked.');
+      this.scanPc(false);
+    } else if (p.state === 'error') {
+      toast(p.error || 'The download failed.', 'error');
+    }
+    // progress ticks redraw at most twice a second; the end of a download redraws at once
+    if (ended || !this.drawAt || Date.now() - this.drawAt > 500) {
+      this.drawAt = Date.now();
+      this.render();
+    }
+  },
+
+  async searchHub() {
+    const input = this.dlg && this.dlg.querySelector('[data-search-input]');
+    const q = (input ? input.value : this.hub.query).trim();
+    this.hub = { ...this.hub, query: q, loading: true, error: '', repo: '', files: [], searched: true };
+    this.render();
+    try {
+      this.hub.repos = await invoke('hub_search', { query: q });
+    } catch (e) {
+      this.hub.error = String(e);
+      this.hub.repos = [];
+    }
+    this.hub.loading = false;
+    this.render();
+  },
+
+  async openRepo(id) {
+    this.hub = { ...this.hub, repo: id, files: [], loading: true, error: '' };
+    this.render();
+    try {
+      this.hub.files = await invoke('hub_files', { repo: id });
+    } catch (e) {
+      this.hub.error = String(e);
+    }
+    this.hub.loading = false;
+    this.render();
+  },
+
+  async download(f, repo) {
+    if (!f || !repo) return;
+    const key = `${repo}/${f.path}`;
+    this.dl[key] = { state: 'downloading', bytes: 0, total: f.size, error: '' };
+    this.render();
+    try {
+      await invoke('hub_download', { repo, file: f.path, size: f.size, sha256: f.sha256 });
+    } catch (e) {
+      this.dl[key] = { state: 'error', bytes: 0, total: f.size, error: String(e) };
+      this.render();
+    }
+  },
+
   /** Look for .gguf model files on this PC (read-only: folder listings and file sizes). */
   async scanPc(deep) {
     if (this.pc.scanning) return;
@@ -165,23 +368,106 @@ const Models = {
     return this.el('button', { class: primary ? 'btn primary' : 'btn', type: 'button', text: label, ...attrs });
   },
 
-  /** A note when llama.cpp (the program that runs the files) is not installed. */
+  progressBar(d) {
+    const pct = d.total ? Math.min(100, Math.round((d.bytes / d.total) * 100)) : 0;
+    const bar = this.el('div', { class: 'mbar' }, this.el('div', { class: 'mbar-fill', style: `width:${d.state === 'verifying' ? 100 : pct}%` }));
+    const label = d.state === 'verifying' ? 'Checking the file…' : d.total ? `${this.gb(d.bytes)} of ${this.gb(d.total)} (${pct}%)` : 'Downloading…';
+    return this.el('div', { class: 'mprog' }, bar, this.el('span', { class: 'mmuted', text: label }));
+  },
+
+  /** llama.cpp runs the model files. When it is missing, offer to install it from the official release. */
   runtimeNote() {
-    const a = typeof agent === 'function' ? agent('gguf') : null;
-    if (!a || a.available) return null;
+    if (this.llama.installed) return null;
+    const d = this.dl['llama.cpp'];
+    const busy = d && (d.state === 'downloading' || d.state === 'verifying');
     return this.el(
-      'p',
-      { class: 'merror' },
-      'llama.cpp is not installed, so these files cannot run yet. Windows: ',
-      this.el('code', { text: 'winget install ggml.llamacpp' }),
-      '. Linux or macOS: use your package manager or the builds at github.com/ggml-org/llama.cpp, then restart ezCLI.'
+      'div',
+      { class: 'mcard' },
+      this.el(
+        'div',
+        { class: 'mrow-main' },
+        this.el('div', { class: 'mrow-name', text: 'llama.cpp is not installed' }),
+        this.el('div', { class: 'mrow-meta', text: `It is the program that runs these files. ezCLI can install ${this.llama.plan || 'it'} into your own folder (no admin rights).` }),
+        busy && this.progressBar(d),
+        d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error })
+      ),
+      !busy && this.btn('Install llama.cpp', { 'data-llama-install': true }, true)
     );
+  },
+
+  /** "Recommended for this PC": models chosen from this machine's own memory, one click to install. */
+  recommended() {
+    const profile = typeof systemProfileSummary === 'function' ? systemProfileSummary() : '';
+    const tierText = { gpu: 'Fits your GPU', cpu: 'Runs on your CPU', slow: 'Fits your RAM (slower)' };
+    const cards = this.rec.items.map((r) => {
+      const key = `${r.repo}/${r.file.path}`;
+      const d = this.dl[key];
+      const busy = d && (d.state === 'downloading' || d.state === 'verifying');
+      const done = d && d.state === 'done';
+      return this.el(
+        'div',
+        { class: 'mrow' },
+        this.el(
+          'div',
+          { class: 'mrow-main' },
+          this.el('div', { class: 'mrow-name', text: r.title }),
+          this.el('div', { class: 'mrow-meta', text: [r.kind, r.note, r.file.quant, this.gb(r.file.size)].filter(Boolean).join(' · ') }),
+          busy && this.progressBar(d),
+          d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error })
+        ),
+        this.el('span', { class: `mfit ${r.tier === 'slow' ? 'ok' : 'good'}`, text: tierText[r.tier] }),
+        busy ? this.btn('Cancel', { 'data-dl-cancel': key }) : done ? this.btn('Chat', { 'data-gguf': d.path }, true) : this.btn('Install', { 'data-rec': r.repo }, true)
+      );
+    });
+    return [
+      this.el('h3', { text: 'Recommended for this PC' }),
+      this.el('p', { class: 'mmuted', text: `Chosen from your hardware (${profile}): only models that run on it, in the best quality that fits. One click downloads, checks and installs.` }),
+      this.rec.note && this.el('p', { class: 'merror', text: this.rec.note }),
+      this.el('div', { class: 'mlist' }, cards.length ? cards : this.el('p', { class: 'mmuted', text: this.rec.loading || !this.rec.done ? 'Checking which models fit your PC…' : '' }))
+    ];
+  },
+
+  /** The Hugging Face browser: search, pick a model, pick a file, download. */
+  browser(esc) {
+    const h = this.hub;
+    const rows = h.repo
+      ? h.files.map((f) => {
+          const key = `${h.repo}/${f.path}`;
+          const d = this.dl[key];
+          const fit = this.fit(f.size);
+          const busy = d && (d.state === 'downloading' || d.state === 'verifying');
+          const done = d && d.state === 'done';
+          const base = f.path.split('/').pop();
+          return this.el(
+            'div',
+            { class: 'mrow' },
+            this.el('div', { class: 'mrow-main' }, this.el('div', { class: 'mrow-name', text: base }), this.el('div', { class: 'mrow-meta', text: [f.quant, this.gb(f.size), f.sha256 ? 'checksum verified after download' : ''].filter(Boolean).join(' · ') }), busy && this.progressBar(d), d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error })),
+            fit && this.el('span', { class: `mfit ${fit.cls}`, text: fit.text }),
+            busy ? this.btn('Cancel', { 'data-dl-cancel': key }) : done ? this.btn('Chat', { 'data-gguf': d.path }, true) : this.btn('Download', { 'data-dl': f.path }, !fit || fit.cls !== 'bad')
+          );
+        })
+      : h.repos.map((r) =>
+          this.el('div', { class: 'mrow mclick', 'data-repo': r.id, role: 'button', tabindex: '0' }, this.el('div', { class: 'mrow-main' }, this.el('div', { class: 'mrow-name', text: r.id }), this.el('div', { class: 'mrow-meta', text: `${r.downloads.toLocaleString()} downloads · ${r.likes.toLocaleString()} likes` })), this.el('span', { class: 'mmuted', text: 'Files ›' }))
+        );
+    return [
+      this.el('h3', { text: 'Find models' }),
+      this.el('p', { class: 'mmuted', text: 'Search Hugging Face for GGUF models and download one here. Files are checked against Hugging Face\'s checksum and saved in your ezCLI folder.' }),
+      this.el('div', { class: 'msettings' }, this.el('input', { type: 'text', 'data-search-input': true, class: 'mfolder', placeholder: 'Search, e.g. qwen3 8b, llama 3.1, gemma', value: h.query }), this.btn(h.loading && !h.repo ? 'Searching…' : 'Search', { 'data-search': true }), h.repo && this.btn('‹ Back to results', { 'data-hub-back': true })),
+      h.error && this.el('p', { class: 'merror', text: h.error }),
+      h.repo && this.el('p', { class: 'mmuted', text: `${h.repo}: pick a size. Smaller files (Q4) run on less memory; larger ones are more exact.` }),
+      this.el('div', { class: 'mlist' }, rows.length ? rows : this.el('p', { class: 'mmuted', text: h.loading ? 'Loading…' : h.searched ? 'Nothing found. Try another name.' : 'Type a model name and press Search.' }))
+    ];
   },
 
   render(working) {
     const d = this.dlg;
     if (!d) return;
     const body = d.querySelector('.models-body');
+    const keep = { top: body.scrollTop, vals: {}, focus: document.activeElement && d.contains(document.activeElement) ? document.activeElement.getAttribute('data-search-input') !== null ? 'search' : document.activeElement.getAttribute('data-folder-input') !== null ? 'folder' : '' : '' };
+    for (const k of ['search-input', 'folder-input']) {
+      const i = body.querySelector(`[data-${k}]`);
+      if (i) keep.vals[k] = i.value;
+    }
     const $e = (t, p, ...k) => this.el(t, p, ...k);
     const profile = typeof systemProfileSummary === 'function' ? systemProfileSummary() : '';
     const on = this.serverOn();
@@ -227,10 +513,12 @@ const Models = {
     const label = (text, sel) => $e('label', {}, `${text} `, sel);
     const kids = [
       $e('p', { class: 'mmuted', text: profile }),
+      this.runtimeNote(),
+      ...this.recommended(),
+      ...this.browser(),
       $e('h3', {}, 'On this PC', $e('span', { class: 'mbtns' }, this.btn(this.pc.scanning && !this.pc.deep ? 'Scanning…' : 'Scan', { 'data-scan': true }), this.btn(this.pc.scanning && this.pc.deep ? 'Searching all drives…' : 'Deep scan', { 'data-scan-deep': true, title: 'Search whole drives (up to about 40 seconds)' }))),
       $e('p', { class: 'mmuted', text: 'Model files (.gguf) already on this computer, whoever downloaded them. They run with a plain llama.cpp build: no LM Studio or Ollama needed.' }),
       this.pc.error && $e('p', { class: 'merror', text: this.pc.error }),
-      this.runtimeNote(),
       $e('div', { class: 'mlist' }, pcRows.length ? pcRows : $e('p', { class: 'mmuted', text: this.pc.scanning ? 'Looking through your folders…' : this.pc.done ? 'No model files found. Add the folder they are in below.' : 'Press Scan to look for model files.' })),
       $e(
         'div',
@@ -265,26 +553,25 @@ const Models = {
         label('GPU offload', select('data-gpu', this.GPUS, this.settings.gpu))
       ),
       $e('div', { class: 'mlist' }, rows.length ? rows : $e('p', { class: 'mmuted', text: this.busy ? (working ? `${working}…` : 'Reading your models…') : 'No downloaded chat models found.' })),
-      $e('h3', { text: 'Get more models' }),
-      $e(
-        'div',
-        { class: 'mcard' },
-        $e(
-          'div',
-          { class: 'mrow-main' },
-          $e('div', { class: 'mrow-name', text: 'Browse and download' }),
-          $e('div', { class: 'mrow-meta' }, 'Search Hugging Face in the in-app browser, then run ', $e('code', { text: 'lms get <model>' }), ' in a terminal. ezCLI never downloads a model for you.')
-        ),
-        this.btn('Search models', { 'data-hf': true })
-      )
     ];
     body.replaceChildren(...kids.filter(Boolean));
+    for (const [k, v] of Object.entries(keep.vals)) {
+      const i = body.querySelector(`[data-${k}]`);
+      if (i && v) i.value = v;
+    }
+    body.scrollTop = keep.top;
+    if (keep.focus) {
+      const f = body.querySelector(keep.focus === 'search' ? '[data-search-input]' : '[data-folder-input]');
+      if (f) f.focus();
+    }
     body.querySelectorAll('button').forEach((b) => (b.disabled = this.busy));
   },
 
   open() {
     if (!this.dlg) this.build();
     this.dlg.showModal();
+    this.loadLlama().then(() => this.render());
+    this.loadRecommended();
     this.refresh();
     if (!this.pc.done) this.scanPc(false);
   },
@@ -300,6 +587,24 @@ const Models = {
       if (!t) return;
       if (t.hasAttribute('data-close')) return d.close();
       if (t.hasAttribute('data-refresh')) return this.refresh();
+      if (t.hasAttribute('data-llama-install')) return void this.installLlama();
+      if (t.hasAttribute('data-search')) return void this.searchHub();
+      if (t.hasAttribute('data-hub-back')) {
+        this.hub = { ...this.hub, repo: '', files: [], error: '' };
+        return void this.render();
+      }
+      if (t.dataset.dl) return void this.download(this.hub.files.find((x) => x.path === t.dataset.dl), this.hub.repo);
+      if (t.dataset.rec) {
+        const r = this.rec.items.find((x) => x.repo === t.dataset.rec);
+        if (!r) return;
+        // the model needs llama.cpp to run: fetch it too, so one click is enough
+        if (!this.llama.installed && !this.dl['llama.cpp']) {
+          toast('Installing llama.cpp too: it is the program that runs the model.');
+          this.installLlama();
+        }
+        return void this.download(r.file, r.repo);
+      }
+      if (t.dataset.dlCancel) return void invoke('hub_cancel', { key: t.dataset.dlCancel });
       if (t.hasAttribute('data-scan')) return void this.scanPc(false);
       if (t.hasAttribute('data-scan-deep')) return void this.scanPc(true);
       if (t.hasAttribute('data-folder-add')) {
@@ -325,6 +630,16 @@ const Models = {
         createSession('lmstudio', { modelId: t.dataset.chat });
       }
     });
+    d.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-repo]');
+      if (row && !e.target.closest('button')) this.openRepo(row.dataset.repo);
+    });
+    d.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (e.target.matches('[data-search-input]')) this.searchHub();
+      else if (e.target.matches('[data-folder-input]')) this.addFolder(e.target.value);
+      else if (e.target.matches('[data-repo]')) this.openRepo(e.target.dataset.repo);
+    });
     d.addEventListener('change', (e) => {
       if (e.target.matches('[data-ctx]')) this.settings.context = e.target.value;
       if (e.target.matches('[data-gpu]')) this.settings.gpu = e.target.value;
@@ -333,6 +648,11 @@ const Models = {
 };
 
 hooks.boot.push(() => {
+  try {
+    listen('model-download', (e) => Models.onProgress(e.payload));
+  } catch {
+    /* no event bridge: downloads still run, progress just is not shown */
+  }
   const anchor = document.getElementById('browserBtn');
   if (anchor && !document.getElementById('modelsBtn')) {
     const b = document.createElement('button');
