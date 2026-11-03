@@ -315,7 +315,7 @@ const ComposerMeta = {
     this.el.disabled = !canPick;
     this.el.title = canPick ? 'Change the model (starts a fresh session)' : `${a.label}${model !== a.label ? ' · ' + model : ''}`;
     const modes = a.modes || [];
-    if (modes.length) {
+    if (modes.length > 1) {
       const modeName = label(modes, s.modeId);
       this.mode.hidden = false;
       this.mode.textContent = modeName;

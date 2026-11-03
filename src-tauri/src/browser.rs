@@ -94,6 +94,16 @@ pub fn run(app: &AppHandle, cmd: Cmd) -> Result<Reply> {
     }
 }
 
+/// Show a page in the browser window without taking focus from the chat: used to let the user watch what a
+/// local model searches or reads. Opens the window the first time; afterwards only navigates it.
+pub fn follow(app: &AppHandle, url: &str) -> Result<()> {
+    let parsed = validate_url(url)?;
+    if let Some(win) = app.get_webview_window(LABEL) {
+        return win.navigate(parsed).map_err(|e| anyhow!("could not navigate: {e}"));
+    }
+    open_or_navigate(app, parsed)
+}
+
 fn eval_nav(app: &AppHandle, js: &str, ok: &str) -> Result<Reply> {
     let (_, win) = require_window(app)?;
     win.eval(js).map_err(|e| anyhow!("navigation failed: {e}"))?;
