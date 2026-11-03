@@ -407,6 +407,8 @@ pub struct LlamaStatus {
     pub installed: bool,
     pub path: String,
     pub plan: String,
+    /// The release ezCLI installed (e.g. `b6000`), or empty when llama.cpp came from somewhere else.
+    pub version: String,
 }
 
 pub fn llama_exe_name() -> &'static str {
@@ -415,7 +417,7 @@ pub fn llama_exe_name() -> &'static str {
 
 pub fn llama_status() -> LlamaStatus {
     let found = crate::agents::resolve_command("llama-cli");
-    LlamaStatus { installed: found.is_some(), path: found.unwrap_or_default(), plan: plan_text() }
+    LlamaStatus { installed: found.is_some(), path: found.unwrap_or_default(), plan: plan_text(), version: installed_version() }
 }
 
 /// What the installer will fetch on this machine, for the button's note.
@@ -429,7 +431,12 @@ fn plan_text() -> String {
 /// The release asset kind for this machine, e.g. `win-vulkan-x64`. Vulkan runs on NVIDIA, AMD and Intel GPUs
 /// without extra runtime files, so it is the GPU choice.
 pub fn build_wanted() -> Option<String> {
-    let gpu = if cfg!(windows) {
+    build_wanted_for(false)
+}
+
+/// Like `build_wanted`, but `cpu_only` picks the build without GPU support (for when the GPU one crashes).
+pub fn build_wanted_for(cpu_only: bool) -> Option<String> {
+    let gpu = !cpu_only && if cfg!(windows) {
         crate::system_profile::detect().gpu_name.is_some()
     } else {
         Path::new("/dev/dri").exists() || Path::new("/proc/driver/nvidia").exists()
@@ -599,9 +606,58 @@ fn locate_build(wanted: &str) -> Result<Asset, String> {
     Err(format!("None of the recent llama.cpp releases has a \"{wanted}\" build. You can install llama.cpp yourself from github.com/ggml-org/llama.cpp/releases and restart ezCLI."))
 }
 
+/// `llama-b6000-bin-win-cpu-x64.zip` -> `b6000`.
+pub fn tag_of(asset_name: &str) -> Option<String> {
+    let rest = asset_name.strip_prefix("llama-")?;
+    let tag = rest.split("-bin-").next()?;
+    (valid_tag(tag) && rest.contains("-bin-")).then(|| tag.to_string())
+}
+
+fn version_file() -> PathBuf {
+    llama_dir().parent().map(Path::to_path_buf).unwrap_or_default().join("version.txt")
+}
+
+fn installed_version() -> String {
+    std::fs::read_to_string(version_file()).map(|t| t.trim().to_string()).ok().filter(|t| valid_tag(t)).unwrap_or_default()
+}
+
+/// The newest llama.cpp release that has a build for this machine (for the Update button).
+pub fn latest_llama(cpu_only: bool) -> Result<String, String> {
+    let wanted = build_wanted_for(cpu_only).ok_or("There is no ready-made llama.cpp build for this system.")?;
+    let asset = locate_build(&wanted)?;
+    tag_of(&asset.name).ok_or_else(|| "Could not read the version of the newest llama.cpp release.".to_string())
+}
+
+/// Delete one model file (and its folder when that folder was ezCLI's own and is now empty). Only `.gguf` files,
+/// by absolute path, never a link: a link may point at another app's storage.
+pub fn delete_model(path: &str) -> Result<String, String> {
+    if !crate::local_models::safe_path(path) || !path.to_lowercase().ends_with(".gguf") {
+        return Err("That is not a model file.".into());
+    }
+    let file = PathBuf::from(path);
+    let md = std::fs::symlink_metadata(&file).map_err(|e| format!("Cannot find that file: {e}"))?;
+    if md.file_type().is_symlink() {
+        return Err("That file is a link into another app's storage (for example the Hugging Face cache). Remove it with that app.".into());
+    }
+    if !md.is_file() {
+        return Err("That is not a file.".into());
+    }
+    std::fs::remove_file(&file).map_err(|e| format!("Could not delete it: {e}"))?;
+    let _ = std::fs::remove_file(file.with_extension("gguf.part"));
+    // a model downloaded by ezCLI sits in its own sub-folder of the models folder: tidy that up when empty
+    if let (Some(parent), Ok(root)) = (file.parent(), std::fs::canonicalize(models_dir())) {
+        if let Ok(p) = std::fs::canonicalize(parent) {
+            if p != root && p.starts_with(&root) {
+                let _ = std::fs::remove_dir(&p); // fails (and so keeps the folder) unless it is empty
+            }
+        }
+    }
+    Ok(path.to_string())
+}
+
 /// Download llama.cpp's official release for this machine into `~/.ezcli/llama.cpp/bin`.
-pub fn install_llama(app: AppHandle) -> Result<String, String> {
-    let wanted = build_wanted().ok_or("There is no ready-made llama.cpp build for this system. Build it from github.com/ggml-org/llama.cpp.")?;
+pub fn install_llama(app: AppHandle, cpu_only: bool) -> Result<String, String> {
+    let wanted = build_wanted_for(cpu_only).ok_or("There is no ready-made llama.cpp build for this system. Build it from github.com/ggml-org/llama.cpp.")?;
     start(app, "llama.cpp".into(), Box::new(move |app, key, cancel| {
         emit(app, prog(key, "downloading"));
         let asset = locate_build(&wanted)?;
@@ -620,6 +676,7 @@ pub fn install_llama(app: AppHandle) -> Result<String, String> {
         std::fs::rename(&bin_src, &bin).map_err(|e| format!("Could not install llama.cpp: {e}"))?;
         let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::remove_file(&archive);
+        let _ = std::fs::write(version_file(), tag_of(&asset.name).unwrap_or_default());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -641,6 +698,33 @@ pub fn install_llama(app: AppHandle) -> Result<String, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_release_tag_is_read_from_the_asset_name() {
+        assert_eq!(tag_of("llama-b6000-bin-win-cpu-x64.zip").as_deref(), Some("b6000"));
+        assert_eq!(tag_of("llama-b6000-xcframework.zip"), None);
+        assert_eq!(tag_of("cudart-llama-bin-win-cuda-12.4-x64.zip"), None);
+    }
+
+    #[test]
+    fn deleting_a_model_only_touches_gguf_files_and_tidies_an_empty_folder() {
+        let d = std::env::temp_dir().join(format!("ezcli-del-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let other = d.join("notes.txt");
+        std::fs::write(&other, "x").unwrap();
+        assert!(delete_model(&other.to_string_lossy()).is_err(), "not a .gguf");
+        assert!(other.exists());
+        assert!(delete_model("relative/model.gguf").is_err());
+        assert!(delete_model(&d.join("missing.gguf").to_string_lossy()).is_err());
+        let m = d.join("m.gguf");
+        std::fs::write(&m, "x").unwrap();
+        assert!(delete_model(&m.to_string_lossy()).is_ok());
+        assert!(!m.exists());
+        assert!(other.exists(), "neighbours stay");
+        assert!(delete_model(&d.to_string_lossy()).is_err(), "a folder is not a model");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn repo_and_file_names_are_checked() {
