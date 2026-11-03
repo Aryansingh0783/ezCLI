@@ -15,7 +15,9 @@ const WebSearch = {
   MAX_STEPS: 4,
   /** Things a frozen model cannot know, so there is no point asking it first. */
   FRESH: /\b(latest|newest|current(ly)?|today|tonight|yesterday|this (week|month|year)|right now|news|recent(ly)?|just (released|announced)|release date|price of|stock|score|weather|who won|202[5-9]|2030)\b/i,
-  REQUEST: /^\s*(SEARCH|SKILL|RUN):\s*(.+)$/im,
+  REQUEST: /^\s*(SEARCH|BROWSE|SKILL|RUN):\s*(.+)$/im,
+  /** Greetings and thanks need no web. */
+  SMALLTALK: /^\s*(hi|hello|hey|yo|thanks?|thank you|ok(ay)?|cool|nice|great|good (morning|evening|night)|bye)\b[\s!.?]*$/i,
   skills: null,
 
   applies(s) {
@@ -23,7 +25,7 @@ const WebSearch = {
   },
 
   mode() {
-    return this.MODES.includes(prefs.webMode) ? prefs.webMode : 'auto';
+    return this.MODES.includes(prefs.webMode) ? prefs.webMode : 'always';
   },
 
   terminalOn() {
@@ -54,10 +56,32 @@ const WebSearch = {
     return [...extra, ...own].join(' ') || question;
   },
 
+  /** Watch the model work: show a page in the in-app browser window (never takes focus from the chat). */
+  follow(url) {
+    if (prefs.browserFollow === false || !/^https?:\/\//i.test(url || '')) return;
+    invoke('agent_browser_follow', { url }).catch(() => {});
+  },
+
+  /** The sources listed in a web block, as "title - url" lines. */
+  sources(block) {
+    const out = [];
+    const re = /\((\d)\) (.{1,140}?) - (https?:\/\/\S+) - /g;
+    let m;
+    while ((m = re.exec(block || '')) && out.length < 6) out.push({ title: m[2], url: m[3] });
+    return out;
+  },
+
+  sourceNote(block) {
+    return this.sources(block).map((x, i) => `${i + 1}. ${x.title} ${x.url}`).join('\n');
+  },
+
   async fetchBlock(query) {
     this.busy(true);
     try {
-      return await invoke('web_context', { query: String(query).slice(0, 250), today: new Date().toISOString().slice(0, 10) });
+      const block = await invoke('web_context', { query: String(query).slice(0, 250), today: new Date().toISOString().slice(0, 10) });
+      const top = this.sources(block)[0];
+      if (top) this.follow(top.url);
+      return block;
     } catch {
       return null;
     } finally {
@@ -81,7 +105,7 @@ const WebSearch = {
     const web = this.mode() !== 'off';
     const skills = web || this.terminalOn() ? await this.loadSkills() : [];
     const parts = [];
-    if (web) parts.push('SEARCH: <query> (look something up on the web when you do not know it or it may be out of date)');
+    if (web) parts.push('SEARCH: <query> (look something up on the web when you do not know it or it may be out of date)', 'BROWSE: <https address> (open one web page in the in-app browser and read it)');
     if (skills.length) parts.push(`SKILL: <name> (load one of the user's skills: ${skills.slice(0, 60).map((x) => x.name).join(', ')})`);
     if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)');
     const tools = parts.map((p) => p.split(':')[0]);
@@ -107,10 +131,14 @@ const WebSearch = {
     await this.compactIfNeeded(s);
     const mode = this.mode();
     let block = '';
-    if (mode === 'always' || (mode === 'auto' && this.FRESH.test(question))) {
+    if (mode !== 'off' && !this.SMALLTALK.test(question) && (mode === 'always' || this.FRESH.test(question))) {
       block = await this.fetchBlock(this.queryFor(s, question));
       if (!block) toast('Could not reach the web, so the model answers from memory.');
-      else this.remember(s, block);
+      else {
+        this.remember(s, block);
+        const src = this.sources(block);
+        if (src.length) toast(`Searched the web: ${src.length} sources, top one is ${src[0].url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}. Opened in the browser.`);
+      }
     }
     await this.applyTuning(s);
     await this.applyEffort(s);
@@ -233,13 +261,21 @@ const WebSearch = {
     try {
       s.webSteps = (s.webSteps || 0) + 1;
       if (s.webSteps > this.MAX_STEPS) return;
-      if (kind === 'SEARCH') {
+      if (kind === 'BROWSE') {
+        const url = arg.replace(/\s.*$/, '');
+        this.follow(url);
+        this.busy(true);
+        const page = await invoke('web_read', { url }).catch((e) => `Could not open that page: ${e}`);
+        this.busy(false);
+        if (/^\[Page text/.test(page)) this.remember(s, page);
+        await this.reply(s, `${page.replace(/\s*\n\s*/g, ' ')} Now answer my earlier question using this page. Name the source.`, `Opened ${url} in the browser`, page.slice(0, 1200));
+      } else if (kind === 'SEARCH') {
         const block = await this.fetchBlock(arg);
         if (block) this.remember(s, block);
         const msg = block
           ? `Here are web results for "${arg}". ${block} Now answer my earlier question using only what these results say. Name the source for each fact. If they conflict, say so. If they do not contain the answer, say you could not find it instead of guessing.`
           : 'The web search found nothing. Answer my earlier question as well as you can, and say that you could not check.';
-        await this.reply(s, msg, `Searched the web for “${arg}”`);
+        await this.reply(s, msg, `Searched the web for “${arg}”`, this.sourceNote(block));
       } else if (kind === 'SKILL') {
         const got = await invoke('local_skill_text', { name: arg }).catch(() => null);
         const msg = got

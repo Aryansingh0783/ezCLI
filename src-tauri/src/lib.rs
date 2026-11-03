@@ -297,6 +297,18 @@ async fn open_agent_browser(app: tauri::AppHandle, url: Option<String>) -> Resul
     browser::run(&app, browser::Cmd::Navigate(url)).map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// Show a page in the agent browser window without stealing focus (a local model's search or page read).
+#[tauri::command]
+async fn agent_browser_follow(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    browser::follow(&app, &url).map_err(|e| e.to_string())
+}
+
+/// One web page as plain text, for a local model that asked to open it.
+#[tauri::command]
+async fn web_read(url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || web_context::read_page(&url, 6000)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 fn start_session(
@@ -986,6 +998,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_agent_browser,
+            agent_browser_follow,
+            web_read,
             graphify::graphify_status,
             graphify::graphify_plan,
             graphify::graphify_run,
