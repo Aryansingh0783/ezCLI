@@ -43,6 +43,7 @@ function mockScript(agentList) {
     llama_status: { installed: false, path: '', plan: 'the Vulkan build' },
     detect_system_profile: { logicalCpuCores: 8, totalMemoryGib: 32, gpuName: 'Demo GPU', gpuVramMib: 12288 },
     local_models_scan: [{ path: '/m/a-Q4_K_M.gguf', name: 'a-Q4_K_M', bytes: 5e9, quant: 'Q4_K_M', source: 'Downloads' }],
+    hub_files: [{ path: 'm-Q4_K_M.gguf', size: 2.5e9, sha256: 'a', quant: 'Q4_K_M' }],
     hub_search: [{ id: 'demo/Model-GGUF', downloads: 10, likes: 1 }],
     lms_action: '[]'
   };

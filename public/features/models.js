@@ -3,11 +3,30 @@
  * loaded in memory, load settings (context length, GPU offload), and the local OpenAI-compatible server.
  * Everything goes through LM Studio's own `lms` command; ezCLI never downloads a model by itself. */
 
+/** Well-known GGUF models, each checked to exist on Hugging Face with ordinary files. Which one is offered, and in
+ *  which size, is decided by the user's own hardware (see `Models.plan`). */
+const CURATED = [
+  { repo: 'Qwen/Qwen3-4B-GGUF', title: 'Qwen3 4B', kind: 'General', note: 'Small and quick' },
+  { repo: 'Qwen/Qwen3-8B-GGUF', title: 'Qwen3 8B', kind: 'General', note: 'Strong all-rounder' },
+  { repo: 'Qwen/Qwen3-14B-GGUF', title: 'Qwen3 14B', kind: 'General', note: 'Better reasoning' },
+  { repo: 'Qwen/Qwen3-30B-A3B-GGUF', title: 'Qwen3 30B-A3B', kind: 'General', note: 'Large, fast for its size' },
+  { repo: 'unsloth/gpt-oss-20b-GGUF', title: 'gpt-oss 20B', kind: 'General', note: 'OpenAI open-weight model' },
+  { repo: 'unsloth/gemma-3-4b-it-GGUF', title: 'Gemma 3 4B', kind: 'General', note: 'Google, small' },
+  { repo: 'unsloth/gemma-3-12b-it-GGUF', title: 'Gemma 3 12B', kind: 'General', note: 'Google, mid-size' },
+  { repo: 'bartowski/Llama-3.2-3B-Instruct-GGUF', title: 'Llama 3.2 3B', kind: 'General', note: 'Tiny, runs almost anywhere' },
+  { repo: 'bartowski/Meta-Llama-3.1-8B-Instruct-GGUF', title: 'Llama 3.1 8B', kind: 'General', note: 'Meta, popular' },
+  { repo: 'bartowski/Mistral-7B-Instruct-v0.3-GGUF', title: 'Mistral 7B', kind: 'General', note: 'Fast and light' },
+  { repo: 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF', title: 'Qwen2.5 Coder 7B', kind: 'Coding', note: 'Code-tuned' },
+  { repo: 'Qwen/Qwen2.5-Coder-14B-Instruct-GGUF', title: 'Qwen2.5 Coder 14B', kind: 'Coding', note: 'Code-tuned, larger' },
+  { repo: 'unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF', title: 'Qwen3 Coder 30B-A3B', kind: 'Coding', note: 'Best local coding model here' }
+];
+
 const Models = {
   dlg: null,
   data: { list: [], loaded: [], server: '', error: '' },
   pc: { found: [], scanning: false, deep: false, error: '', done: false },
   hub: { query: '', repos: [], repo: '', files: [], loading: false, error: '', searched: false },
+  rec: { items: [], loading: false, done: false, note: '' },
   dl: {}, // downloads in progress or finished, by key: { state, bytes, total, path, error }
   llama: { installed: true, plan: '', path: '' },
   pendingChat: '', // the model file to start chatting with once llama.cpp has been installed
@@ -96,6 +115,78 @@ const Models = {
 
   folders() {
     return Array.isArray(prefs.modelFolders) ? prefs.modelFolders : [];
+  },
+
+  /** What this PC can run: the memory a model may use, and whether that is the GPU or the system RAM. */
+  budget() {
+    const p = state.systemProfile;
+    if (!p) return null;
+    const ram = Number(p.totalMemoryGib ?? p.total_memory_gib) || 0;
+    const vram = (Number(p.gpuVramMib ?? p.gpu_vram_mib) || 0) / 1024;
+    const gpu = String(p.gpuName ?? p.gpu_name ?? '');
+    if (vram >= 2) return { gpuGib: vram, ramGib: ram * 0.5, where: 'GPU' };
+    if (/apple/i.test(gpu) && ram) return { gpuGib: ram * 0.65, ramGib: ram * 0.65, where: 'unified memory' };
+    if (ram) return { gpuGib: 0, ramGib: ram * 0.5, where: 'CPU' };
+    return null;
+  },
+
+  /** Rank of a quantisation: higher is closer to the original model. Anything below Q4_K or above Q8 is left out. */
+  quantRank(q) {
+    const u = String(q || '').toUpperCase();
+    if (u.startsWith('Q8')) return 4;
+    if (u.startsWith('Q6')) return 3;
+    if (u.startsWith('Q5')) return 2;
+    if (u.startsWith('Q4_K')) return 1;
+    return 0;
+  },
+
+  /** The best file of one model for a budget: the highest-quality quantisation that fits the GPU, otherwise
+   *  the smallest good one that fits system RAM (slower). Null when nothing fits. */
+  pick(files, b) {
+    const ok = files.filter((f) => this.quantRank(f.quant) > 0);
+    const need = (f) => (f.size / 1073741824) * 1.15;
+    const gpu = ok.filter((f) => b.gpuGib && need(f) <= b.gpuGib).sort((x, y) => this.quantRank(y.quant) - this.quantRank(x.quant) || y.size - x.size)[0];
+    if (gpu) return { file: gpu, tier: b.where === 'CPU' ? 'cpu' : 'gpu' };
+    const ram = ok.filter((f) => this.quantRank(f.quant) === 1 && need(f) <= b.ramGib).sort((x, y) => x.size - y.size)[0];
+    return ram ? { file: ram, tier: 'slow' } : null;
+  },
+
+  /** Choose which curated models to offer: only ones that run on this machine, the most capable first. */
+  plan(entries, b) {
+    const rows = entries.map((e) => ({ ...e, ...(this.pick(e.files, b) || {}) })).filter((r) => r.file);
+    const order = { gpu: 0, cpu: 0, slow: 1 };
+    rows.sort((x, y) => order[x.tier] - order[y.tier] || y.file.size - x.file.size);
+    const perKind = {};
+    return rows.filter((r) => ((perKind[r.kind] = (perKind[r.kind] || 0) + 1) <= 3)).slice(0, 6);
+  },
+
+  async loadRecommended() {
+    if (this.rec.loading || this.rec.done) return;
+    this.rec.loading = true;
+    for (let i = 0; i < 12 && !state.systemProfile; i++) await new Promise((r) => setTimeout(r, 250)); // the hardware scan may still be running
+    const b = this.budget();
+    if (!b) {
+      this.rec = { items: [], loading: false, done: true, note: "ezCLI could not read this PC's memory, so it cannot tell which models fit. Use Find models below and check each file's size against your memory." };
+      return this.render();
+    }
+    const entries = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < CURATED.length) {
+        const e = CURATED[next++];
+        try {
+          const files = await invoke('hub_files', { repo: e.repo });
+          if (Array.isArray(files)) entries.push({ ...e, files });
+        } catch {
+          /* a repo that cannot be read right now is simply not offered */
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    const items = this.plan(entries, b);
+    const note = entries.length === 0 ? 'Could not reach Hugging Face to look up models. Check your connection, then reopen this panel.' : items.length ? '' : 'No ready-made model fits this PC comfortably. Use Find models below and look for small files (under 2 GB).';
+    this.rec = { items, loading: false, done: entries.length > 0, note };
+    this.render();
   },
 
   gb(bytes) {
@@ -193,14 +284,13 @@ const Models = {
     this.render();
   },
 
-  async download(file) {
-    const f = this.hub.files.find((x) => x.path === file);
-    if (!f) return;
-    const key = `${this.hub.repo}/${f.path}`;
+  async download(f, repo) {
+    if (!f || !repo) return;
+    const key = `${repo}/${f.path}`;
     this.dl[key] = { state: 'downloading', bytes: 0, total: f.size, error: '' };
     this.render();
     try {
-      await invoke('hub_download', { repo: this.hub.repo, file: f.path, size: f.size, sha256: f.sha256 });
+      await invoke('hub_download', { repo, file: f.path, size: f.size, sha256: f.sha256 });
     } catch (e) {
       this.dl[key] = { state: 'error', bytes: 0, total: f.size, error: String(e) };
       this.render();
@@ -305,6 +395,38 @@ const Models = {
     );
   },
 
+  /** "Recommended for this PC": models chosen from this machine's own memory, one click to install. */
+  recommended() {
+    const profile = typeof systemProfileSummary === 'function' ? systemProfileSummary() : '';
+    const tierText = { gpu: 'Fits your GPU', cpu: 'Runs on your CPU', slow: 'Fits your RAM (slower)' };
+    const cards = this.rec.items.map((r) => {
+      const key = `${r.repo}/${r.file.path}`;
+      const d = this.dl[key];
+      const busy = d && (d.state === 'downloading' || d.state === 'verifying');
+      const done = d && d.state === 'done';
+      return this.el(
+        'div',
+        { class: 'mrow' },
+        this.el(
+          'div',
+          { class: 'mrow-main' },
+          this.el('div', { class: 'mrow-name', text: r.title }),
+          this.el('div', { class: 'mrow-meta', text: [r.kind, r.note, r.file.quant, this.gb(r.file.size)].filter(Boolean).join(' · ') }),
+          busy && this.progressBar(d),
+          d && d.state === 'error' && this.el('div', { class: 'merror', text: d.error })
+        ),
+        this.el('span', { class: `mfit ${r.tier === 'slow' ? 'ok' : 'good'}`, text: tierText[r.tier] }),
+        busy ? this.btn('Cancel', { 'data-dl-cancel': key }) : done ? this.btn('Chat', { 'data-gguf': d.path }, true) : this.btn('Install', { 'data-rec': r.repo }, true)
+      );
+    });
+    return [
+      this.el('h3', { text: 'Recommended for this PC' }),
+      this.el('p', { class: 'mmuted', text: `Chosen from your hardware (${profile}): only models that run on it, in the best quality that fits. One click downloads, checks and installs.` }),
+      this.rec.note && this.el('p', { class: 'merror', text: this.rec.note }),
+      this.el('div', { class: 'mlist' }, cards.length ? cards : this.el('p', { class: 'mmuted', text: this.rec.loading || !this.rec.done ? 'Checking which models fit your PC…' : '' }))
+    ];
+  },
+
   /** The Hugging Face browser: search, pick a model, pick a file, download. */
   browser(esc) {
     const h = this.hub;
@@ -391,10 +513,12 @@ const Models = {
     const label = (text, sel) => $e('label', {}, `${text} `, sel);
     const kids = [
       $e('p', { class: 'mmuted', text: profile }),
+      this.runtimeNote(),
+      ...this.recommended(),
+      ...this.browser(),
       $e('h3', {}, 'On this PC', $e('span', { class: 'mbtns' }, this.btn(this.pc.scanning && !this.pc.deep ? 'Scanning…' : 'Scan', { 'data-scan': true }), this.btn(this.pc.scanning && this.pc.deep ? 'Searching all drives…' : 'Deep scan', { 'data-scan-deep': true, title: 'Search whole drives (up to about 40 seconds)' }))),
       $e('p', { class: 'mmuted', text: 'Model files (.gguf) already on this computer, whoever downloaded them. They run with a plain llama.cpp build: no LM Studio or Ollama needed.' }),
       this.pc.error && $e('p', { class: 'merror', text: this.pc.error }),
-      this.runtimeNote(),
       $e('div', { class: 'mlist' }, pcRows.length ? pcRows : $e('p', { class: 'mmuted', text: this.pc.scanning ? 'Looking through your folders…' : this.pc.done ? 'No model files found. Add the folder they are in below.' : 'Press Scan to look for model files.' })),
       $e(
         'div',
@@ -403,7 +527,6 @@ const Models = {
         this.btn('Add folder', { 'data-folder-add': true }),
         this.folders().map((f) => $e('span', { class: 'mchip' }, f, ' ', this.btn('×', { 'data-folder-rm': f, 'aria-label': `Stop searching ${f}`, class: 'mx' })))
       ),
-      ...this.browser(),
       $e('h3', { text: 'LM Studio (optional)' }),
       this.data.error && $e('p', { class: 'merror', text: this.data.error }),
       $e('h3', { text: 'Local server' }),
@@ -448,6 +571,7 @@ const Models = {
     if (!this.dlg) this.build();
     this.dlg.showModal();
     this.loadLlama().then(() => this.render());
+    this.loadRecommended();
     this.refresh();
     if (!this.pc.done) this.scanPc(false);
   },
@@ -469,7 +593,17 @@ const Models = {
         this.hub = { ...this.hub, repo: '', files: [], error: '' };
         return void this.render();
       }
-      if (t.dataset.dl) return void this.download(t.dataset.dl);
+      if (t.dataset.dl) return void this.download(this.hub.files.find((x) => x.path === t.dataset.dl), this.hub.repo);
+      if (t.dataset.rec) {
+        const r = this.rec.items.find((x) => x.repo === t.dataset.rec);
+        if (!r) return;
+        // the model needs llama.cpp to run: fetch it too, so one click is enough
+        if (!this.llama.installed && !this.dl['llama.cpp']) {
+          toast('Installing llama.cpp too: it is the program that runs the model.');
+          this.installLlama();
+        }
+        return void this.download(r.file, r.repo);
+      }
       if (t.dataset.dlCancel) return void invoke('hub_cancel', { key: t.dataset.dlCancel });
       if (t.hasAttribute('data-scan')) return void this.scanPc(false);
       if (t.hasAttribute('data-scan-deep')) return void this.scanPc(true);

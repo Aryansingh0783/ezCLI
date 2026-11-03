@@ -115,7 +115,7 @@ pub fn quant_of(name: &str) -> String {
         if is_q {
             let mut q = t.to_string();
             for next in toks.iter().skip(i + 1).take(2) {
-                if matches!(*next, "K" | "M" | "S" | "L" | "XS" | "XXS" | "0" | "1" | "NL") {
+                if matches!(*next, "K" | "M" | "S" | "L" | "XL" | "XS" | "XXS" | "0" | "1" | "NL") {
                     q.push('_');
                     q.push_str(next);
                 } else {
@@ -225,6 +225,7 @@ mod tests {
         assert_eq!(quant_of("llama-3.1-8b-instruct.Q8_0.gguf"), "Q8_0");
         assert_eq!(quant_of("model-IQ3_XXS.gguf"), "IQ3_XXS");
         assert_eq!(quant_of("gemma-2b-f16.gguf"), "F16");
+        assert_eq!(quant_of("gemma-3-12b-it-UD-Q8_K_XL.gguf"), "Q8_K_XL");
         assert_eq!(quant_of("plain.gguf"), "");
     }
 
