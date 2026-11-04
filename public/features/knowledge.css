@@ -1,0 +1,11 @@
+.kb-panel { position: fixed; right: 16px; bottom: 96px; z-index: 60; width: min(380px, calc(100vw - 32px)); max-height: min(70vh, 520px); overflow: auto; padding: 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--ink, #1f1d19) 18%, transparent); background: var(--panel, var(--paper, #fff)); color: var(--ink, #1f1d19); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22); font-size: 13px; }
+.kb-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.kb-help { margin: 0 0 10px; opacity: 0.75; line-height: 1.4; }
+.kb-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.kb-btn { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--ink, #1f1d19) 22%, transparent); background: transparent; color: inherit; cursor: pointer; }
+.kb-btn:hover { border-color: var(--accent, #c2410c); color: var(--accent, #c2410c); }
+.kb-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.kb-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kb-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.kb-empty { opacity: 0.65; }
+@media (max-width: 520px) { .kb-panel { right: 16px; left: 16px; width: auto; bottom: 120px; } }

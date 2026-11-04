@@ -26,6 +26,13 @@ Last updated: 2026-11-03 by Claude (v5.12.11 release)
     llama.cpp installer (latest release holds only `nightly-tag.txt`; the nightly tag release holds the zips).
   - `public/features/models.js` is the Models panel (Discover / My models / LM Studio) with hardware-based
     recommendations. `system_profile.rs` reads RAM/GPU on Windows, Linux and macOS.
+- **Knowledge (RAG) for local models:** `rag.rs` indexes folders/files the user picks (text, code, md, csv, json; passages of ~900 chars)
+  into `~/.ezcli/knowledge/index.json` and searches them with BM25 (no embedding model, no download). `public/features/knowledge.js`
+  adds the "Knowledge" button/panel for the four local agents; matching passages are appended to each question, and the model may
+  also reply `KNOW: <query>` (handled in `websearch.js` like `SEARCH`). Verified: `rag.rs` unit tests + clippy `-D warnings` in a
+  scratch crate, `test/knowledge.test.cjs`, UI smoke. **Not verified:** the Tauri glue in `lib.rs` (`rag_*` commands) was not compiled
+  on this PC (no linker for Tauri); CI must check it. Never run end to end through a real model or the real window. Not built: embeddings,
+  PDF/docx, re-index on file change (add the folder again to refresh).
 - **Release process:** user says "merge pr N" / "release X.Y.Z". Merge (squash), bump the version in
   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock`, run the "Tag and release" workflow, wait
   about 7-10 min, check assets, verify the `.deb` sha256, then bump the Arch PKGBUILD and `.SRCINFO`. Tag pushes via the

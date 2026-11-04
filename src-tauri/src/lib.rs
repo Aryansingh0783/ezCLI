@@ -32,6 +32,7 @@ mod open_in;
 mod pathutil;
 mod pc_control;
 mod pty_mgr;
+mod rag;
 mod remote;
 mod system_profile;
 mod transcripts;
@@ -859,6 +860,36 @@ async fn run_approved_command(command: String, cwd: String) -> local_tools::Comm
     tauri::async_runtime::spawn_blocking(move || local_tools::run_command(&command, &cwd, 60)).await.unwrap_or_default()
 }
 
+/// Add a folder or file to the knowledge index (see `rag`). Called only after the user picks the path.
+#[tauri::command]
+async fn rag_add(path: String) -> Result<rag::AddReport, String> {
+    tauri::async_runtime::spawn_blocking(move || rag::add(&path)).await.map_err(|e| e.to_string())?
+}
+
+/// The files in the knowledge index.
+#[tauri::command]
+async fn rag_sources() -> Vec<rag::Source> {
+    tauri::async_runtime::spawn_blocking(rag::sources).await.unwrap_or_default()
+}
+
+/// Forget one file, or every indexed file under a folder. Returns how many files were removed.
+#[tauri::command]
+async fn rag_remove(path: String) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || rag::remove(&path)).await.map_err(|e| e.to_string())?
+}
+
+/// Empty the knowledge index.
+#[tauri::command]
+async fn rag_clear() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(rag::clear).await.map_err(|e| e.to_string())?
+}
+
+/// The best passages from the knowledge index for a question.
+#[tauri::command]
+async fn rag_search(query: String, limit: Option<usize>) -> Vec<rag::Hit> {
+    tauri::async_runtime::spawn_blocking(move || rag::search(&query, limit.unwrap_or(4))).await.unwrap_or_default()
+}
+
 #[tauri::command]
 fn chat_feed_supported(agent_id: String) -> bool {
     chat_feed::supported(&agent_id)
@@ -1147,6 +1178,11 @@ pub fn run() {
             local_skills,
             local_skill_text,
             run_approved_command,
+            rag_add,
+            rag_sources,
+            rag_remove,
+            rag_clear,
+            rag_search,
             gemini_status,
             gemini_connect,
             gemini_disconnect,
