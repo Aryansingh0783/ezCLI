@@ -4,39 +4,76 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-11-03 by Claude (v5.12.11 release)
+Last updated: 2026-11-04 by Claude (llama-cli crash investigation)
 
 > **Staleness notice:** sections 0-6 below describe v1.2.1 and are historical. Use the block below
 > for the current state, and `git log` for history between v2.2 and v5.12.
 
-## Current state (v5.12.11, 2026-11-03)
+## Current state (v5.12.13, 2026-11-03)
 
-- **Latest release:** [v5.12.11](https://github.com/Aryansingh0783/ezCLI/releases/tag/v5.12.11): `.msi`, `.deb`,
-  `.AppImage`, `.sha256` files and the VS Code `.vsix`. **No macOS `.dmg`**: its build failed on a cfg bug
-  (`GIB` in `system_profile.rs`), fixed on `main` afterwards, so the next release should include it (untested on macOS).
-- **Open:** draft PR #36 bumps `packaging/arch/PKGBUILD` and `.SRCINFO` from 5.12.8 to 5.12.11 (`.deb` sha256
-  verified). Merge only on the user's request. The 5.12.9 and 5.12.10 releases were skipped in the Arch package.
+### Releases
+- **v5.12.12** (published, all platforms incl. the macOS `.dmg`): Thinking-block fix, release-workflow fix, macOS build fix.
+- **v5.12.13** (triggered 2026-11-03 ~20:39 UTC via "Tag and release"; **verify it finished**: `.msi`, `.deb`, `.AppImage`,
+  `.dmg`, `.sha256` files and the `.vsix` on the release page): llama.cpp install/reinstall/update/CPU-only buttons,
+  model Uninstall, crash explanation. If a job failed, read its log; rerun failed jobs once.
+- **Arch package:** draft PR #36 (branch `claude/arch-5.12.11`) currently sets `PKGBUILD`/`.SRCINFO` to **5.12.12**.
+  After 5.12.13 is verified, bump `pkgver` and the first `sha256sums` entry to 5.12.13 (checksum from the
+  release's `ezCLI_5.12.13_amd64.deb.sha256`, also compare the downloaded file). Merge only when the user asks.
+- **Open draft PR #40:** `LIST:` / `READ:` tools so local models can look through the PC (read-only, 64 KB cap, each request
+  approved by a click, only when the Terminal button is on). CI green. Not merged, not released. Needs "merge pr 40".
+
+### Open problems (pick up here)
+1. **llama-cli crashes while loading `qwen4exp` models on the user's Windows PC** (`process exited (code 3221225477)` =
+   `0xC0000005`, right after "Loading model..."). Narrowed down on the user's PC (2026-11-04, real `llama-cli` runs with
+   `-m <file> -ngl N -c 4096 -p hi -n 16`):
+   - `mtp-Qwen3.8-Flash-Next-Q4_0` and `-Q8_0` (architecture `qwen4exp`, 49 blocks, `nextn_predict_layers=1`) crash with
+     0xC0000005 on **build 12078 and build 11960**, with `-ngl 0` **and** `-ngl 99`. With `-v` the log stops during KV cache /
+     `llama_memory_recurrent` setup, after the weights loaded. So it is not the GPU driver, not the Vulkan build, not one build.
+   - `Qwen3.5-9B ...MTP-Q8_0` (Defiant) **works** on build 11960 in both modes (exit 0; 54 t/s GPU, 4.9 t/s CPU). So "MTP in the
+     name" is not the cause; the architecture is. Not run on 12078 (the install was replaced), so its earlier crash is unexplained.
+   - Cause is inside llama.cpp, not ezCLI. Not tried: a newer llama.cpp build than 12078, and `-dev none`.
+   - Done: the crash message in `public/app.js` no longer tells a CPU-mode user to switch to CPU, and no longer blames "MTP".
+   - Speed note (measured 2026-11-04, RTX 5070 12 GB, build 11960, the app's own args `-ngl 99 -m <file>`, no `-c`): with the GPU
+     free, all 34 layers are offloaded (llama.cpp's auto-fit shrinks the context from 262144 to 32000) and a long reply runs at
+     52.9 t/s (GPU 96% busy, P0, 2887 MHz). Context size does not matter (-c 4096/8192/16384/default all 26.3 t/s on a one-word reply).
+     One-word replies read ~26 t/s because the GPU has not ramped up; do not benchmark with them. A chat that ran at ~20 t/s had started
+     while other runs shared the GPU. Not a bug in ezCLI; "start a new chat with the GPU free" is the fix for a slow session.
+2. **Reasoning still shown as the reply?** v5.12.12 folds reasoning into a "Thinking" block only when it is wrapped in
+   `Thinking...`/`...done thinking.`, `[Start thinking]`/`[End thinking]` or `<think>`/`</think>` (`public/thinking.js`).
+   The real markers `llama-cli` prints for Qwen3.x were never seen. If the user still sees "Strategy:/Draft:" inline, get ~10 raw
+   lines of output and match them. Do not add llama.cpp options like `-rea off` untested: an option the build rejects breaks the
+   chat again (that is how the `-cnv` bug happened).
+3. **Offered, not built:** (a) a per-session switch that turns off ezCLI's added instructions (the accuracy/tool rules built in
+   `public/features/websearch.js` `hint()`); (b) a "Tuned" llama.cpp mode with `-t 8 -c 32768` (the user's Ollama Modelfile
+   numbers). Build only if asked, and test the agent never passes options `llama-cli` rejects
+   (`the_llama_cpp_agent_never_passes_options_that_llama_cli_rejects` in `agents.rs`).
+4. **Ollama Modelfile attempt:** the user's `ollama create qwen-defiant -f ...` failed with "no Modelfile or safetensors files
+   found" (the file had been saved as `Modelfile-fable.txt`). Unresolved; Ollama may not support Qwen3.5 yet.
+
+### Architecture (short)
 - **Stack:** Tauri 2 Rust backend (`src-tauri/src/*.rs`), vanilla-JS frontend in `public/` (classic scripts, no modules).
 - **Local models:**
   - llama.cpp agent `gguf` in `agents.json`. `llama-cli` is always interactive and rejects `-cnv`; modes are
     `-ngl 99` (GPU) and `-ngl 0` (CPU). `agents::merge_builtin` repairs saved configs that still carry `-cnv`.
   - LM Studio agent `lmstudio` plus whitelisted `lms` actions (`lmstudio.rs`).
-  - `local_models.rs` scans the PC for model files (no LM Studio or Ollama needed).
-  - `hub.rs` is the Hugging Face browser/downloader (curl, resume, sha256 check, stall detection) and the in-app
-    llama.cpp installer (latest release holds only `nightly-tag.txt`; the nightly tag release holds the zips).
-  - `public/features/models.js` is the Models panel (Discover / My models / LM Studio) with hardware-based
-    recommendations. `system_profile.rs` reads RAM/GPU on Windows, Linux and macOS.
+  - `local_models.rs` scans the PC for model files. `hub.rs` is the Hugging Face browser/downloader (curl, resume, sha256,
+    stall detection), the llama.cpp installer (`install_llama(cpu_only)`, writes `~/.ezcli/llama.cpp/version.txt`,
+    `latest_llama`) and `delete_model` (only absolute `.gguf` files, never links). Models live in `~/.ezcli/models`
+    unless the user picks a folder.
+  - `public/features/models.js` is the Models panel (Discover / My models / LM Studio): recommendations by hardware,
+    llama.cpp row (Check for update / Update / Reinstall / CPU-only build), two-click model Uninstall.
+  - `public/features/websearch.js` is the text-tool protocol for local models (`SEARCH`, `BROWSE`, `SKILL`, `RUN`; `LIST`/`READ`
+    on PR #40). `public/thinking.js` splits reasoning from answers; `public/features/chat.js` renders it.
+  - Windows llama.cpp update script (PowerShell, worked on the user's PC) is the same logic as the in-app installer.
 - **Release process:** user says "merge pr N" / "release X.Y.Z". Merge (squash), bump the version in
   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock`, run the "Tag and release" workflow, wait
   about 7-10 min, check assets, verify the `.deb` sha256, then bump the Arch PKGBUILD and `.SRCINFO`. Tag pushes via the
-  proxy are blocked (403); no force-push. `release.yml` finds the Tauri CLI with a single `gh api --jq 'first(...)'`
-  (a `| head` pipe used to fail at random with exit 141).
+  proxy are blocked (403); no force-push. `release.yml` finds the Tauri CLI with a single `gh api --jq 'first(...)'`.
 - **CI** (`.github/workflows/ci.yml`): clippy `-D warnings` and tests on Linux and Windows, JS/JSON/version checks,
-  Playwright UI smoke (`scripts/ui-smoke.js`). macOS is only compiled in the release build, so macOS-only code can
-  break a release without failing CI.
-- **Unverified:** nothing has run on real Windows or Arch hardware or against a real `llama-cli`. If a llama.cpp
-  chat still fails for the user, ask for the on-screen message. The cause of one stalled-download report is unknown
-  (downloads now show stall and give-up notes). `tauri.conf.json` has `csp: null` on purpose.
+  Playwright UI smoke (`scripts/ui-smoke.js`, run locally with `node scripts/ui-smoke.js`). macOS-only code is only compiled
+  in the release build, so it can break a release without failing CI.
+- **Never verified:** anything on real Windows/Arch hardware beyond what the user reports, and a real `llama-cli` run in the
+  sandbox. `tauri.conf.json` has `csp: null` on purpose.
 
 ---
 
