@@ -33,8 +33,11 @@ Last updated: 2026-11-04 by Claude (llama-cli crash investigation)
      name" is not the cause; the architecture is. Not run on 12078 (the install was replaced), so its earlier crash is unexplained.
    - Cause is inside llama.cpp, not ezCLI. Not tried: a newer llama.cpp build than 12078, and `-dev none`.
    - Done: the crash message in `public/app.js` no longer tells a CPU-mode user to switch to CPU, and no longer blames "MTP".
-   - Speed note: the same Defiant launch gave 45-54 t/s alone but ~20 t/s in a chat that started while other runs used the GPU.
-     Probable cause: llama.cpp fits layers to free VRAM at start, so part of the 10.7 GB model sat on the CPU (not proven).
+   - Speed note (measured 2026-11-04, RTX 5070 12 GB, build 11960, the app's own args `-ngl 99 -m <file>`, no `-c`): with the GPU
+     free, all 34 layers are offloaded (llama.cpp's auto-fit shrinks the context from 262144 to 32000) and a long reply runs at
+     52.9 t/s (GPU 96% busy, P0, 2887 MHz). Context size does not matter (-c 4096/8192/16384/default all 26.3 t/s on a one-word reply).
+     One-word replies read ~26 t/s because the GPU has not ramped up; do not benchmark with them. A chat that ran at ~20 t/s had started
+     while other runs shared the GPU. Not a bug in ezCLI; "start a new chat with the GPU free" is the fix for a slow session.
 2. **Reasoning still shown as the reply?** v5.12.12 folds reasoning into a "Thinking" block only when it is wrapped in
    `Thinking...`/`...done thinking.`, `[Start thinking]`/`[End thinking]` or `<think>`/`</think>` (`public/thinking.js`).
    The real markers `llama-cli` prints for Qwen3.x were never seen. If the user still sees "Strategy:/Draft:" inline, get ~10 raw
