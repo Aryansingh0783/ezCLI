@@ -31,7 +31,10 @@ Last updated: 2026-11-04 by Claude (llama-cli crash investigation)
      `llama_memory_recurrent` setup, after the weights loaded. So it is not the GPU driver, not the Vulkan build, not one build.
    - `Qwen3.5-9B ...MTP-Q8_0` (Defiant) **works** on build 11960 in both modes (exit 0; 54 t/s GPU, 4.9 t/s CPU). So "MTP in the
      name" is not the cause; the architecture is. Not run on 12078 (the install was replaced), so its earlier crash is unexplained.
-   - Cause is inside llama.cpp, not ezCLI. Not tried: a newer llama.cpp build than 12078, and `-dev none`.
+   - Cause is inside llama.cpp, not ezCLI. **Newest build b12110 (updated through the app's Update button, 2026-11-04) still crashes** on
+     `mtp-Qwen3.8-Flash-Next-Q8_0` with `-dev none -ngl 0 -c 4096` (exit -1073741819, no output), so the GPU is not involved at all.
+     Defiant still runs on b12110 (`-dev none -ngl 0`: exit 0, 5.2 t/s). Defiant on b12110 with the GPU was not run (the user wanted the GPU idle).
+     Next: report the `qwen4exp` crash upstream to ggml-org/llama.cpp (arch qwen4exp, nextn_predict_layers=1, crash in `llama_memory_recurrent` setup).
    - Done: the crash message in `public/app.js` no longer tells a CPU-mode user to switch to CPU, and no longer blames "MTP".
    - Speed note (measured 2026-11-04, RTX 5070 12 GB, build 11960, the app's own args `-ngl 99 -m <file>`, no `-c`): with the GPU
      free, all 34 layers are offloaded (llama.cpp's auto-fit shrinks the context from 262144 to 32000) and a long reply runs at
