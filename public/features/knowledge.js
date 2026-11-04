@@ -26,6 +26,7 @@ const Knowledge = {
   },
 
   async refresh() {
+    this.loaded = true;
     try {
       const list = await invoke('rag_sources');
       this.sources = Array.isArray(list) ? list : [];
@@ -120,6 +121,11 @@ const Knowledge = {
     if (!WebSearch.applies(s)) {
       if (b) b.hidden = true;
       return;
+    }
+    // the list is read at boot; if that ran before this file loaded, read it now
+    if (!this.loaded) {
+      this.loaded = true;
+      this.refresh();
     }
     const grow = document.querySelector('#ptyComposer .composer-row .grow');
     if (!grow) return;
