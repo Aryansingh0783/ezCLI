@@ -127,6 +127,17 @@ function mockScript(agentList) {
         await page.waitForTimeout(450);
         if (!(await page.$('dialog[open]'))) problems.push(`${tag}: ${name} did not open`);
         await overflow(name);
+        if (btn === 'modelsBtn' && theme === 'light' && w === 1280) {
+          // numbered lists: bullets under an item nest inside it, and a list that starts at 2 is not shown as 1
+          const lists = await page.evaluate(() => ({
+            nested: ChatView.text('1. A\n   - x\n   - y\n2. B\n   - z\n3. C', true),
+            restarted: ChatView.text('2. B\n3. C', true),
+            plain: ChatView.text('- a\n- b', true)
+          }));
+          if ((lists.nested.match(/<ol/g) || []).length !== 1 || (lists.nested.match(/<li>C<\/li>/g) || []).length !== 1 || !/<li>A<ul><li>x<\/li><li>y<\/li><\/ul><\/li>/.test(lists.nested)) problems.push(`${tag}: bullets under numbered items did not nest: ${lists.nested}`);
+          if (!/<ol start="2">/.test(lists.restarted)) problems.push(`${tag}: a numbered list starting at 2 lost its number: ${lists.restarted}`);
+          if (lists.plain !== '<ul><li>a</li><li>b</li></ul>') problems.push(`${tag}: a plain bullet list changed: ${lists.plain}`);
+        }
         if (btn === 'modelsBtn') {
           // every tab of the Models panel: it must open, draw something, and stay inside the window
           for (const tabId of ['mine', 'lmstudio', 'discover']) {
