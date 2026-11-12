@@ -367,7 +367,12 @@ const ChatView = {
       para = [];
     };
     const flushL = () => {
-      if (list) html += `<${list.t}>${list.items.map((x) => `<li>${this.inline(x)}</li>`).join('')}</${list.t}>`;
+      if (list) {
+        // a numbered list keeps its own first number (so "2." after an interrupting bullet list is not shown as "1.")
+        const start = list.t === 'ol' && list.start > 1 ? ` start="${list.start}"` : '';
+        const item = (x) => `<li>${this.inline(x.text)}${x.sub.length ? `<ul>${x.sub.map((b) => `<li>${this.inline(b)}</li>`).join('')}</ul>` : ''}</li>`;
+        html += `<${list.t}${start}>${list.items.map(item).join('')}</${list.t}>`;
+      }
       list = null;
     };
     for (let i = 0; i < lines.length; i++) {
@@ -385,20 +390,25 @@ const ChatView = {
         flushP();
         flushL();
         html += '<hr>';
-      } else if ((m = /^\s*[-*+•]\s+(.*)$/.exec(ln))) {
+      } else if ((m = /^(\s*)[-*+•]\s+(.*)$/.exec(ln))) {
         flushP();
+        // a bullet indented under a numbered item belongs to that item
+        if (list && list.t === 'ol' && m[1].length >= 2 && list.items.length) {
+          list.items[list.items.length - 1].sub.push(m[2]);
+          continue;
+        }
         if (!list || list.t !== 'ul') {
           flushL();
           list = { t: 'ul', items: [] };
         }
-        list.items.push(m[1]);
-      } else if ((m = /^\s*\d+[.)]\s+(.*)$/.exec(ln))) {
+        list.items.push({ text: m[2], sub: [] });
+      } else if ((m = /^\s*(\d+)[.)]\s+(.*)$/.exec(ln))) {
         flushP();
         if (!list || list.t !== 'ol') {
           flushL();
-          list = { t: 'ol', items: [] };
+          list = { t: 'ol', items: [], start: Number(m[1]) };
         }
-        list.items.push(m[1]);
+        list.items.push({ text: m[2], sub: [] });
       } else if ((m = /^\s*>\s?(.*)$/.exec(ln))) {
         flushP();
         flushL();
@@ -417,7 +427,7 @@ const ChatView = {
           .map((r) => `<tr>${cells(r).map((x) => `<td>${this.inline(x)}</td>`).join('')}</tr>`)
           .join('')}</tbody></table></div>`;
       } else if (list && /^\s{2,}\S/.test(ln)) {
-        list.items[list.items.length - 1] += ' ' + ln.trim();
+        list.items[list.items.length - 1].text += ' ' + ln.trim();
       } else {
         flushL();
         para.push(ln.trim());
