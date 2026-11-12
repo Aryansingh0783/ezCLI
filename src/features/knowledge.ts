@@ -1,6 +1,7 @@
 import { T, active, hooks, invoke, prefs, savePrefs, toast } from '../app';
 import { WebSearch } from './websearch';
 import { late } from '../late';
+import { setKV } from '../core/html';
 /* Knowledge for local models (RAG). You add folders or files; the app indexes their text on this PC
  * (src-tauri/src/rag.rs, word-statistics search, no model download). When you ask a question, the best
  * matching passages are sent to the model together with it, and the model may also ask for more with
@@ -142,7 +143,7 @@ export const Knowledge = {
     b.hidden = false;
     const on = this.usable();
     b.dataset.mode = on ? 'auto' : 'off';
-    b.textContent = this.files ? `Knowledge: ${this.mode() === 'on' ? this.files : 'off'}` : 'Knowledge';
+    setKV(b, this.files ? `Knowledge: ${this.mode() === 'on' ? (this.files === 1 ? '1 source' : `${this.files} sources`) : 'off'}` : 'Knowledge: none');
     b.title = 'Let the model answer from your own files. Click to add folders and files, see what is indexed, or turn it off.';
   },
 

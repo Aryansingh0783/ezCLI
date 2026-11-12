@@ -53,7 +53,7 @@ export const RailSessions = {
     if (list.length) {
       const head = document.createElement('div');
       head.className = 'rail-sessions-head';
-      head.textContent = 'Recents';
+      head.textContent = 'Open';
       this.box.append(head);
     }
     for (const s of list) {

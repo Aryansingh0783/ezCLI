@@ -163,9 +163,18 @@ const TERM_LINES = { compact: 1.15, comfortable: 1.35, relaxed: 1.55 };
 /** The terminal paints an opaque background that matches its pane exactly (theme.css sets --term-bg).
  *  An opaque pane is also what the GPU renderer needs; a transparent one composites as black boxes. */
 function syncTermBackground() {
-  const bg = getComputedStyle(document.documentElement).getPropertyValue('--term-bg').trim() || '#0d1117';
-  TERM_THEMES.dark.background = bg;
-  TERM_THEMES.dark.cursorAccent = bg;
+  const css = getComputedStyle(document.documentElement);
+  const bg = css.getPropertyValue('--term-bg').trim() || '#17181A';
+  const fg = css.getPropertyValue('--text').trim();
+  for (const t of [TERM_THEMES.dark, TERM_THEMES.light]) {
+    t.background = bg;
+    t.cursorAccent = bg;
+  }
+  const cur = TERM_THEMES[document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'];
+  if (fg) {
+    cur.foreground = fg;
+    cur.cursor = fg;
+  }
   document.documentElement.dataset.termGlass = 'off';
 }
 
@@ -190,7 +199,7 @@ function termOptions(extra = {}) {
     smoothScrollDuration: 70,
     allowProposedApi: true,
     allowTransparency: false,
-    theme: TERM_THEMES.dark,
+    theme: TERM_THEMES[resolvedTheme()],
     scrollback: 20000,
     ...extra
   };
@@ -307,18 +316,23 @@ export function remeasureTerminals() {
   requestAnimationFrame(() => state.sessions.forEach(fitSession));
 }
 
-/** There is one look: dark. Kept as a function because the terminal code asks it. */
-export const resolvedTheme = () => 'dark' as const;
+/** The look: `prefs.look` is 'system' (follow the OS), 'dark' or 'light'. */
+export const resolvedTheme = (): 'dark' | 'light' => {
+  const want = prefs.look === 'dark' || prefs.look === 'light' ? prefs.look : 'system';
+  if (want !== 'system') return want;
+  return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+};
 
-/** Stamp the fixed attributes the stylesheet keys on, and give every terminal the colours. */
+/** Stamp the attributes the stylesheet keys on, and give every terminal the colours. */
 export function applyTheme() {
   const root = document.documentElement;
-  root.dataset.theme = 'dark';
-  root.dataset.layout = 'dashboard';
+  const theme = resolvedTheme();
+  root.dataset.theme = theme;
+  root.dataset.layout = 'calm';
   delete root.dataset.palette;
   delete root.dataset.style;
   syncTermBackground();
-  for (const s of state.sessions) s.term.options.theme = TERM_THEMES.dark;
+  for (const s of state.sessions) s.term.options.theme = TERM_THEMES[theme];
 }
 
 /* ------------------------------------------------------------------ icons */
@@ -380,6 +394,7 @@ function isMeaningfulTerminalTitle(title) {
   if (!text || text.length >= 80) return false;
   // Console hosts title a window "Windows PowerShell", "Administrator: Command
   // Prompt" or a full exe path; none of those name the session.
+  if (/[\\/]/.test(text) && /\.(exe|cmd|bat|sh)$/i.test(text)) return false;
   const shell = basename(text).toLowerCase().replace(/^administrator:\s*/, '');
   return ![
     'cmd', 'cmd.exe', 'command prompt', 'powershell', 'powershell.exe', 'windows powershell', 'pwsh', 'pwsh.exe',
@@ -1077,7 +1092,7 @@ export async function createSession(agentId, opts: NewSessionOptions = {}) {
     modeId,
     effortId: opts.effortId ?? p.effort,
     cwd: opts.cwd || sp.path,
-    title: opts.title || `${a.label} ${count}`,
+    title: opts.title || (a.requiresModelSelection && selectedModel ? modelLabel(a, selectedModel) : `${a.label} ${count}`),
     status: 'starting',
     exitCode: null,
     startedAt: Date.now(),
@@ -1664,7 +1679,7 @@ export function renderHome() {
   const hour = new Date().getHours();
   const hello = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-  $('homeTitle').textContent = 'Sessions';
+  $('homeTitle').textContent = 'What should the agent do?';
   $('homeGreeting').textContent = today;
   $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
   const projEl = $('homeProject');
@@ -1680,7 +1695,7 @@ export function renderHome() {
     const fill = (id, cap, val, show = true) => {
       const el = $(id);
       el.hidden = !show;
-      el.innerHTML = `<span class="pill-cap">${cap}</span><span class="pill-val">${esc(val)}</span>${caret}`;
+      el.innerHTML = `<span class="sr-only">${cap}: </span><span class="pill-val">${esc(val)}</span>${caret}`;
       // The value can be clipped (long catalog model names); keep it readable.
       el.title = `${cap}: ${val}`;
     };
@@ -1690,17 +1705,19 @@ export function renderHome() {
     fill('homeMode', 'Mode', label(a.modes, p.mode), a.modes.length > 1);
   }
 
+  // One row per agent: name, what it costs or runs on, and whether it can start now.
   $('agentStrip').innerHTML = state.agents
-    .map(
-      (x) => `<button class="agent-option agent-card ${x.id === prefs.agentId ? 'selected' : ''} ${x.available ? '' : 'missing'}" data-agent="${esc(x.id)}"
+    .map((x) => {
+      const note = x.free ? 'Free' : '';
+      return `<button class="agent-option agent-row ${x.id === prefs.agentId ? 'selected' : ''} ${x.available ? '' : 'missing'}" data-agent="${esc(x.id)}"
         role="radio" aria-checked="${x.id === prefs.agentId}"
         title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH. Click to install it.`)}">
-        <span class="agent-card-ico">${ICONS[x.icon] || ICONS.term}</span>
-        <span class="agent-card-text"><span class="agent-card-name">${esc(x.label)}</span>
-        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Click to install'}</span></span>
-        ${x.free ? '<span class="free-badge">Free</span>' : ''}
-      </button>`
-    )
+        <span class="agent-row-name">${esc(x.label)}</span>
+        <span class="agent-row-note">${esc(note)}</span>
+        <span class="agent-row-state">${x.available ? 'Ready' : 'Not installed'}</span>
+        <span class="agent-row-act">${x.available ? '' : 'Install'}</span>
+      </button>`;
+    })
     .join('');
 
   const prompts = [

@@ -1,6 +1,6 @@
 /* The window's entry point. Styles first, then the app in the order the old <script> tags loaded it. */
-import './styles/app.css';
-import './styles/theme.css';
+import './styles/legacy.css';
+import './styles/ui.css';
 import './app';
 import './features/palette';
 import './features/prompts';
@@ -38,4 +38,5 @@ import './features/sessions';
 import './features/team';
 import './features/usage';
 import './features/claude';
+import './features/shell';
 import './debug';

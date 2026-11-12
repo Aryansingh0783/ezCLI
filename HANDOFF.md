@@ -33,8 +33,12 @@ Paths such as `public/app.js` and `public/features/*.js` in the notes below are 
   tab kept its ConPTY and reader thread until it was closed) and finished sessions no longer use one of
   the 24 slots. Tested on Linux only; the ConPTY path was not run.
 - **Models list:** `local_models.rs` leaves out `.gguf` files whose first bytes are not a GGUF header.
-- **Look:** one dense dark theme (`src/styles/theme.css` over `src/styles/app.css`). Glass, calm and v4
-  style layers and the Glass toggle are gone.
+- **Look:** `src/styles/ui.css` is the interface (its header lists the design rules); `src/styles/legacy.css`
+  is the old CSS inside `@layer legacy`, kept for screens not redrawn yet. Sidebar + single title bar
+  (`src/features/shell.ts` moves the session's controls into it; the tab strip is in the DOM but not shown).
+  Dark and light themes, `prefs.look` = system | dark | light. Fonts: IBM Plex Sans and Mono, bundled.
+- **Chat turn cutting:** `src/core/echo.ts` finds where each sent message was echoed; it prefers the prompt
+  line, so a short message is not matched to the model quoting it. llama.cpp's speed line is removed from answers.
 - **Tests:** `npm test` (Vitest, `src/**/*.test.ts`), `npm run test:smoke` (Playwright, needs `npm run build`
   first; `PW_CHROME=/path/to/chrome` to use an installed browser), `cargo test --lib` in `src-tauri`.
 

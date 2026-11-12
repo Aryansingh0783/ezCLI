@@ -1,5 +1,6 @@
-import { active, agent, confirmDialog, effortLabel, hooks, invoke, pick, prefs, restartSession, savePrefs, sendText, sleep, toast } from '../app';
+import { active, agent, confirmDialog, effortLabel, hooks, invoke, openMenu, pick, prefs, restartSession, savePrefs, sendText, sleep, toast } from '../app';
 import { late } from '../late';
+import { setKV } from '../core/html';
 /* Tools for offline models (Ollama). A local model has no web, no skills and no terminal of its own, so
  * the app gives it a tiny text protocol. The model replies with exactly one line, and the app acts:
  *
@@ -461,12 +462,28 @@ export const WebSearch = {
   },
 
   /** llama.cpp reads its thinking budget when it starts, so a new level means starting the model again. */
+  /** The levels as a menu, so a level is chosen instead of stepped to. */
+  effortMenu(anchor) {
+    const s = active();
+    if (!this.applies(s)) return;
+    const list = this.launchEfforts(s);
+    if (!list.length) return this.cycleEffort();
+    openMenu(anchor, {
+      title: 'Thinking',
+      items: list.map((e) => ({ label: e.label.replace(/^Thinking: /, ''), on: e.id === s.effortId, run: () => this.setLaunchEffort(s, e) }))
+    });
+  },
+
   async cycleLaunchEffort(s) {
     const list = this.launchEfforts(s);
     if (!list.length) return;
-    const a = agent(s.agentId);
     const at = list.findIndex((e) => e.id === s.effortId);
-    const next = list[(at + 1) % list.length];
+    return this.setLaunchEffort(s, list[(at + 1) % list.length]);
+  },
+
+  async setLaunchEffort(s, next) {
+    if (next.id === s.effortId) return;
+    const a = agent(s.agentId);
     pick(a).effort = next.id;
     savePrefs();
     const live = s.status === 'running' || s.status === 'starting';
@@ -552,7 +569,7 @@ export const WebSearch = {
     const mode = this.mode();
     b.hidden = false;
     b.dataset.mode = mode;
-    b.textContent = { auto: 'Web: auto', always: 'Web: always', off: 'Web: off' }[mode];
+    setKV(b, { auto: 'Web: auto', always: 'Web: always', off: 'Web: off' }[mode]);
     b.title = 'Click to change: auto (search only when the model does not know), always, or off.';
     let t = term;
     if (!t) {
@@ -570,7 +587,7 @@ export const WebSearch = {
     }
     t.hidden = false;
     t.dataset.mode = this.terminalOn() ? 'auto' : 'off';
-    t.textContent = this.terminalOn() ? 'Terminal: ask' : 'Terminal: off';
+    setKV(t, this.terminalOn() ? 'Terminal: ask' : 'Terminal: off');
     t.title = 'When on, the model can propose a PowerShell command. You see it and click Run, or Skip.';
     let e = document.getElementById('btnEffort');
     if (!e) {
@@ -579,7 +596,7 @@ export const WebSearch = {
       e.id = 'btnEffort';
       e.className = 'web-btn';
       e.hidden = true;
-      e.addEventListener('click', () => this.cycleEffort());
+      e.addEventListener('click', () => this.effortMenu(e));
       grow.before(e);
     }
     let acc = document.getElementById('btnAcc');
@@ -600,14 +617,14 @@ export const WebSearch = {
     }
     acc.hidden = !this.isOllama(s);
     acc.dataset.mode = this.accurate() ? 'auto' : 'off';
-    acc.textContent = this.accurate() ? 'Accurate: on' : 'Accurate: off';
+    setKV(acc, this.accurate() ? 'Accurate: on' : 'Accurate: off');
     acc.title = 'On: lower randomness and a tight word pool, so the model guesses and invents less.';
     const launch = this.launchEfforts(s);
     if (launch.length) {
       const cur = launch.find((x) => x.id === s.effortId) || launch[0];
       e.hidden = false;
       e.dataset.mode = cur.id === launch[0].id ? 'off' : 'auto';
-      e.textContent = cur.label;
+      setKV(e, cur.label);
       e.title = `How long the model thinks before it answers. Click to change: ${launch.map((x) => x.label.replace(/^Thinking: /, '')).join(', ')}. The model restarts to apply it.`;
       return;
     }
@@ -617,7 +634,7 @@ export const WebSearch = {
       e.hidden = !(cur && cur.id === s.id && levels.length);
       const level = this.effortOf(s);
       e.dataset.mode = level === 'auto' ? 'off' : 'auto';
-      e.textContent = this.effortLabel(level);
+      setKV(e, this.effortLabel(level));
       e.title = `How long the model thinks before it answers. Click to change: auto, ${levels.map((l) => (l === 'false' ? 'off' : l)).join(', ')}.`;
     });
   }

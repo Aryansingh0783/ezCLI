@@ -1,3 +1,4 @@
+import { findEchoRows, normRow } from '../core/echo';
 import { codeSpan, inline, looksLikePath, renderMarkdown } from '../core/markdown';
 import { StreamView } from '../core/stream-view';
 import { splitThinking } from '../core/thinking';
@@ -138,7 +139,7 @@ export const ChatView = {
   /** Terminal chrome that is not part of an answer. */
   clean(lines, ask) {
     const border = /^[\s─-╿▀-▟]*$/;
-    const chrome = /previous cli conversation ended|^\s*(\.\.\.\s*)?press enter to send\s*$|^\s*>>>\s*(send a message.*|\/\w+.*)?$|^\s*set parameter .*$|^\s*set '?(no)?think'? mode.*$|^\s*cleared session context\s*$|use ctrl \+ d or \/bye|esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
+    const chrome = /^\s*\[\s*Prompt:\s*[\d.]+\s*t\/s\s*\|\s*Generation:\s*[\d.]+\s*t\/s\s*\]\s*$|previous cli conversation ended|^\s*(\.\.\.\s*)?press enter to send\s*$|^\s*>>>\s*(send a message.*|\/\w+.*)?$|^\s*set parameter .*$|^\s*set '?(no)?think'? mode.*$|^\s*cleared session context\s*$|use ctrl \+ d or \/bye|esc to (interrupt|cancel)|\? for shortcuts|shift\+tab|ctrl\+[a-z] to|context left|no sandbox|bypass permissions|auto-accept|accept edits|\d+% context|type your message|\/help for|tab to queue|esc again|ctrl\+c again|^\s*[▸▶▾]?\s*(thought|thinking) for \d+/i;
     const spinner = /^\s*([✢✳✻✽✶·*]\s+\S.*…|[⠀-⣿](\s|$))/;
     const head = String(ask || '').trim().slice(0, 18);
     const out = [];
@@ -277,30 +278,15 @@ export const ChatView = {
     // A full-screen app has no readable history in the terminal. It stays in the terminal until its own
     // log (see feed) delivers the conversation, so a question it is asking is never hidden.
     if (b.type === 'alternate') return [];
-    const norm = (x) => String(x).replace(/\s+/g, ' ').trim();
     const from = Math.max(0, b.length - 4000);
     const rows = this.linesBetween(s, from, b.length);
-    const flat = rows.map(norm);
-    // Each turn starts where the CLI echoed what was sent. Search from the newest turn backwards, so
-    // a message you send twice is matched to its own echo and not to the earlier one.
-    const at = c.turns.map(() => -1);
-    let limit = flat.length;
-    for (let i = c.turns.length - 1; i >= 0; i--) {
-      const t = c.turns[i];
-      if (t.reply != null) {
-        at[i] = -2; // finished and kept
-        continue;
-      }
-      const head = norm(t.echo || t.text).slice(0, 28);
-      if (!head) continue;
-      for (let k = limit - 1; k >= 0; k--) {
-        if (flat[k].includes(head)) {
-          at[i] = k;
-          limit = k;
-          break;
-        }
-      }
-    }
+    const flat = rows.map(normRow);
+    // Each turn starts where the CLI echoed what was sent (core/echo.ts). -2: finished and kept.
+    const found = findEchoRows(
+      flat,
+      c.turns.map((t) => (t.reply != null ? null : normRow(t.echo || t.text)))
+    );
+    const at = c.turns.map((t, i) => (t.reply != null ? -2 : found[i]));
     const items = [];
     c.turns.forEach((t, i) => {
       if (t.auto) items.push({ k: 'note', key: `n${i}`, text: t.text, detail: t.detail || '' });

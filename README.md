@@ -1289,10 +1289,18 @@ there is no Node server or WebSocket relay.
 
 ## Design source
 
-One dense dark theme. `src/styles/theme.css` holds the look: a neutral dark canvas, 1px borders,
-monospaced labels, tabular numbers and muted green / amber / red for state. `src/styles/app.css`
-holds the layout rules. There are no gradients, blur layers or entry animations, and state is
-shown as text (`WORKING`, `IDLE`, `READY`).
+The interface is drawn in `src/styles/ui.css`, which starts with the rules of the design:
+
+- One type family: IBM Plex Sans for the interface, IBM Plex Mono only for code, paths and keys. Sentence case.
+- Colour means state and nothing else: green is running, amber is waiting on you, red is an error.
+  The primary button is the text colour on the page colour. There is no accent colour.
+- A sidebar lists the project's sessions; one title bar names where you are and carries the session's controls.
+- Reading content sits in a 720px column. Nothing animates on its own.
+- Dark and light themes share those rules (Settings, Appearance, Theme; "Match the system" by default).
+
+`src/styles/legacy.css` holds the styles from before the redesign for screens that have not been redrawn.
+It sits in a CSS cascade layer, so any rule in `ui.css` wins over it, and its colour and font variables
+point at the new palette. The mockups the design was built from are in the pull request that introduced it.
 
 ## License
 

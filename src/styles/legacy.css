@@ -1,3 +1,6 @@
+/* The styles from before the redesign, kept for the screens that have not been redrawn yet.
+ * They sit in a cascade layer, so every rule in ui.css wins over them whatever its selector. */
+@layer legacy {
 /* Layout and component rules for the whole window.
  *
  * These came from the stylesheets the app used to stack (base, features, glass, refine, reference, calm,
@@ -105,7 +108,7 @@ kbd {
   flex: 1 1 auto;
 }
 [hidden] {
-  display: none !important;
+  display: none;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -1070,7 +1073,7 @@ kbd {
   height: 100%;
 }
 .term-host .xterm-viewport {
-  background: transparent !important;
+  background: transparent;
 }
 .scroll-bottom-btn {
   position: absolute;
@@ -3950,7 +3953,7 @@ dialog.palette::backdrop {
 }
 /* The "+" menu's "Add files or photos" replaces this chip. */
 #btnAttachImage.superseded {
-  display: none !important;
+  display: none;
 }
 
 /* ---------------------------------------------------------------- from reference.css */
@@ -4713,7 +4716,7 @@ dialog.palette::backdrop {
 .theming *,
 .theming *::before,
 .theming *::after {
-    transition: background-color 0.32s ease, border-color 0.32s ease, color 0.32s ease, fill 0.32s ease, box-shadow 0.32s ease !important;
+    transition: background-color 0.32s ease, border-color 0.32s ease, color 0.32s ease, fill 0.32s ease, box-shadow 0.32s ease;
   }
   .btn:active:not(:disabled),
 .chip:active:not(:disabled),
@@ -4797,7 +4800,7 @@ dialog.palette::backdrop {
   position: relative;
   z-index: 5;
   cursor: grabbing;
-  transition: none !important;
+  transition: none;
   box-shadow: 0 10px 24px -8px rgb(0 0 0 / 55%);
   scale: 1.06;
 }
@@ -4884,7 +4887,7 @@ dialog.palette::backdrop {
 
 /* The search box draws its own focus ring; the input inside must not add a second one. */
 .search-box input:focus,
-.search-box input:focus-visible { outline: none !important; box-shadow: none !important; }
+.search-box input:focus-visible { outline: none; box-shadow: none; }
 
 /* ---------------------------------------------------------------- from calm.css */
 /* Calm layout: a quieter, Claude-desktop-style home and session chrome.
@@ -4963,7 +4966,7 @@ dialog.palette::backdrop {
   backdrop-filter: blur(18px) saturate(1.15);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 7%), 0 10px 30px -18px rgb(30 24 12 / 45%);
 }
-:root[data-term-glass='on'] .terminal-panel .xterm-viewport { background-color: transparent !important; }
+:root[data-term-glass='on'] .terminal-panel .xterm-viewport { background-color: transparent; }
 
 /* ===================== polish ===================== */
 
@@ -4979,7 +4982,7 @@ dialog.palette::backdrop {
   box-shadow: none;
   border: 1px solid color-mix(in srgb, var(--ink, #1f1d19) 11%, transparent);
 }
-:root[data-term-glass='clear'] .terminal-panel .xterm-viewport { background-color: transparent !important; }
+:root[data-term-glass='clear'] .terminal-panel .xterm-viewport { background-color: transparent; }
 .term-look-hint { margin: -2px 0 8px; font-size: 12px; line-height: 1.45; }
 
 /* ===================== Sand = Claude desktop chrome =====================
@@ -5063,7 +5066,7 @@ dialog.palette::backdrop {
 }
 
 .working-ind { display: none; }
-.working-ind[hidden] { display: none !important; }
+.working-ind[hidden] { display: none; }
 
 /* sidebar: a working session shows the dots, a smaller copy of the same indicator */
 .rail-working { display: inline-flex; flex: none; align-items: center; }
@@ -5146,9 +5149,9 @@ dialog.sheet a:hover,
  * is narrow when the explorer takes space even in a wide window. */
 @container composer (max-width: 660px) {
   .composer-row,
-.composer-row.runconfig { flex-wrap: wrap !important; row-gap: 4px; }
-  #homeAgent { margin-left: 0 !important; }
-  .composer-tools { margin-left: auto !important; }
+.composer-row.runconfig { flex-wrap: wrap; row-gap: 4px; }
+  #homeAgent { margin-left: 0; }
+  .composer-tools { margin-left: auto; }
   #ptyComposer .composer-meta { margin-left: auto; }
 }
 
@@ -5157,11 +5160,11 @@ dialog.sheet a:hover,
 @container shead (max-width: 760px) {
   .session-head > .head-chip,
 .session-head > .head-branch,
-.session-head > .head-agent { display: none !important; }
+.session-head > .head-agent { display: none; }
 }
 @container shead (max-width: 520px) {
   .session-head #actExport,
-.session-head .open-in-primary { display: none !important; }
+.session-head .open-in-primary { display: none; }
 }
 
 /* ===================== composer footer, tidied ===================== */
@@ -5196,7 +5199,7 @@ dialog.sheet a:hover,
 
 /* box-drawing bars in the terminal read as one stroke (termfix.js) */
 .xterm-rows span.tl-bar {
-  display: inline-block; vertical-align: top; color: transparent !important;
+  display: inline-block; vertical-align: top; color: transparent;
   background: linear-gradient(var(--bar), var(--bar)) center / 1px 100% no-repeat;
 }
 
@@ -5297,7 +5300,7 @@ dialog.sheet a:hover,
 @media (prefers-reduced-motion: reduce) {
   .rail-session,
 .main.view-in > :not(dialog),
-.hover-card { animation: none !important; }
+.hover-card { animation: none; }
 }
 
 /* the sidebar list fades where it scrolls */
@@ -5415,11 +5418,11 @@ dialog.sheet a:hover,
 
 /* with the chat showing there is no terminal window around it */
 .terminal-panel.chat-on {
-  border-color: transparent !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
-  margin: 0 !important; padding: 0 !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  border-color: transparent; background: transparent; box-shadow: none; border-radius: 0;
+  margin: 0; padding: 0; -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 .terminal-panel.chat-on::before,
-.terminal-panel.chat-on::after { display: none !important; }
+.terminal-panel.chat-on::after { display: none; }
 
 /* hover actions on a message */
 .cm-acts { display: flex; gap: 2px; margin-top: 4px; opacity: 0; transition: opacity 0.12s ease; }
@@ -5777,3 +5780,5 @@ html[data-os='linux'] .window-control { min-width: 44px; }
 .kb-empty { opacity: 0.65; }
 @media (max-width: 520px) { .kb-panel { right: 16px; left: 16px; width: auto; bottom: 120px; } }
 
+
+}
