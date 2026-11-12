@@ -115,6 +115,18 @@ describe('StreamView', () => {
     expect(host.children).toHaveLength(1);
   });
 
+  it('keeps a code block whose fence line arrives in pieces, and only updates its label', () => {
+    const view = new StreamView(host);
+    view.update('```', { streaming: true });
+    const block = host.firstElementChild as HTMLElement;
+    for (const text of ['```py', '```python', '```python\nprint(1)', '```python\nprint(1)\n```\n']) {
+      view.update(text, { streaming: true });
+      expect(host.firstElementChild).toBe(block);
+    }
+    expect(block.querySelector('.cm-code-head span')?.textContent).toBe('python');
+    expect(host.innerHTML).toBe(renderMarkdown('```python\nprint(1)\n```\n', true));
+  });
+
   it('appends code to one text node and colours the block once, when its fence closes', () => {
     const view = new StreamView(host);
     view.update('```js\ncon', { streaming: true });

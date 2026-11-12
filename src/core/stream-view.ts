@@ -247,7 +247,12 @@ export class StreamView {
 
   private growCode(have: Drawn, next: Extract<Block, { t: 'code' }>): boolean {
     const prev = have.block as Extract<Block, { t: 'code' }>;
-    if (prev.lang !== next.lang) return false;
+    // The fence line itself can arrive in pieces ("```" and then "python"): the label follows, the block stays.
+    if (prev.lang !== next.lang) {
+      const label = have.el.querySelector('.cm-code-head span');
+      if (!label) return false;
+      label.textContent = next.lang.trim() || 'text';
+    }
     const code = have.el.querySelector('code') as HTMLElement;
     if (next.open) {
       if (have.codeText && next.body.startsWith(prev.body)) {

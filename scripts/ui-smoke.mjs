@@ -263,7 +263,8 @@ if (direct) (async () => {
       let checks = 0;
       for (let i = 0; i < reply.length; i += 7) {
         emit(reply.slice(i, i + 7));
-        await wait(12);
+        // mostly fast, with a few long gaps: a slow machine draws half-arrived lines (an unfinished code fence, say)
+        await wait(i % 140 === 0 ? 2500 : 12);
         if (!col) continue;
         const heading = col.querySelector('h1, h2, h3');
         const code = col.querySelector('.cm-code');
