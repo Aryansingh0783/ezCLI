@@ -79,7 +79,12 @@ export const RailSessions = {
       x.dataset.railClose = s.id;
       x.setAttribute('aria-label', 'Close session');
       x.textContent = '×';
-      row.append(d, t, x);
+      // what the session is doing, in a word, so the list can be read without opening each one
+      const word = { working: 'working', unseen: 'new reply', parked: 'parked', error: 'failed' }[dot] || (s.status === 'exited' ? 'ended' : '');
+      const m = document.createElement('span');
+      m.className = 'rail-session-meta' + (dot === 'unseen' ? ' attn' : '');
+      m.textContent = word;
+      row.append(d, t, m, x);
       this.box.append(row);
     }
     if (earlier.length) {

@@ -1889,3 +1889,16 @@ select.select {
 .statusbar #stVram.warn {
   color: var(--c-warn);
 }
+
+.rail-session-meta {
+  flex: none;
+  font-size: 12px;
+  color: var(--c-3);
+}
+.rail-session-meta.attn {
+  color: var(--c-warn);
+}
+.rail-session-meta:empty,
+.rail-session:hover .rail-session-meta {
+  display: none;
+}

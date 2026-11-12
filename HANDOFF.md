@@ -9,7 +9,7 @@ Last updated: 2026-11-12 by Claude (front end moved to Vite + TypeScript; see th
 > **Staleness notice:** sections 0-6 below describe v1.2.1 and are historical. Use the block below
 > for the current state, and `git log` for history between v2.2 and v5.12.
 
-## Front end layout since the modernization PR (2026-11-12)
+## v5.13.0 (2026-11-13): front end layout since the modernization PR
 
 Paths such as `public/app.js` and `public/features/*.js` in the notes below are now `src/app.ts` and
 `src/features/*.ts`. What changed:
@@ -39,6 +39,12 @@ Paths such as `public/app.js` and `public/features/*.js` in the notes below are 
   Dark and light themes, `prefs.look` = system | dark | light. Fonts: IBM Plex Sans and Mono, bundled.
 - **Chat turn cutting:** `src/core/echo.ts` finds where each sent message was echoed; it prefers the prompt
   line, so a short message is not matched to the model quoting it. llama.cpp's speed line is removed from answers.
+- **Local-model speed:** `gpu_memory` command (nvidia-smi) and `src/features/gpu.ts`: tokens/s and GPU memory in the
+  status bar, and a warning when a model starts without enough free GPU memory. Measured on the RTX 5070: Qwen3 8B Q8_0
+  ran at 18.1 t/s loaded beside other GPU programs and 46.5 t/s after a restart with them closed.
+- **Web:** a message that says not to search the web is obeyed for that message (`WebSearch.noWeb`).
+- **Not verified:** the redesigned interface has only run in headless Chrome; crash failover has never fired on real
+  hardware; the ConPTY handle release was compiled and unit-tested on Windows CI but not watched in the app.
 - **Tests:** `npm test` (Vitest, `src/**/*.test.ts`), `npm run test:smoke` (Playwright, needs `npm run build`
   first; `PW_CHROME=/path/to/chrome` to use an installed browser), `cargo test --lib` in `src-tauri`.
 
