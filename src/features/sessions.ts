@@ -37,7 +37,8 @@ export const Sessions = (() => {
     ]);
     imports = cat;
     const nativeIds = new Set(saved.map((m) => m.providerSessionId).filter(Boolean));
-    const rows = saved.map((m) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: Record<string, any>[] = saved.map((m) => ({
       kind: 'saved',
       key: `s:${m.id}`,
       id: m.id,

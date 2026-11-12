@@ -1,3 +1,29 @@
+import { codeSpan, inline, looksLikePath, renderMarkdown } from '../core/markdown';
+import { StreamView } from '../core/stream-view';
+import { splitThinking } from '../core/thinking';
+
+/** One thing in the chat column. Either a piece of HTML, or a message that may still be arriving. */
+interface ChatSeg {
+  key: string;
+  html?: string;
+  stream?: 'ai' | 'think';
+  text?: string;
+  hard?: boolean;
+  streaming?: boolean;
+  live?: boolean;
+  /** The row of actions under a finished reply. */
+  foot?: string;
+  /** A Thinking block the reader left open. */
+  open?: boolean;
+}
+/** The element a segment is drawn in, kept for as long as the segment is on screen. */
+interface ChatNode {
+  el: HTMLElement;
+  kind: 'html' | 'ai' | 'think';
+  html?: string | null;
+  view?: StreamView;
+  foot?: string;
+}
 import { $, active, agent, autoGrow, esc, hooks, invoke, openTerminalPath, openUrl, prefs, savePrefs, sendPlain, toast } from '../app';
 import { WebSearch } from './websearch';
 import { dotsHtml } from './calm';
@@ -292,22 +318,23 @@ export const ChatView = {
       const text = this.clean(rows.slice(start, end), t.echo || t.text);
       const sealed = next !== undefined && !s.working;
       if (sealed) t.reply = text;
-      if (text) this.pushReply(items, i, text);
+      if (text) this.pushReply(items, i, text, !sealed);
     });
     // Until the agent has answered or started working on it, the terminal may be holding a question; keep showing it.
     return items.some((x) => x.k === 'assistant' || x.k === 'thinking') || s.working ? items : [];
   },
 
-  /** Local models print their reasoning inside markers; see thinking.js. */
-  splitThinking(text) {
-    return window.ezCliThinking.splitThinking(text);
+  /** Local models print their reasoning inside markers; see core/thinking.ts. While the reply is still
+   *  arriving, half a marker at the end of the text is held back instead of being shown. */
+  splitThinking(text, streaming?) {
+    return splitThinking(text, Boolean(streaming));
   },
 
-  pushReply(items, key, text) {
-    const { think, answer, open } = this.splitThinking(text);
+  pushReply(items, key, text, streaming?) {
+    const { think, answer, open } = this.splitThinking(text, streaming);
     if (think || open) items.push({ k: 'thinking', key: 'k' + key, text: think, live: Boolean(open), hard: true });
-    // A reply that is one tool line (SEARCH, BROWSE, SKILL, RUN, KNOW) is acted on by websearch.js, not shown.
-    if (typeof WebSearch !== 'undefined' && WebSearch.request(answer)) items.push({ k: 'hidden', key: 'h' + key, text: answer });
+    // A reply that is one tool line (SEARCH, BROWSE, SKILL, RUN, KNOW) is acted on by websearch.ts, not shown.
+    if (WebSearch.request(answer)) items.push({ k: 'hidden', key: 'h' + key, text: answer });
     else if (answer) items.push({ k: 'assistant', key: 'a' + key, text: answer, hard: true });
   },
 
@@ -328,161 +355,18 @@ export const ChatView = {
 
   /* ----------------------------------------------------------- markdown */
 
+  /* The markdown itself lives in core/markdown.ts (one parser for the live view, exports and tests). */
   inline(src) {
-    const parts = String(src).split(/(`[^`\n]+`)/g);
-    return parts
-      .map((p, i) => {
-        if (i % 2) return this.codeSpan(p.slice(1, -1));
-        let t = esc(p);
-        t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-        t = t.replace(/(^|[^*\w])\*([^*\s][^*\n]*)\*(?![*\w])/g, '$1<em>$2</em>');
-        t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
-        t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2">$2</a>');
-        return t;
-      })
-      .join('');
+    return inline(src);
   },
 
-  /** Light colouring for code: comments, strings, numbers and common keywords. */
-  highlight(body) {
-    const re = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|(?<![^\s])#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\b(\d+(?:\.\d+)?)\b|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|class|new|async|await|try|catch|throw|def|fn|pub|use|impl|struct|enum|match|self|None|True|False|null|true|false|undefined|in|of|and|or|not|with|as|type|interface|extends|switch|case|break|continue|echo|git|npm|cd)\b/g;
-    let out = '';
-    let last = 0;
-    let m;
-    while ((m = re.exec(body))) {
-      out += esc(body.slice(last, m.index));
-      const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'n' : 'k';
-      out += `<span class="tk-${cls}">${esc(m[0])}</span>`;
-      last = re.lastIndex;
-    }
-    return out + esc(body.slice(last));
+  /** A whole message as HTML, in one go. The chat on screen does not use this; see `patch`. */
+  md(src, hard?) {
+    return renderMarkdown(src, Boolean(hard));
   },
 
-  code(lang, body) {
-    const shown = body.length > 20000 ? esc(body) : this.highlight(body);
-    return `<div class="cm-code"><div class="cm-code-head"><span>${esc(lang.trim() || 'text')}</span><button type="button" class="cm-copy">Copy</button></div><pre><code>${shown}</code></pre></div>`;
-  },
-
-  text(src, hard) {
-    const lines = String(src).split('\n');
-    let html = '';
-    let para = [];
-    let list = null;
-    const flushP = () => {
-      if (para.length) html += `<p>${para.map((l) => this.inline(l)).join(hard ? '<br>' : ' ')}</p>`;
-      para = [];
-    };
-    const flushL = () => {
-      if (list) {
-        // a numbered list keeps its own first number (so "2." after an interrupting bullet list is not shown as "1.")
-        const start = list.t === 'ol' && list.start > 1 ? ` start="${list.start}"` : '';
-        const item = (x) => `<li>${this.inline(x.text)}${x.sub.length ? `<ul>${x.sub.map((b) => `<li>${this.inline(b)}</li>`).join('')}</ul>` : ''}</li>`;
-        html += `<${list.t}${start}>${list.items.map(item).join('')}</${list.t}>`;
-      }
-      list = null;
-    };
-    for (let i = 0; i < lines.length; i++) {
-      const ln = lines[i];
-      let m;
-      if (!ln.trim()) {
-        flushP();
-        flushL();
-      } else if ((m = /^(#{1,4})\s+(.*)$/.exec(ln))) {
-        flushP();
-        flushL();
-        const n = m[1].length + 1;
-        html += `<h${n}>${this.inline(m[2])}</h${n}>`;
-      } else if (/^\s*([-*_])\1{2,}\s*$/.test(ln)) {
-        flushP();
-        flushL();
-        html += '<hr>';
-      } else if ((m = /^(\s*)[-*+•]\s+(.*)$/.exec(ln))) {
-        flushP();
-        // a bullet indented under a numbered item belongs to that item
-        if (list && list.t === 'ol' && m[1].length >= 2 && list.items.length) {
-          list.items[list.items.length - 1].sub.push(m[2]);
-          continue;
-        }
-        if (!list || list.t !== 'ul') {
-          flushL();
-          list = { t: 'ul', items: [] };
-        }
-        list.items.push({ text: m[2], sub: [] });
-      } else if ((m = /^\s*(\d+)[.)]\s+(.*)$/.exec(ln))) {
-        flushP();
-        if (!list || list.t !== 'ol') {
-          flushL();
-          list = { t: 'ol', items: [], start: Number(m[1]) };
-        }
-        list.items.push({ text: m[2], sub: [] });
-      } else if ((m = /^\s*>\s?(.*)$/.exec(ln))) {
-        flushP();
-        flushL();
-        html += `<blockquote>${this.inline(m[1])}</blockquote>`;
-      } else if (/^\s*\|.*\|\s*$/.test(ln)) {
-        flushP();
-        flushL();
-        const rows = [];
-        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i++]);
-        i--;
-        const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((x) => x.trim());
-        const body = rows.filter((r) => !/^\s*\|?\s*:?-{2,}/.test(r));
-        const th = cells(body[0] || '');
-        html += `<div class="cm-table"><table><thead><tr>${th.map((x) => `<th>${this.inline(x)}</th>`).join('')}</tr></thead><tbody>${body
-          .slice(1)
-          .map((r) => `<tr>${cells(r).map((x) => `<td>${this.inline(x)}</td>`).join('')}</tr>`)
-          .join('')}</tbody></table></div>`;
-      } else if (list && /^\s{2,}\S/.test(ln)) {
-        list.items[list.items.length - 1].text += ' ' + ln.trim();
-      } else {
-        flushL();
-        para.push(ln.trim());
-      }
-    }
-    flushP();
-    flushL();
-    return html;
-  },
-
-  /** A CLI that wraps its own output at the terminal width leaves a line break in the middle of every
-   *  sentence. Join those lines (a line that runs to the wrap width continues on the next). */
-  unwrap(src) {
-    return src
-      .split(/(```[\s\S]*?(?:```|$))/)
-      .map((part, i) => (i % 2 ? part : this.joinWrapped(part)))
-      .join('');
-  },
-
-  joinWrapped(text) {
-    const lines = text.split('\n');
-    const width = Math.max(0, ...lines.map((l) => l.length));
-    if (width < 40) return text;
-    const startsBlock = /^\s*([-*+•]\s|\d+[.)]\s|#{1,6}\s|>|\||\s{2,}\S)/;
-    const never = /^\s*(#{1,6}\s|\||>)/;
-    const out = [];
-    let prevLen = 0;
-    for (const l of lines) {
-      const prev = out[out.length - 1];
-      if (prev !== undefined && prev.trim() && l.trim() && prevLen >= width * 0.8 && !startsBlock.test(l) && !never.test(prev)) out[out.length - 1] = `${prev.replace(/\s+$/, '')} ${l.trim()}`;
-      else out.push(l);
-      prevLen = l.length;
-    }
-    return out.join('\n');
-  },
-
-  md(src, hard) {
-    if (hard) src = this.unwrap(src);
-    const re = /```([^\n`]*)\n([\s\S]*?)(```|$)/g;
-    let last = 0;
-    let html = '';
-    let m;
-    while ((m = re.exec(src))) {
-      html += this.text(src.slice(last, m.index), hard);
-      html += this.code(m[1], m[2].replace(/\n$/, ''));
-      last = re.lastIndex;
-      if (!m[0].length) break;
-    }
-    return html + this.text(src.slice(last), hard);
+  text(src, hard?) {
+    return renderMarkdown(src, Boolean(hard));
   },
 
   /* ----------------------------------------------------------- drawing */
@@ -539,21 +423,12 @@ export const ChatView = {
     return `<pre class="cm-diff">${rows}</pre>`;
   },
 
-  /** Text that names a file: a path with a folder, or a name with an extension. */
   looksLikePath(t) {
-    const x = String(t || '').trim();
-    if (!x || x.length > 260 || /\s/.test(x) || /^(https?:|www\.)/i.test(x) || /^v?\d+(\.\d+)+$/.test(x)) return false;
-    const m = /^(?:[A-Za-z]:[\\/]|\.{0,2}[\\/])?(?:[\w.@-]+[\\/])*[\w.@-]*[A-Za-z_][\w@-]*\.([A-Za-z][A-Za-z0-9]{0,5})(?::\d+(?::\d+)?)?$/.exec(x);
-    if (!m) return false;
-    // `src/app.js` is a file; `console.log` is code. Without a folder, only known file types count.
-    return /[\\/]/.test(x) || this.EXT.test(m[1]);
+    return looksLikePath(t);
   },
-  EXT: /^(js|mjs|cjs|jsx|ts|tsx|json|md|mdx|css|scss|less|html|htm|vue|svelte|rs|py|go|java|kt|rb|php|c|h|cc|cpp|hpp|cs|swift|toml|yaml|yml|lock|txt|sh|ps1|bat|cmd|sql|xml|ini|cfg|conf|gradle|dart|lua|zig|ex|exs|scala|dockerfile|env|csv|svg|png|jpg|gif)$/i,
 
-  /** Inline code; a file path becomes a link that opens it in the explorer. */
   codeSpan(t) {
-    if (!this.looksLikePath(t)) return `<code>${esc(t)}</code>`;
-    return `<code class="cm-path" role="link" tabindex="0" data-path="${esc(t)}" title="Open in the explorer">${esc(t)}</code>`;
+    return codeSpan(t);
   },
 
   /** How long the agent has been on this message, from when you sent it. */
@@ -585,17 +460,6 @@ export const ChatView = {
     const d = new Date(ts);
     if (!ts || Number.isNaN(d.getTime())) return '';
     return `<span class="cm-time">${esc(d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>`;
-  },
-
-  /** Markdown is the costly part of a redraw, and finished messages do not change. */
-  mdCached(s, it) {
-    const key = `${s.id}|${it.key}|${it.hard ? 1 : 0}`;
-    const hit = this.cache.get(key);
-    if (hit && hit.text === it.text) return hit.html;
-    const html = this.md(it.text, it.hard);
-    this.cache.set(key, { text: it.text, html });
-    if (this.cache.size > 600) this.cache.delete(this.cache.keys().next().value);
-    return html;
   },
 
   ICONS: {
@@ -630,18 +494,19 @@ export const ChatView = {
   PAGE: 60,
   lim: new Map(),
 
-  html(s, items) {
-    let h = '';
+  /** What the column should show, as an ordered list of segments. A segment is either a piece of HTML
+   *  (your message, a tool group, a note) or a message that may still be arriving (`stream`), which is
+   *  drawn block by block by a StreamView and never redrawn whole. */
+  segments(s, items) {
     this.cur = items;
-    // Only the newest messages are drawn; older ones come back with one click. A long chat is
-    // otherwise thousands of elements rebuilt on every change.
+    // Only the newest messages are drawn; older ones come back with one click.
     const n = this.lim.get(s.id) || this.PAGE;
     const hidden = Math.max(0, items.length - n);
     const shown = hidden ? items.slice(hidden) : items;
-    const parts = [];
-    if (hidden) parts.push(`<button type="button" class="cm-earlier" data-act="earlier">Show ${hidden} earlier message${hidden === 1 ? '' : 's'}</button>`);
-    for (const it of shown) {
-      const mark = h.length;
+    const segs: ChatSeg[] = [];
+    const add = (key: string, html: string) => segs.push({ key, html });
+    if (hidden) add(`${s.id}:earlier`, `<button type="button" class="cm-earlier" data-act="earlier">Show ${hidden} earlier message${hidden === 1 ? '' : 's'}</button>`);
+    shown.forEach((it, idx) => {
       const when = this.when(it.ts);
       if (it.k === 'user') {
         // A long paste (a log, a file) folds to a preview instead of filling the screen.
@@ -649,51 +514,151 @@ export const ChatView = {
         const long = lines > 14 || it.text.length > 1400;
         const open = this.expanded.has(it.key);
         const more = long ? `<button type="button" class="cm-more" data-act="more" data-key="${it.key}">${open ? 'Show less' : `Show all ${lines} lines`}</button>` : '';
-        h += `<div class="cm cm-user"><div class="cm-bubble${long && !open ? ' folded' : ''}">${esc(it.text)}</div>${more}`;
-        h += `<div class="cm-acts">${this.act('edit', it.key)}${this.act('copy', it.key)}${when}</div></div>`;
-      } else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) h += `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry" data-key="${it.key}">Edit last message and retry</button></div></div>`;
-      else if (it.k === 'assistant') {
-        if (it.live) {
-          h += `<div class="cm cm-ai cm-live"><div class="cm-body">${this.md(it.text, true)}</div></div>`;
-          parts.push(h.slice(mark));
-          continue;
-        }
-        h += `<div class="cm cm-ai"><div class="cm-body">${this.mdCached(s, it)}</div><div class="cm-acts">${this.act('copy', it.key)}${this.act('up', it.key)}${this.act('down', it.key)}${this.act('regen', it.key)}${when}</div></div>`;
+        add(it.key, `<div class="cm cm-user"><div class="cm-bubble${long && !open ? ' folded' : ''}">${esc(it.text)}</div>${more}<div class="cm-acts">${this.act('edit', it.key)}${this.act('copy', it.key)}${when}</div></div>`);
+      } else if (it.k === 'assistant' && it.text.startsWith('**Stopped:**')) {
+        add(it.key, `<div class="cm cm-stop" role="status"><div class="cm-stop-body">${esc(it.text.replace(/^\*\*Stopped:\*\*\s*/, ''))}</div><div class="cm-stop-acts"><button type="button" data-act="retry">Try again</button><button type="button" class="cm-open-term">Open the terminal</button></div></div>`);
+      } else if (it.k === 'assistant') {
+        // Still arriving: the live copy read from the terminal, or the newest reply of a working session.
+        const streaming = Boolean(it.live) || (s.working && idx === shown.length - 1);
+        segs.push({
+          key: it.key,
+          stream: 'ai',
+          text: it.text,
+          hard: Boolean(it.hard) || Boolean(it.live),
+          streaming,
+          live: Boolean(it.live),
+          foot: streaming ? '' : `<div class="cm-acts">${this.act('copy', it.key)}${this.act('up', it.key)}${this.act('down', it.key)}${this.act('regen', it.key)}${when}</div>`
+        });
         // links the model wrote that were in nothing it was given: likely made up
-        if (s.unverifiedFor === it.key && s.unverified && s.unverified.length) h += `<div class="cm cm-warn" role="note"><b>Check these links.</b> They were not in anything the model was given, so it may have made them up: ${s.unverified.map((u) => `<code>${esc(u)}</code>`).join(' ')}</div>`;
-      }
-      else if (it.k === 'tools') h += this.toolsHtml(it);
-      else if (it.k === 'thinking') h += `<details class="cm cm-think" data-key="${it.key}"${this.open.has(it.key) ? ' open' : ''}><summary>${it.live ? 'Thinking' : 'Thought'}</summary><div class="cm-think-body">${this.mdCached(s, it)}</div></details>`;
-      else if (it.k === 'note') h += it.detail ? `<details class="cm cm-note cm-note-out"><summary>${esc(it.text)}</summary><pre>${esc(it.detail)}</pre></details>` : `<div class="cm cm-note">${esc(it.text)}</div>`;
-      else if (it.k === 'empty') h += `<div class="cm cm-empty"><b>${esc((agent(s.agentId) || {}).label || 'Agent')} is ready</b><span>Type below to start. Use Terminal above for its own screen.</span></div>`;
-      parts.push(h.slice(mark));
-    }
-    const tail = h.length;
+        if (s.unverifiedFor === it.key && s.unverified && s.unverified.length) add(`${it.key}:warn`, `<div class="cm cm-warn" role="note"><b>Check these links.</b> They were not in anything the model was given, so it may have made them up: ${s.unverified.map((u) => `<code>${esc(u)}</code>`).join(' ')}</div>`);
+      } else if (it.k === 'tools') add(it.key, this.toolsHtml(it));
+      else if (it.k === 'thinking') segs.push({ key: it.key, stream: 'think', text: it.text, hard: Boolean(it.hard), streaming: Boolean(it.live), live: Boolean(it.live), open: this.open.has(it.key) });
+      else if (it.k === 'note') add(it.key, it.detail ? `<details class="cm cm-note cm-note-out"><summary>${esc(it.text)}</summary><pre>${esc(it.detail)}</pre></details>` : `<div class="cm cm-note">${esc(it.text)}</div>`);
+      else if (it.k === 'empty') add(it.key, `<div class="cm cm-empty"><b>${esc((agent(s.agentId) || { label: '' }).label || 'Agent')} is ready</b><span>Type below to start. Use Terminal above for its own screen.</span></div>`);
+    });
     // A CLI repaints its screen when you switch to it, which reads as "working"; only show the
     // indicator while a reply is actually pending (your message or a tool is the last thing).
     const last = items[items.length - 1];
     const pending = last && (last.k === 'user' || last.k === 'note' || last.k === 'hidden' || last.k === 'tools' || (last.k === 'thinking' && last.live));
-    if (s.runAsk) h += `<div class="cm cm-ask" role="alertdialog" aria-label="Run this command?"><b>The model wants to run this on your PC</b><pre>${esc(s.runAsk.cmd)}</pre><div class="cm-ask-acts"><button type="button" data-act="run-ok" class="primary">Run</button><button type="button" data-act="run-no">Skip</button></div></div>`;
-    else if (s.working && pending) h += `<div class="cm cm-working" aria-label="Working">${dotsHtml}<span class="cm-elapsed">${this.elapsed(s)}</span></div>`;
-    if (last && last.k === 'user' && this.slow(s)) h += `<div class="cm cm-wait"><b>Still waiting on ${esc((agent(s.agentId) || {}).label || 'the agent')}</b><span>It has not answered yet. Its own screen may show why (a limit, a sign-in, a question).</span><button type="button" class="cm-open-term">Open the terminal</button></div>`;
-    else if (!(s.working && pending) && this.waiting(s)) h += '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>';
-    if (h.length > tail) parts.push(h.slice(tail));
-    this.parts = parts;
-    return parts.map((p) => `<div class="seg">${p}</div>`).join('');
+    const label = esc((agent(s.agentId) || { label: '' }).label || 'the agent');
+    if (s.runAsk) add(`${s.id}:ask`, `<div class="cm cm-ask" role="alertdialog" aria-label="Run this command?"><b>The model wants to run this on your PC</b><pre>${esc(s.runAsk.cmd)}</pre><div class="cm-ask-acts"><button type="button" data-act="run-ok" class="primary">Run</button><button type="button" data-act="run-no">Skip</button></div></div>`);
+    else if (s.working && pending) add(`${s.id}:working`, `<div class="cm cm-working" role="status" aria-label="Working"><span class="cm-state">WORKING</span><span class="cm-elapsed">${this.elapsed(s)}</span></div>`);
+    if (last && last.k === 'user' && this.slow(s)) add(`${s.id}:wait`, `<div class="cm cm-wait"><b>Still waiting on ${label}</b><span>It has not answered yet. Its own screen may show why (a limit, a sign-in, a question).</span><button type="button" class="cm-open-term">Open the terminal</button></div>`);
+    else if (!(s.working && pending) && this.waiting(s)) add(`${s.id}:wait`, '<div class="cm cm-wait"><b>Waiting for your answer</b><span>The agent asked something that only the terminal can take.</span><button type="button" class="cm-open-term">Open the terminal</button></div>');
+    return segs;
   },
 
-  /** Redraw only from the first message that differs; earlier ones keep their elements (and any selection). */
-  patch(parts) {
+  /** The changing clock is left out when two versions of a segment are compared, so a second ticking
+   *  by does not count as a change. */
+  stable(html: string) {
+    return html.replace(/<span class="cm-elapsed">[^<]*<\/span>/, '<span class="cm-elapsed"></span>');
+  },
+
+  /** Bring the column in line with `segs`, touching only what differs.
+   *
+   *  Every segment keeps its element for as long as its key is on screen. A piece of HTML is rewritten only
+   *  when that piece changed. A message that is arriving is handed to its StreamView, which appends to
+   *  the block being written and leaves finished blocks alone. Nothing is removed and put back, so there
+   *  is no flash, a text selection survives, and an open Thinking block stays open. */
+  patch(segs: ChatSeg[]) {
     const col = $('chatCol');
-    const strip = (p) => p.replace(/<span class="cm-elapsed">[^<]*<\/span>/, '<span class="cm-elapsed"></span>');
-    const next = parts.map(strip);
-    const prev = this.segs || [];
-    let i = 0;
-    while (i < next.length && i < prev.length && next[i] === prev[i] && col.children[i]) i++;
-    if (i === next.length && i === prev.length && col.children.length === i) return;
-    while (col.children.length > i) col.lastElementChild.remove();
-    col.insertAdjacentHTML('beforeend', parts.slice(i).map((p) => `<div class="seg">${p}</div>`).join(''));
-    this.segs = next;
+    const nodes: Map<string, ChatNode> = this.nodes;
+    const wanted = new Set(segs.map((g) => g.key));
+    segs.forEach((seg, i) => {
+      let node = nodes.get(seg.key);
+      if (!node && seg.stream === 'ai') {
+        // The reply was being shown live from the terminal; the CLI's log has now delivered it under its
+        // real key. Same message: keep its element and let the view settle the differences in place.
+        for (const [key, old] of nodes) {
+          if (key.endsWith(':live') && !wanted.has(key) && old.kind === 'ai') {
+            nodes.delete(key);
+            nodes.set(seg.key, old);
+            node = old;
+            break;
+          }
+        }
+      }
+      const kind = seg.stream || 'html';
+      if (node && node.kind !== kind) {
+        node.el.remove();
+        nodes.delete(seg.key);
+        node = undefined;
+      }
+      if (!node) {
+        node = this.makeNode(seg);
+        nodes.set(seg.key, node);
+      }
+      this.updateNode(node, seg);
+      if (col.children[i] !== node.el) col.insertBefore(node.el, col.children[i] || null);
+    });
+    for (const [key, node] of nodes) {
+      if (wanted.has(key)) continue;
+      node.el.remove();
+      nodes.delete(key);
+    }
+  },
+
+  makeNode(seg: ChatSeg): ChatNode {
+    const el = document.createElement('div');
+    el.className = 'seg';
+    if (seg.stream === 'ai') {
+      el.innerHTML = '<div class="cm cm-ai"><div class="cm-body"></div></div>';
+      return { el, kind: 'ai', view: new StreamView(el.querySelector('.cm-body') as HTMLElement), foot: '' };
+    }
+    if (seg.stream === 'think') {
+      el.innerHTML = `<details class="cm cm-think" data-key="${esc(seg.key)}"${seg.open ? ' open' : ''}><summary></summary><div class="cm-think-body"></div></details>`;
+      return { el, kind: 'think', view: new StreamView(el.querySelector('.cm-think-body') as HTMLElement) };
+    }
+    return { el, kind: 'html', html: null };
+  },
+
+  updateNode(node: ChatNode, seg: ChatSeg) {
+    if (node.kind === 'html') {
+      const stable = this.stable(seg.html);
+      if (node.html !== stable) {
+        node.el.innerHTML = seg.html;
+        node.html = stable;
+      }
+      return;
+    }
+    node.view.update(seg.text, { hard: seg.hard, streaming: seg.streaming });
+    if (node.kind === 'think') {
+      const summary = node.el.querySelector('summary');
+      const label = seg.live ? 'Thinking' : 'Thought';
+      if (summary.textContent !== label) summary.textContent = label;
+      return;
+    }
+    const wrap = node.el.firstElementChild;
+    wrap.classList.toggle('cm-live', Boolean(seg.live));
+    if (node.foot !== seg.foot) {
+      const old = wrap.querySelector(':scope > .cm-acts');
+      if (old) old.remove();
+      if (seg.foot) wrap.insertAdjacentHTML('beforeend', seg.foot);
+      node.foot = seg.foot;
+    }
+  },
+
+  visible() {
+    return Boolean(this.el && !this.el.hidden);
+  },
+
+  /** Whether the view follows new text. True until you scroll up; true again once you are back at the end. */
+  pinned: true,
+  pinFrame: 0,
+  nodes: new Map(),
+  timer: null,
+  cur: [],
+  segSession: '',
+  keepTop: false,
+
+  /** Stay at the newest text. One write per frame, however many updates arrived in it, so the view
+   *  does not jitter while a fast model is writing. */
+  pinToBottom() {
+    if (this.pinFrame) return;
+    this.pinFrame = requestAnimationFrame(() => {
+      this.pinFrame = 0;
+      if (this.el && this.pinned) this.el.scrollTop = this.el.scrollHeight;
+    });
   },
 
   mount() {
@@ -706,10 +671,18 @@ export const ChatView = {
     el.setAttribute('role', 'log');
     el.setAttribute('aria-label', 'Conversation');
     el.innerHTML = '<div class="chat-col" id="chatCol"></div><button type="button" id="chatLatest" class="chat-latest" aria-label="Jump to the latest message" hidden>Latest</button>';
-    el.addEventListener('scroll', () => this.syncLatest(), { passive: true });
+    el.addEventListener(
+      'scroll',
+      () => {
+        // only the reader moves this: text arriving does not fire a scroll event
+        this.pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+        this.syncLatest();
+      },
+      { passive: true }
+    );
     // remember which Thinking blocks are open, so a redraw does not close them
     el.addEventListener('toggle', (e) => {
-      const d = e.target;
+      const d = e.target as HTMLDetailsElement;
       if (!d || !d.classList || !d.classList.contains('cm-think')) return;
       if (d.open) this.open.add(d.dataset.key);
       else this.open.delete(d.dataset.key);
@@ -814,6 +787,7 @@ export const ChatView = {
         return;
       }
       if (e.target.closest('#chatLatest')) {
+        this.pinned = true;
         this.el.scrollTo({ top: this.el.scrollHeight, behavior: 'smooth' });
         return;
       }
@@ -835,7 +809,7 @@ export const ChatView = {
       if (e.target.closest('.cm-open-term')) this.setMode('terminal');
     });
     el.addEventListener('toggle', (e) => {
-      const d = e.target;
+      const d = e.target as HTMLDetailsElement;
       if (d.matches && d.matches('details[data-key]')) {
         if (d.open) {
           this.open.add(d.dataset.key);
@@ -906,31 +880,32 @@ export const ChatView = {
     this.el.hidden = !on;
     if (!on) {
       this.sig = '';
-      this.segs = [];
       if (typeof ChatFind !== 'undefined' && ChatFind.isOpen()) ChatFind.close();
       return;
     }
     const surface = getComputedStyle(document.querySelector('.main')).backgroundColor;
     if (surface && !/rgba\(.*,\s*0\)$/.test(surface) && surface !== 'transparent') this.el.style.background = surface;
-    const html = this.html(s, items);
-    // The elapsed-time text changes every second; it is patched in place so the page is not
-    // redrawn (which would clear a selection) just because a clock moved.
-    const stable = html.replace(/<span class="cm-elapsed">[^<]*<\/span>/, '');
+    const segs = this.segments(s, items);
     if (this.segSession !== s.id) {
       this.segSession = s.id;
-      this.segs = [];
+      this.nodes = new Map();
+      this.pinned = true;
       $('chatCol').textContent = '';
     }
-    const sig = `${s.id}|${stable.length}|${stable.slice(-200)}|${s.working}`;
+    // A cheap fingerprint of what is shown, so an idle tick does no work at all.
+    const sig = `${s.id}|${s.working}|${segs
+      .map((g) => (g.stream ? `${g.key}~${g.text.length}~${g.text.slice(-60)}~${g.streaming}~${(g.foot || '').length}` : `${g.key}~${g.html.length}~${this.stable(g.html).slice(-60)}`))
+      .join('|')}`;
     const clock = this.el.querySelector('.cm-elapsed');
     if (clock) clock.textContent = this.elapsed(s);
     if (!force && sig === this.sig) return;
     this.sig = sig;
-    const near = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 90;
-    const before = this.el.scrollHeight;
-    this.patch(this.parts);
-    if (near || force) this.el.scrollTop = this.el.scrollHeight;
-    else if (this.keepTop) this.el.scrollTop += this.el.scrollHeight - before;
+    if (force) this.pinned = true;
+    const before = this.keepTop ? this.el.scrollHeight : 0;
+    this.patch(segs);
+    // You scrolled up to read: the view stays where you put it. At the end: it follows the new text.
+    if (this.keepTop) this.el.scrollTop += this.el.scrollHeight - before;
+    else if (this.pinned) this.pinToBottom();
     this.keepTop = false;
     this.syncLatest();
     if (typeof ChatFind !== 'undefined' && ChatFind.isOpen()) ChatFind.run(false);
@@ -994,13 +969,14 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ------------------------------------------------ export the conversation */
-ChatView.exportable = function (s) {
+export function chatExportable(s) {
+  const self = ChatView;
   if (prefs.chatView === false) return null;
-  const items = this.model(s);
+  const items = self.model(s);
   return items.length ? items : null;
-};
+}
 
-ChatView.markdown = function (items, who) {
+export function chatMarkdown(items, who?) {
   const fence = (t) => String(t).replace(/```/g, "'''");
   return items
     .map((it) => {
@@ -1010,24 +986,21 @@ ChatView.markdown = function (items, who) {
       return `<details><summary>${rows.length} tool call${rows.length === 1 ? '' : 's'}</summary>\n\n${rows.join('\n')}\n\n</details>\n`;
     })
     .join('\n');
-};
+}
 
-ChatView.exportHtml = function (items, who) {
+export function chatExportHtml(items, who?) {
   return items
     .map((it) => {
       if (it.k === 'user') return `<div class="u">${esc(it.text)}</div>`;
-      if (it.k === 'assistant') return `<div class="a"><b>${esc(who || 'Assistant')}</b>${this.md(it.text, it.hard)}</div>`;
+      if (it.k === 'assistant') return `<div class="a"><b>${esc(who || 'Assistant')}</b>${renderMarkdown(it.text, Boolean(it.hard))}</div>`;
       return `<details class="t"><summary>${it.list.length} tool call${it.list.length === 1 ? '' : 's'}</summary>${it.list
         .map((t) => `<div><b>${esc(t.tool)}</b> <code>${esc(t.text || '')}</code></div>`)
         .join('')}</details>`;
     })
     .join('\n');
-};
+}
 
 /* ------------------------------------------------ find in the conversation */
-ChatView.visible = function () {
-  return Boolean(this.el && !this.el.hidden);
-};
 
 export const ChatFind = {
   bar: null,

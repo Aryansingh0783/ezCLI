@@ -1,11 +1,29 @@
 /* The shapes of the window's state. The Rust side's own types come from core/ipc.gen.ts. */
 import type { AgentOut, BackendReport, OpenTarget, SystemProfile } from '../core/ipc';
-import type { createUsageState } from '../core/usage-parser';
 
 /** An agent as the window uses it: what the Rust side reports. */
 export type Agent = AgentOut;
 
 export type SessionStatus = 'starting' | 'running' | 'parked' | 'exited' | 'error';
+
+/** Token and cost figures a CLI printed about itself. Null means it never reported that figure. */
+export interface UsageMetrics {
+  input: number | null;
+  output: number | null;
+  cached: number | null;
+  cost: number | null;
+}
+/** What lib/usage-parser.ts keeps per session while it reads the terminal output. */
+export interface UsageState {
+  buffer: string;
+  textBlock: unknown;
+  observed: boolean;
+  total: UsageMetrics;
+  turn: UsageMetrics;
+  updatedAt: number;
+  lastFingerprint: string;
+  lastFingerprintAt: number;
+}
 
 /** One tab: a CLI in a pseudo-terminal, or the saved description of one that is parked. */
 export interface Session {
@@ -37,7 +55,7 @@ export interface Session {
   resumeNext: boolean;
   transcriptId: string;
   prompts: string[];
-  usage: ReturnType<typeof createUsageState>;
+  usage: UsageState;
   pcControl: boolean;
   term: Terminal;
   fit: { fit(): void; proposeDimensions(): { cols: number; rows: number } | undefined };

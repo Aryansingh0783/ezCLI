@@ -94,16 +94,19 @@ interface LooseElementProps {
   selectionEnd: number | null;
   href: string;
   src: string;
+  select(): void;
+  setSelectionRange(start: number, end: number): void;
+}
+/** Fields that would clash with `window.open`, `window.close` and `window.name`, so elements only. */
+interface LooseDialogProps {
   open: boolean;
   type: string;
   name: string;
-  select(): void;
-  setSelectionRange(start: number, end: number): void;
   showModal(): void;
   close(): void;
 }
-interface HTMLElement extends LooseElementProps {}
-interface Element extends LooseElementProps {
+interface HTMLElement extends LooseElementProps, LooseDialogProps {}
+interface Element extends LooseElementProps, LooseDialogProps {
   dataset: DOMStringMap;
   style: CSSStyleDeclaration;
   title: string;

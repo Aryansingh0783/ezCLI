@@ -10,8 +10,8 @@ import { late } from './late';
 import { invoke, listen } from './core/ipc';
 import { addSession, setActive, state, touchSessions } from './stores/app';
 import type { Session } from './stores/app';
-import * as Usage from './core/usage-parser';
-import { isContinuationMode, freshModeId, modelSwitchPlan } from './core/session-routing';
+import * as Usage from './lib/usage-parser';
+import { isContinuationMode, freshModeId, modelSwitchPlan } from './lib/session-routing';
 
 export { invoke, listen };
 export const T = window.__TAURI__;

@@ -1,5 +1,5 @@
 import { $, ICONS, PREFS_KEY, active, agent, basename, confirmDialog, copy, esc, hooks, invoke, modelLabel, openMenu, prefs, snapshotParked, state, toast } from '../app';
-import { ChatView } from './chat';
+import { ChatView, chatExportHtml, chatExportable, chatMarkdown } from './chat';
 import { registerCommand } from './palette';
 import { late } from '../late';
 /* Session export and searchable transcripts.
@@ -80,13 +80,13 @@ addEventListener('beforeunload', flushMemory);
 export const Export = (() => {
   function markdown(s, text, chat) {
     const m = transcriptMeta(s);
-    if (chat) return `# ${s.title}\n\n- Agent: ${m.agentLabel}\n- Model: ${m.model}\n- Folder: \`${m.cwd}\`\n- Exported: ${new Date().toLocaleString()}\n\n${ChatView.markdown(chat, m.agentLabel)}`;
+    if (chat) return `# ${s.title}\n\n- Agent: ${m.agentLabel}\n- Model: ${m.model}\n- Folder: \`${m.cwd}\`\n- Exported: ${new Date().toLocaleString()}\n\n${chatMarkdown(chat, m.agentLabel)}`;
     return `# ${s.title}\n\n- Agent: ${m.agentLabel}\n- Model: ${m.model}\n- Folder: \`${m.cwd}\`\n- Exported: ${new Date().toLocaleString()}\n\n\`\`\`text\n${text.replace(/```/g, '`​``')}\n\`\`\`\n`;
   }
 
   function html(s, text, chat) {
     const m = transcriptMeta(s);
-    const body = chat ? `<div class="chat">${ChatView.exportHtml(chat, m.agentLabel)}</div>` : `<pre>${esc(text)}</pre>`;
+    const body = chat ? `<div class="chat">${chatExportHtml(chat, m.agentLabel)}</div>` : `<pre>${esc(text)}</pre>`;
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(s.title)} · ezCLI</title>
@@ -114,7 +114,7 @@ ${body}</main></body></html>`;
     const s = active();
     if (!s) return toast('Open a session to export it.');
     const text = terminalText(s);
-    const chat = typeof ChatView !== 'undefined' ? ChatView.exportable(s) : null;
+    const chat = chatExportable(s);
     if (!chat && !text.trim()) return toast('This session has no output to export yet.');
     const safe = s.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'session';
     const ext = format === 'html' ? 'html' : 'md';
