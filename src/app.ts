@@ -149,12 +149,6 @@ export const TERM_THEMES = {
   }
 };
 
-// The terminal pane is always a dark surface, in the light themes too (see
-// reference.css), so it always uses the dark colour set. The light set draws
-// dark text, which is unreadable on that pane.
-const TERM_LIGHT = TERM_THEMES.light;
-TERM_THEMES.light = TERM_THEMES.dark;
-
 /* ---------------------------------------------------------- terminal setup */
 
 export const TERM_FONTS = {
@@ -165,38 +159,13 @@ export const TERM_FONTS = {
 };
 const TERM_LINES = { compact: 1.15, comfortable: 1.35, relaxed: 1.55 };
 
-/** The terminal paints an opaque background that matches its pane exactly (the pane
- *  colour changes with the palette). A transparent terminal looks fine in the HTML
- *  renderer but the GPU renderer composites it as black boxes behind the text. */
-/** How the terminal pane is painted:
- *   clear  fully transparent; on a light window the text switches to dark ink so the
- *          terminal simply sits on the page, on a dark window it stays light text
- *   glass  a translucent, blurred dark pane
- *   solid  an opaque dark pane
- *  Transparency needs the HTML renderer; the GPU renderer always draws solid. */
-const termLook = () => (prefs.gpu === true ? 'solid' : prefs.termLook || (prefs.termGlass === false ? 'solid' : 'clear'));
-
-function cssRgb(value, fallback) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(String(value).trim());
-  if (!m) return fallback;
-  const n = parseInt(m[1], 16);
-  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
-}
-
+/** The terminal paints an opaque background that matches its pane exactly (theme.css sets --term-bg).
+ *  An opaque pane is also what the GPU renderer needs; a transparent one composites as black boxes. */
 function syncTermBackground() {
-  const cs = getComputedStyle(document.documentElement);
-  const bg = cs.getPropertyValue('--term-bg').trim() || '#15171d';
-  const panel = cs.getPropertyValue('--panel').trim() || '#ffffff';
-  const look = termLook();
-  const lightInk = look === 'clear' && resolvedTheme() === 'light';
-  // The channels of a transparent background still tell the contrast fixer what the text sits on.
-  TERM_THEMES.dark.background = look === 'solid' ? bg : `rgba(${look === 'clear' ? cssRgb(bg, '21, 23, 29') : '0, 0, 0'}, 0)`;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--term-bg').trim() || '#0d1117';
+  TERM_THEMES.dark.background = bg;
   TERM_THEMES.dark.cursorAccent = bg;
-  TERM_THEMES.light = lightInk
-    ? { ...TERM_LIGHT, background: `rgba(${cssRgb(panel, '255, 255, 255')}, 0)`, cursorAccent: panel }
-    : TERM_THEMES.dark;
-  const root = document.documentElement.dataset;
-  root.termGlass = look === 'glass' ? 'on' : look === 'clear' ? 'clear' : 'off';
+  document.documentElement.dataset.termGlass = 'off';
 }
 
 /** One configuration for every terminal in the app. */
@@ -219,8 +188,8 @@ function termOptions(extra = {}) {
     rescaleOverlappingGlyphs: true,
     smoothScrollDuration: 70,
     allowProposedApi: true,
-    allowTransparency: termLook() !== 'solid',
-    theme: TERM_THEMES[resolvedTheme()],
+    allowTransparency: false,
+    theme: TERM_THEMES.dark,
     scrollback: 20000,
     ...extra
   };
@@ -337,34 +306,18 @@ export function remeasureTerminals() {
   requestAnimationFrame(() => state.sessions.forEach(fitSession));
 }
 
-const systemDark = matchMedia('(prefers-color-scheme: dark)');
-export const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme);
+/** There is one look: dark. Kept as a function because the terminal code asks it. */
+export const resolvedTheme = () => 'dark' as const;
 
-/** Palettes are either light or dark. The Light / Dark / Match system switch is a mode, and a
- *  palette from the other mode would leave light text on a white window (or the reverse), so
- *  the matching palette is used instead. The saved choice is kept and returns with its mode. */
-const DARK_PALETTES = new Set(['midnight', 'nebula', 'ocean', 'claude-dark']);
-function effectivePalette() {
-  const p = prefs.palette || 'claude';
-  const dark = DARK_PALETTES.has(p);
-  const t = resolvedTheme();
-  if (t === 'dark' && !dark) return p === 'claude' ? 'claude-dark' : 'midnight';
-  if (t === 'light' && dark) return p === 'claude-dark' ? 'claude' : 'daylight';
-  return p;
-}
-
+/** Stamp the fixed attributes the stylesheet keys on, and give every terminal the colours. */
 export function applyTheme() {
-  const t = resolvedTheme();
-  document.documentElement.dataset.theme = t;
-  document.documentElement.dataset.palette = effectivePalette();
-  document.documentElement.dataset.layout = prefs.calm === false ? 'dashboard' : 'calm';
+  const root = document.documentElement;
+  root.dataset.theme = 'dark';
+  root.dataset.layout = 'dashboard';
+  delete root.dataset.palette;
+  delete root.dataset.style;
   syncTermBackground();
-  for (const s of state.sessions) s.term.options.theme = TERM_THEMES[t];
-  document.querySelectorAll('[data-theme-opt]').forEach((b) => {
-    const on = b.dataset.themeOpt === prefs.theme;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-checked', String(on));
-  });
+  for (const s of state.sessions) s.term.options.theme = TERM_THEMES.dark;
 }
 
 /* ------------------------------------------------------------------ icons */
@@ -1708,9 +1661,8 @@ export function renderHome() {
   const hour = new Date().getHours();
   const hello = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-  const calm = prefs.calm !== false;
-  $('homeTitle').textContent = calm ? homeGreeting() : 'Overview';
-  $('homeGreeting').textContent = calm ? today : `${hello} · ${today}`;
+  $('homeTitle').textContent = 'Sessions';
+  $('homeGreeting').textContent = today;
   $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
   const projEl = $('homeProject');
   if (projEl) projEl.title = sp ? sp.path : 'Choose a folder';
@@ -3743,14 +3695,6 @@ function wire() {
   });
 
   // settings
-  document.querySelectorAll('[data-theme-opt]').forEach((b) =>
-    b.addEventListener('click', () => {
-      prefs.theme = b.dataset.themeOpt;
-      savePrefs();
-      applyTheme();
-    })
-  );
-  systemDark.addEventListener('change', () => prefs.theme === 'system' && applyTheme());
   $('fontDown').addEventListener('click', () => setFontSize(prefs.fontSize - 1));
   $('fontUp').addEventListener('click', () => setFontSize(prefs.fontSize + 1));
   $('reloadAgents').addEventListener('click', reloadAgents);

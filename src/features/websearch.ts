@@ -130,7 +130,7 @@ export const WebSearch = {
   async loadSkills() {
     if (this.skills) return this.skills;
     try {
-      this.skills = await invoke('local_skills');
+      this.skills = (await invoke('local_skills')) || [];
     } catch {
       this.skills = [];
     }

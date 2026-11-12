@@ -6,7 +6,6 @@
 export interface Late {
   ChatFind: typeof import('./features/chat').ChatFind;
   ChatView: typeof import('./features/chat').ChatView;
-  Glass: typeof import('./features/glass').Glass;
   GeminiSetup: typeof import('./features/gemini').GeminiSetup;
   Graphify: typeof import('./features/graphify').Graphify;
   Installer: typeof import('./features/installer').Installer;

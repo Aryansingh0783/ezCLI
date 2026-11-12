@@ -32,7 +32,7 @@ const TermFix = {
     const host = cur && cur.host ? cur.host.querySelector('.xterm-rows') : null;
     if (!host) return;
     const root = document.documentElement.dataset;
-    const light = root.termGlass === 'clear' && typeof resolvedTheme === 'function' && resolvedTheme() === 'light';
+    const light = false; // the window is always dark; kept so the contrast pass below stays as written
     const raw = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim();
     const panel = this.rgb(raw.startsWith('#') ? hexToRgbCss(raw) : raw) || [255, 255, 255];
     const ink = [29, 29, 32];

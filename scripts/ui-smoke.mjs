@@ -21,7 +21,7 @@ if (!fs.existsSync(path.join(root, 'index.html'))) {
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json' };
 // The agents as the backend sends them to the screen (see AgentOut in agents.rs): a live model catalog is
 // `dynamic_models`, and one with no safe default is `requiresModelSelection`.
-const agents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'agents.json'), 'utf8')).agents.map((a) => ({
+export const agents = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'agents.json'), 'utf8')).agents.map((a) => ({
   ...a,
   available: true,
   dynamic_models: Boolean(a.modelsFrom),
@@ -34,7 +34,7 @@ const POSIX_MODEL = '/home/demo/models/Qwen3-8B-Q4_K_M.gguf';
 const SIZES = [[1280, 800], [900, 600], [760, 480]];
 const SCREENS = [['modelsBtn', 'Local models'], ['settingsBtn', 'Settings'], ['helpBtn', 'Keys'], ['brainBtn', 'Brain']];
 
-function serve() {
+export function serve() {
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
       let p = decodeURIComponent(req.url.split('?')[0]);
@@ -50,7 +50,7 @@ function serve() {
 }
 
 /** The backend as the front end sees it: plausible answers, never an error. Plain data, so it can be sent to the page. */
-function mockScript(agentList) {
+export function mockScript(agentList) {
   const answers = {
     list_agents: { agents: agentList, cwd: '/home/demo/project', sep: '/', config_path: '' },
     git_status: { repo: false, files: [] },
@@ -66,11 +66,14 @@ function mockScript(agentList) {
     hub_status: [],
     hub_files: [{ path: 'm-Q4_K_M.gguf', size: 2.5e9, sha256: 'a', quant: 'Q4_K_M' }],
     hub_search: [{ id: 'demo/Model-GGUF', downloads: 10, likes: 1 }],
-    lms_action: '[]'
+    lms_action: '[]',
+    local_skills: [],
+    rag_sources: []
   };
   return `(() => {
     const answers = ${JSON.stringify(answers)};
     const win = { label: 'main', onResized: async () => () => {}, isMaximized: async () => false, show: async () => {}, setFocus: async () => {}, listen: async () => () => {}, onCloseRequested: async () => () => {} };
+    window.__emit = (name, payload) => { for (const h of ((window.__handlers || {})[name] || [])) h({ payload }); };
     window.__TAURI__ = {
       core: { invoke: async (n, a) => {
         (window.__calls = window.__calls || []).push([n, a]);
@@ -82,14 +85,23 @@ function mockScript(agentList) {
         if (/^(list|detect|sessions|spaces)/.test(n)) return [];
         return null;
       }, convertFileSrc: (x) => x },
-      event: { listen: async () => () => {}, emit: async () => {} },
+      // events the test can fire: window.__emit('pty-data:<id>', text)
+      event: {
+        listen: async (name, handler) => {
+          const map = (window.__handlers = window.__handlers || {});
+          (map[name] = map[name] || []).push(handler);
+          return () => { map[name] = (map[name] || []).filter((h) => h !== handler); };
+        },
+        emit: async () => {}
+      },
       window: { getCurrentWindow: () => win },
       webviewWindow: { getCurrentWebviewWindow: () => win }, dialog: {}, opener: {}
     };
   })();`;
 }
 
-(async () => {
+const direct = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (direct) (async () => {
   const srv = await serve();
   const url = `http://127.0.0.1:${srv.address().port}/`;
   // PW_CHROME lets a machine without Playwright's own download point at an installed Chrome.

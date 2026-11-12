@@ -1,24 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-layout="dashboard">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ezCLI</title>
     <meta name="description" content="A desktop window for the Claude and OpenAI coding CLIs." />
-    <script>
-      // Apply the saved theme before first paint so the window never flashes.
-      (function () {
-        try {
-          var s = JSON.parse(localStorage.getItem('ezcli.v2') || '{}');
-          var t = s.theme || 'system';
-          if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-          document.documentElement.dataset.theme = t;
-          document.documentElement.dataset.style = s.style === 'solid' ? 'solid' : 'glass';
-          var acc = { sky: ['#5cc8ff', '#0b6fb0'], violet: ['#b69cff', '#6a3fd0'], amber: ['#ffc04d', '#9a6200'], rose: ['#ff7aa2', '#b8325c'], mint: ['#4fe3c1', '#0f7f68'] }[s.accent];
-          if (acc) document.documentElement.style.setProperty('--brand', acc[t === 'light' ? 1 : 0]);
-        } catch (e) {}
-      })();
-    </script>
     <link rel="stylesheet" href="/vendor/xterm/css/xterm.css" />
     <link rel="icon" type="image/png" href="/brand/favicon.png" />
   </head>
@@ -338,18 +324,6 @@
       <h2>Settings</h2>
       <div class="settings-section">
         <h3>Appearance</h3>
-        <div class="theme-preset-grid" id="themePresets" role="radiogroup" aria-label="Theme"></div>
-        <p class="note theme-sub">Or set the base mode and accent yourself:</p>
-        <div class="segmented" id="themeSeg" role="radiogroup" aria-label="Appearance">
-          <button class="theme-option" data-theme-opt="system" role="radio">Match system</button>
-          <button class="theme-option" data-theme-opt="dark" role="radio">Dark</button>
-          <button class="theme-option" data-theme-opt="light" role="radio">Light</button>
-        </div>
-        <div class="segmented style-seg" id="styleSeg" role="radiogroup" aria-label="Window style">
-          <button class="theme-option" data-style-opt="glass" role="radio">Liquid glass</button>
-          <button class="theme-option" data-style-opt="solid" role="radio">Solid</button>
-        </div>
-        <div class="accent-seg" id="accentSeg" role="radiogroup" aria-label="Accent colour"></div>
         <div class="term-prefs" id="termPrefs">
           <label class="term-pref-row"><span>Terminal font</span>
             <select id="termFont" class="select" aria-label="Terminal font"></select></label>
@@ -366,9 +340,6 @@
               <button class="theme-option" data-term-cursor="underline" role="radio">Underline</button>
             </div></div>
           <label class="toggle-row"><input type="checkbox" id="termBlink" /> <span>Blinking cursor</span></label>
-          <label class="term-pref-row"><span>Terminal background</span>
-            <select id="termLook" class="select" aria-label="Terminal background"><option value="clear">Transparent</option><option value="glass">Dark glass</option><option value="solid">Solid</option></select></label>
-          <p class="muted term-look-hint">Transparent follows your window colour. A few CLIs draw as if the screen were dark (a logo can look washed out on a light window); pick Dark glass if one does.</p>
           <label class="toggle-row"><input type="checkbox" id="termGpu" /> <span>Draw the terminal with the graphics card (experimental: faster on huge output, but text can look tighter on a 100% display)</span></label>
         </div>
         <div class="stepper">
@@ -391,7 +362,6 @@
         <h3>General</h3>
         <label class="term-pref-row"><span>Your name (for the greeting)</span>
           <input id="prefName" class="select" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Optional" aria-label="Your name" /></label>
-        <label class="toggle-row"><input type="checkbox" id="prefCalm" /> <span>Calm layout: a quieter home, with controls that appear on hover</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefChat" /> <span>Show sessions as a chat. The terminal is one click away in the header.</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefNotifications" /> <span>Notify me when a long task finishes in a tab I'm not looking at</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefCloseToTray" /> <span>Keep running in the tray when I close the window</span></label>

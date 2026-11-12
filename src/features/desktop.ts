@@ -89,94 +89,23 @@ function applyProjectDefaults(spaceId) {
   });
 }
 
-/* ------------------------------------------------------------ accent colours */
+/* ------------------------------------------------------------ terminal cursor */
 
-const ACCENTS = {
-  lime: { label: 'Lime', dark: ['#7cff3f', '#5bbf2f'], light: ['#2d7a05', '#246204'] },
-  sky: { label: 'Sky', dark: ['#5cc8ff', '#3a9fd6'], light: ['#0b6fb0', '#095a8f'] },
-  violet: { label: 'Violet', dark: ['#b69cff', '#9277e6'], light: ['#6a3fd0', '#5531ab'] },
-  amber: { label: 'Amber', dark: ['#ffc04d', '#d99a26'], light: ['#9a6200', '#7c4f00'] },
-  rose: { label: 'Rose', dark: ['#ff7aa2', '#e0577f'], light: ['#b8325c', '#962849'] },
-  mint: { label: 'Mint', dark: ['#4fe3c1', '#2fbf9e'], light: ['#0f7f68', '#0b6553'] },
-  indigo: { label: 'Indigo', dark: ['#8aa0ff', '#6b82ee'], light: ['#3f4fd0', '#3340ab'] },
-  teal: { label: 'Teal', dark: ['#43d6d0', '#28b3ad'], light: ['#0a7c77', '#07615d'] },
-  coral: { label: 'Coral', dark: ['#ff8f66', '#e06f45'], light: ['#c24a22', '#9c3a1a'] },
-  slate: { label: 'Slate', dark: ['#9fb0c6', '#7d8ea6'], light: ['#4a5568', '#3a4556'] }
-};
-
-/* Full theme presets: each sets the base light/dark mode, a page/card palette
- * (data-palette, defined in reference.css) and an accent, in one tap. */
-const THEME_PRESETS = {
-  claude: { label: 'Sand', theme: 'light', palette: 'claude', accent: 'coral', swatch: '#f3f0e8' },
-  'claude-dark': { label: 'Sand Dark', theme: 'dark', palette: 'claude-dark', accent: 'coral', swatch: '#262624' },
-  daylight: { label: 'Daylight', theme: 'light', palette: 'daylight', accent: 'lime', swatch: '#e7edfa' },
-  mist: { label: 'Mist', theme: 'light', palette: 'mist', accent: 'sky', swatch: '#eceff4' },
-  grape: { label: 'Grape', theme: 'light', palette: 'grape', accent: 'violet', swatch: '#efeafb' },
-  sunset: { label: 'Sunset', theme: 'light', palette: 'sunset', accent: 'coral', swatch: '#fdeadf' },
-  forest: { label: 'Forest', theme: 'light', palette: 'forest', accent: 'mint', swatch: '#e7f1e9' },
-  midnight: { label: 'Midnight', theme: 'dark', palette: 'midnight', accent: 'lime', swatch: '#15171d' },
-  nebula: { label: 'Nebula', theme: 'dark', palette: 'nebula', accent: 'violet', swatch: '#1a1630' },
-  ocean: { label: 'Ocean', theme: 'dark', palette: 'ocean', accent: 'teal', swatch: '#0d1f26' }
-};
-
-/** Briefly enable colour transitions so a theme change fades instead of snapping. */
-let fadeTimer = 0;
-function fadeTheme() {
-  const root = document.documentElement;
-  root.classList.add('theming');
-  clearTimeout(fadeTimer);
-  fadeTimer = window.setTimeout(() => root.classList.remove('theming'), 380);
-}
-
-function applyPreset(key) {
-  const p = THEME_PRESETS[key];
-  if (!p) return;
-  fadeTheme();
-  prefs.theme = p.theme;
-  prefs.palette = p.palette;
-  prefs.accent = p.accent;
-  savePrefs();
-  applyTheme();
-  renderThemePresets();
-}
-
-function renderThemePresets() {
-  const seg = $('themePresets');
-  if (!seg) return;
-  seg.innerHTML = Object.entries(THEME_PRESETS)
-    .map(
-      ([k, v]) => `<button class="theme-preset ${prefs.palette === v.palette ? 'on' : ''}" data-preset="${k}"
-        role="radio" aria-checked="${prefs.palette === v.palette}" title="${v.label}">
-        <span class="theme-preset-chip" style="--chip:${v.swatch}"></span><span>${v.label}</span></button>`
-    )
-    .join('');
-}
-
-function applyAccent() {
-  const key = ACCENTS[prefs.accent] ? prefs.accent : 'lime';
-  const [brand, dim] = ACCENTS[key][resolvedTheme()];
-  const root = document.documentElement.style;
-  root.setProperty('--brand', brand);
-  root.setProperty('--brand-dim', dim);
-  const base = typeof late.Glass !== 'undefined' ? late.Glass.terminalTheme() : TERM_THEMES[resolvedTheme()];
-  for (const s of state.sessions) s.term.options.theme = { ...base, cursor: brand };
-  document.querySelectorAll('[data-accent]').forEach((b) => {
-    const on = b.dataset.accent === key;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-checked', String(on));
-  });
+/** The cursor takes the one accent colour of the theme (theme.css, --accent). */
+function applyCursorColour() {
+  const cursor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#c9d1d9';
+  for (const s of state.sessions) s.term.options.theme = { ...TERM_THEMES.dark, cursor };
 }
 
 {
   const original = applyTheme;
-  // eslint-disable-next-line no-global-assign
   __set_applyTheme(function () {
     original();
-    applyAccent();
+    applyCursorColour();
   });
 }
 
-hooks.launched.push(() => applyAccent());
+hooks.launched.push(() => applyCursorColour());
 
 /* ------------------------------------------------------------ voice typing */
 
@@ -243,8 +172,6 @@ hooks.boot.push(() => {
       });
       $('termBlink').checked = prefs.termBlink !== false;
       $('termGpu').checked = prefs.gpu === true;
-      $('termLook').value = prefs.termLook || (prefs.termGlass === false ? 'solid' : 'clear');
-      $('termLook').disabled = prefs.gpu === true;
     };
     const change = (key, value) => {
       prefs[key] = value;
@@ -262,10 +189,6 @@ hooks.boot.push(() => {
       if (b) change('termCursor', b.dataset.termCursor);
     });
     $('termBlink').addEventListener('change', (e) => change('termBlink', e.target.checked));
-    $('termLook').addEventListener('change', (e) => {
-      change('termLook', e.target.value);
-      applyTheme();
-    });
     $('termGpu').addEventListener('change', (e) => {
       prefs.gpu = e.target.checked;
       savePrefs();
@@ -277,36 +200,12 @@ hooks.boot.push(() => {
     syncTermUi();
   }
 
-  const presets = $('themePresets');
-  if (presets) {
-    renderThemePresets();
-    presets.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-preset]');
-      if (b) applyPreset(b.dataset.preset);
-    });
-  }
-
-  const seg = $('accentSeg');
-  if (seg) {
-    seg.innerHTML = Object.entries(ACCENTS)
-      .map(([k, v]) => `<button class="accent-swatch" data-accent="${k}" role="radio" aria-label="${v.label}" title="${v.label}" style="--swatch:${v[resolvedTheme()][0]}"></button>`)
-      .join('');
-    seg.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-accent]');
-      if (!b) return;
-      fadeTheme();
-      prefs.accent = b.dataset.accent;
-      savePrefs();
-      applyAccent();
-    });
-  }
   const toggles = {
     prefNotifications: ['notifications', true],
     prefCloseToTray: ['closeToTray', false],
     prefTranscripts: ['keepTranscripts', true],
     prefProjectDefaults: ['projectDefaultsOff', false, true],
     prefShowPaid: ['showPaidModels', false],
-    prefCalm: ['calm', true],
     prefChat: ['chatView', true]
   };
   for (const [id, [key, fallback, inverted]] of Object.entries(toggles) as [string, [string, boolean, boolean?]][]) {
@@ -317,10 +216,6 @@ hooks.boot.push(() => {
     box.addEventListener('change', () => {
       prefs[key] = inverted ? !box.checked : box.checked;
       savePrefs();
-      if (key === 'calm') {
-        applyTheme();
-        renderHome();
-      }
       if (key === 'chatView' && typeof late.ChatView !== 'undefined') late.ChatView.apply(true);
     });
   }
@@ -333,7 +228,7 @@ hooks.boot.push(() => {
       renderHome();
     });
   }
-  applyAccent();
+  applyCursorColour();
 });
 
 registerCommand({ group: 'Session', label: 'Voice typing', keys: 'Ctrl Alt D', run: () => dictate() });

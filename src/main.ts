@@ -1,17 +1,6 @@
 /* The window's entry point. Styles first, then the app in the order the old <script> tags loaded it. */
-import './styles/styles.css';
-import './styles/features.css';
-import './styles/glass.css';
-import './styles/refine.css';
-import './styles/reference.css';
-import './styles/calm.css';
-import './styles/v4.css';
-import './styles/interact.css';
-import './styles/chat.css';
-import './styles/brand.css';
-import './styles/claude.css';
-import './styles/models.css';
-import './styles/knowledge.css';
+import './styles/app.css';
+import './styles/theme.css';
 import './app';
 import './features/palette';
 import './features/prompts';
@@ -45,7 +34,6 @@ import './features/router';
 import './features/windows';
 import './features/remote';
 import './features/webchat';
-import './features/glass';
 import './features/sessions';
 import './features/team';
 import './features/usage';
