@@ -65,6 +65,13 @@ Last updated: 2026-11-04 by Claude (llama-cli crash investigation)
   - `public/features/websearch.js` is the text-tool protocol for local models (`SEARCH`, `BROWSE`, `SKILL`, `RUN`; `LIST`/`READ`
     on PR #40). `public/thinking.js` splits reasoning from answers; `public/features/chat.js` renders it.
   - Windows llama.cpp update script (PowerShell, worked on the user's PC) is the same logic as the in-app installer.
+- **Knowledge (RAG) for local models:** `rag.rs` indexes folders/files the user picks (text, code, md, csv, json; passages of ~900 chars)
+  into `~/.ezcli/knowledge/index.json` and searches them with BM25 (no embedding model, no download). `public/features/knowledge.js`
+  adds the "Knowledge" button/panel for the four local agents; matching passages are appended to each question, and the model may
+  also reply `KNOW: <query>` (handled in `websearch.js` like `SEARCH`). Verified: `rag.rs` unit tests + clippy `-D warnings` in a
+  scratch crate, `test/knowledge.test.cjs`, UI smoke. **Not verified:** the Tauri glue in `lib.rs` (`rag_*` commands) was not compiled
+  on this PC (no linker for Tauri); CI must check it. Never run end to end through a real model or the real window. Not built: embeddings,
+  PDF/docx, re-index on file change (add the folder again to refresh).
 - **Release process:** user says "merge pr N" / "release X.Y.Z". Merge (squash), bump the version in
   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock`, run the "Tag and release" workflow, wait
   about 7-10 min, check assets, verify the `.deb` sha256, then bump the Arch PKGBUILD and `.SRCINFO`. Tag pushes via the

@@ -5,6 +5,7 @@
  *   SEARCH: <query>   search the web, read the top pages, give the model the text
  *   SKILL: <name>     give the model one of your skills (~/.claude/skills)
  *   RUN: <command>    run one PowerShell command on your PC, but only after you click Run on it
+ *   KNOW: <query>     search the files you added to Knowledge (features/knowledge.js)
  *
  * The "Web" button picks auto (search when the model does not know), always, or off. The "Terminal"
  * button is off until you turn it on; even then every command waits for your click. */
@@ -15,7 +16,7 @@ const WebSearch = {
   MAX_STEPS: 4,
   /** Things a frozen model cannot know, so there is no point asking it first. */
   FRESH: /\b(latest|newest|current(ly)?|today|tonight|yesterday|this (week|month|year)|right now|news|recent(ly)?|just (released|announced)|release date|price of|stock|score|weather|who won|202[5-9]|2030)\b/i,
-  REQUEST: /^\s*(SEARCH|BROWSE|SKILL|RUN):\s*(.+)$/im,
+  REQUEST: /^\s*(SEARCH|BROWSE|SKILL|RUN|KNOW):\s*(.+)$/im,
   /** Greetings and thanks need no web. */
   SMALLTALK: /^\s*(hi|hello|hey|yo|thanks?|thank you|ok(ay)?|cool|nice|great|good (morning|evening|night)|bye)\b[\s!.?]*$/i,
   skills: null,
@@ -112,6 +113,7 @@ const WebSearch = {
     const parts = [];
     if (web) parts.push('SEARCH: <query> (look something up on the web when you do not know it or it may be out of date)', 'BROWSE: <https address> (open one web page in the in-app browser and read it)');
     if (skills.length) parts.push(`SKILL: <name> (load one of the user's skills: ${skills.slice(0, 60).map((x) => x.name).join(', ')})`);
+    if (typeof Knowledge !== 'undefined' && Knowledge.usable()) parts.push('KNOW: <query> (search the files the user added to Knowledge; use it when the question may be about their own documents or code)');
     if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)');
     const tools = parts.map((p) => p.split(':')[0]);
     if (s.toolsIntro) {
@@ -145,11 +147,13 @@ const WebSearch = {
         if (src.length) toast(`Searched the web: ${src.length} sources, top one is ${src[0].url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}. Opened in the browser.`);
       }
     }
+    // passages from the user's own files (Knowledge), when there are any and the question is more than small talk
+    const kb = typeof Knowledge !== 'undefined' && !this.SMALLTALK.test(question) ? await Knowledge.block(question) : '';
     await this.applyTuning(s);
     await this.applyEffort(s);
     const hint = await this.hint(s);
     if (hint.tools) s.webAsked = (s.chat ? s.chat.turns.length : 0) + 1;
-    const out = `${flat}${hint.text}${block ? ` ${block}` : ''}`;
+    const out = `${flat}${hint.text}${block ? ` ${block}` : ''}${kb ? ` ${kb}` : ''}`;
     s.ctxExtra = (s.ctxExtra || 0) + out.length - flat.length;
     return out;
   },
@@ -281,6 +285,10 @@ const WebSearch = {
           ? `Here are web results for "${arg}". ${block} Now answer my earlier question using only what these results say. Name the source for each fact. If they conflict, say so. If they do not contain the answer, say you could not find it instead of guessing.`
           : 'The web search found nothing. Answer my earlier question as well as you can, and say that you could not check.';
         await this.reply(s, msg, `Searched the web for “${arg}”`, this.sourceNote(block));
+      } else if (kind === 'KNOW') {
+        const got = typeof Knowledge !== 'undefined' && Knowledge.usable() ? await Knowledge.lookup(arg) : null;
+        if (got) await this.reply(s, got.msg.replace(/\s*\n\s*/g, ' '), got.note, got.detail);
+        else await this.reply(s, 'Knowledge is off or empty, so there are no files to search. Answer as well as you can.', 'Knowledge is off');
       } else if (kind === 'SKILL') {
         const got = await invoke('local_skill_text', { name: arg }).catch(() => null);
         const msg = got
