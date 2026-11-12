@@ -72,3 +72,24 @@ test('the web is searched only when asked for unless the user chose always', asy
   assert.equal((await load()).mode(), 'auto');
   assert.equal((await load({ prefs: { webMode: 'always' } })).mode(), 'always');
 });
+
+test('a message that says not to use the web is recognised, and ordinary questions are not', async () => {
+  for (const yes of [
+    'Write a 600 word explanation of TCP. Do not search the web.',
+    "don't search for this, just answer",
+    'Explain DNS without searching the web',
+    'answer from memory, no web search please',
+    'Tell me about Rust without using the internet',
+    'Do not browse, just explain',
+    "Please don't look it up",
+    'never google this'
+  ]) assert.equal(W.noWeb(yes), true, yes);
+  for (const no of [
+    'What is the latest stable version of Rust?',
+    'Search the web for tauri 2 csp',
+    'How do I search a list in Python without a loop?',
+    'Why does my browser not load this page?',
+    'Is there no way to do this?',
+    'How does web search ranking work?'
+  ]) assert.equal(W.noWeb(no), false, no);
+});

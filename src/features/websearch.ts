@@ -45,6 +45,12 @@ export const WebSearch = {
     return /^https?:\/\/[^\s/]+\.[^\s/]+/i.test(url) ? url : '';
   },
   /** Greetings and thanks need no web. */
+  /** The message itself says not to use the web. That wins over the Web button, for this message only. */
+  NO_WEB: /\b(do\s*n[o']t|don't|dont|never|without|no need to|please don't)\s+(\w+\s+){0,2}?(search(ing)?|brows(e|ing)|look(ing)?\s+(it\s+)?up|googl(e|ing)|us(e|ing)\s+(the\s+)?(web|internet|browser))\b|\b(no|without)\s+(web|internet)(\s+(search|access|browsing))?\b|\boffline\s+only\b/i,
+  noWeb(question) {
+    return this.NO_WEB.test(String(question || ''));
+  },
+
   SMALLTALK: /^\s*(hi|hello|hey|yo|thanks?|thank you|ok(ay)?|cool|nice|great|good (morning|evening|night)|bye)\b[\s!.?]*$/i,
   skills: null,
 
@@ -171,7 +177,10 @@ export const WebSearch = {
     await this.compactIfNeeded(s);
     const mode = this.mode();
     let block = '';
-    if (mode !== 'off' && !this.SMALLTALK.test(question) && (mode === 'always' || this.FRESH.test(question))) {
+    // "do not search the web" in the message is obeyed whatever the Web button says, and the model's own
+    // SEARCH and BROWSE requests are refused until the next message
+    s.noWebTurn = this.noWeb(question);
+    if (mode !== 'off' && !s.noWebTurn && !this.SMALLTALK.test(question) && (mode === 'always' || this.FRESH.test(question))) {
       block = await this.fetchBlock(this.queryFor(s, question));
       if (!block) toast('Could not reach the web, so the model answers from memory.');
       else {
@@ -309,7 +318,7 @@ export const WebSearch = {
           await this.reply(s, `"${arg}" is not a web address, so no page was opened. Use SEARCH: <query> to look something up, or BROWSE: with a full https address.`, 'Not a web address');
           return;
         }
-        if (this.mode() === 'off') {
+        if (this.mode() === 'off' || s.noWebTurn) {
           await this.reply(s, 'Web access is turned off, so the page was not opened. Answer from what you know and say that you could not check.', 'Web is off');
           return;
         }
@@ -326,7 +335,7 @@ export const WebSearch = {
         if (/^\[Page text/.test(page)) this.remember(s, page);
         await this.reply(s, `${page.replace(/\s*\n\s*/g, ' ')} Now answer my earlier question using this page. Name the source.`, `Opened ${url} in the browser`, page.slice(0, 1200));
       } else if (kind === 'SEARCH') {
-        if (this.mode() === 'off') {
+        if (this.mode() === 'off' || s.noWebTurn) {
           await this.reply(s, 'Web access is turned off, so nothing was searched. Answer from what you know and say that you could not check.', 'Web is off');
           return;
         }
