@@ -301,7 +301,8 @@ const ChatView = {
   pushReply(items, key, text) {
     const { think, answer, open } = this.splitThinking(text);
     if (think || open) items.push({ k: 'thinking', key: 'k' + key, text: think, live: Boolean(open), hard: true });
-    if (/^\s*(SEARCH|SKILL|RUN):/i.test(answer)) items.push({ k: 'hidden', key: 'h' + key, text: answer });
+    // A reply that is one tool line (SEARCH, BROWSE, SKILL, RUN, KNOW) is acted on by websearch.js, not shown.
+    if (typeof WebSearch !== 'undefined' && WebSearch.request(answer)) items.push({ k: 'hidden', key: 'h' + key, text: answer });
     else if (answer) items.push({ k: 'assistant', key: 'a' + key, text: answer, hard: true });
   },
 

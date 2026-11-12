@@ -16,7 +16,32 @@ const WebSearch = {
   MAX_STEPS: 4,
   /** Things a frozen model cannot know, so there is no point asking it first. */
   FRESH: /\b(latest|newest|current(ly)?|today|tonight|yesterday|this (week|month|year)|right now|news|recent(ly)?|just (released|announced)|release date|price of|stock|score|weather|who won|202[5-9]|2030)\b/i,
-  REQUEST: /^\s*(SEARCH|BROWSE|SKILL|RUN|KNOW):\s*(.+)$/im,
+  TOOLS: ['SEARCH', 'BROWSE', 'SKILL', 'RUN', 'KNOW'],
+
+  /** The tool a reply asks for, or null. A request is a reply that is nothing but the one line
+   *  ("SEARCH: weather in Delhi"), allowing for the dressing small models add: bold, backticks, a bullet,
+   *  a short lead-in line. A long answer that merely mentions "SEARCH:" is an answer, not a request, so
+   *  the app does not go off and search for half a sentence of it. */
+  request(text) {
+    const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!lines.length || lines.length > 3 || lines.join(' ').length > 600) return null;
+    for (const raw of lines) {
+      const line = raw.replace(/^(?:[-*>•]|\d+[.)])\s+/, '').replace(/[*_`]+/g, '').trim();
+      const m = /^(SEARCH|BROWSE|SKILL|RUN|KNOW)\s*:\s*(.+)$/i.exec(line);
+      if (!m) continue;
+      const arg = m[2].replace(/^["“”'<\[(]+|["“”'>\])]+$/g, '').trim().slice(0, 400);
+      if (!arg || /^<?(query|name|https address|one powershell command)>?$/i.test(arg)) return null;
+      return { kind: m[1].toUpperCase(), arg };
+    }
+    return null;
+  },
+
+  /** A web address from what the model wrote after BROWSE:, or '' when it is not one. */
+  browseUrl(arg) {
+    let url = String(arg || '').trim().split(/\s+/)[0].replace(/[.,;)\]>]+$/, '');
+    if (/^www\./i.test(url) || (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(url) && !/^https?:/i.test(url))) url = `https://${url}`;
+    return /^https?:\/\/[^\s/]+\.[^\s/]+/i.test(url) ? url : '';
+  },
   /** Greetings and thanks need no web. */
   SMALLTALK: /^\s*(hi|hello|hey|yo|thanks?|thank you|ok(ay)?|cool|nice|great|good (morning|evening|night)|bye)\b[\s!.?]*$/i,
   skills: null,
@@ -26,7 +51,7 @@ const WebSearch = {
   },
 
   mode() {
-    return this.MODES.includes(prefs.webMode) ? prefs.webMode : 'always';
+    return this.MODES.includes(prefs.webMode) ? prefs.webMode : 'auto';
   },
 
   /** Ollama-only helpers (`/set`, `ollama ps`, `ollama show`) must not be sent to other local runners. */
@@ -44,22 +69,28 @@ const WebSearch = {
     return String(text).replace(/[^\p{L}\p{N}.+#-]+/gu, ' ').split(' ').filter((x) => (x.length > 1 || /\d/.test(x)) && !this.STOP.has(x.toLowerCase()));
   },
 
-  /** What to search for: your question, plus the subject of what you were just talking about when the
-   *  question alone is too short to mean anything ("is it better than you?"). */
+  /** A question that only makes sense with what came before it ("is it better than you?"). */
+  FOLLOW_UP: /\b(it|its|that|this|they|them|their|those|these|he|she|him|her)\b/i,
+
+  /** What to search for: your question as you wrote it. Only a follow-up that cannot stand alone (short,
+   *  or pointing back with "it" / "that") borrows the names and numbers of your previous message; words
+   *  from older messages are never mixed in, because they turn the search into something you did not ask. */
   queryFor(s, question) {
-    const own = this.words(question);
-    const before = (s.chat && s.chat.turns ? s.chat.turns : []).filter((t) => !t.auto).slice(-4).map((t) => String(t.text || ''));
-    if (before.length && before[before.length - 1].replace(/\s+/g, ' ').trim() === question) before.pop();
-    // subject words from earlier messages, newest first, favouring names and numbers
+    const q = String(question).replace(/\s+/g, ' ').trim();
+    const own = this.words(q);
+    const standsAlone = own.length > 2 && !(own.length < 7 && this.FOLLOW_UP.test(q));
+    if (standsAlone) return q.slice(0, 250);
+    const before = (s.chat && s.chat.turns ? s.chat.turns : []).filter((t) => !t.auto).map((t) => String(t.text || '').replace(/\s+/g, ' ').trim());
+    if (before.length && before[before.length - 1] === q) before.pop();
+    const prev = before[before.length - 1] || '';
+    const have = new Set(own.map((x) => x.toLowerCase()));
     const subject = [];
-    for (const m of before.reverse()) {
-      const ws = this.words(m);
-      const strong = ws.filter((x) => /^[A-Z0-9]/.test(x) || /\d/.test(x));
-      for (const x of [...strong, ...ws]) if (!subject.some((y) => y.toLowerCase() === x.toLowerCase())) subject.push(x);
+    for (const x of this.words(prev)) {
+      if (!(/^[A-Z0-9]/.test(x) || /\d/.test(x)) || have.has(x.toLowerCase())) continue;
+      have.add(x.toLowerCase());
+      subject.push(x);
     }
-    const room = own.length >= 6 ? 3 : Math.max(4, 12 - own.length);
-    const extra = subject.filter((x) => !own.some((y) => y.toLowerCase() === x.toLowerCase())).slice(0, room);
-    return [...extra, ...own].join(' ') || question;
+    return [...subject.slice(0, 4), q].join(' ').slice(0, 250);
   },
 
   /** Watch the model work: show a page in the in-app browser window (never takes focus from the chat). */
@@ -261,24 +292,42 @@ const WebSearch = {
     if (turns !== s.webAsked || s.working) return;
     const items = ChatView.model(s);
     const last = items[items.length - 1];
-    const m = last && last.k === 'hidden' && this.REQUEST.exec(last.text);
+    const m = last && last.k === 'hidden' ? this.request(last.text) : null;
     if (!m) return;
     s.webBusy = true;
     s.webAsked = 0;
-    const kind = m[1].toUpperCase();
-    const arg = m[2].replace(/^["“”`<]+|["“”`>]+$/g, '').trim().slice(0, 400);
+    const kind = m.kind;
+    const arg = m.arg;
     try {
       s.webSteps = (s.webSteps || 0) + 1;
       if (s.webSteps > this.MAX_STEPS) return;
       if (kind === 'BROWSE') {
-        const url = arg.replace(/\s.*$/, '');
+        const url = this.browseUrl(arg);
+        if (!url) {
+          await this.reply(s, `"${arg}" is not a web address, so no page was opened. Use SEARCH: <query> to look something up, or BROWSE: with a full https address.`, 'Not a web address');
+          return;
+        }
+        if (this.mode() === 'off') {
+          await this.reply(s, 'Web access is turned off, so the page was not opened. Answer from what you know and say that you could not check.', 'Web is off');
+          return;
+        }
         this.follow(url);
         this.busy(true);
-        const page = await invoke('web_read', { url }).catch((e) => `Could not open that page: ${e}`);
-        this.busy(false);
+        let page;
+        try {
+          page = await invoke('web_read', { url });
+        } catch (e) {
+          page = `Could not open that page: ${e}`;
+        } finally {
+          this.busy(false);
+        }
         if (/^\[Page text/.test(page)) this.remember(s, page);
         await this.reply(s, `${page.replace(/\s*\n\s*/g, ' ')} Now answer my earlier question using this page. Name the source.`, `Opened ${url} in the browser`, page.slice(0, 1200));
       } else if (kind === 'SEARCH') {
+        if (this.mode() === 'off') {
+          await this.reply(s, 'Web access is turned off, so nothing was searched. Answer from what you know and say that you could not check.', 'Web is off');
+          return;
+        }
         const block = await this.fetchBlock(arg);
         if (block) this.remember(s, block);
         const msg = block
@@ -403,9 +452,45 @@ const WebSearch = {
     await sleep(700);
   },
 
+  /** Agents whose thinking level is a launch option in agents.json (llama.cpp), not a live command. */
+  launchEfforts(s) {
+    const a = s && !this.isOllama(s) ? agent(s.agentId) : null;
+    const list = (a && a.efforts) || [];
+    return list.length > 1 ? list : [];
+  },
+
+  /** llama.cpp reads its thinking budget when it starts, so a new level means starting the model again. */
+  async cycleLaunchEffort(s) {
+    const list = this.launchEfforts(s);
+    if (!list.length) return;
+    const a = agent(s.agentId);
+    const at = list.findIndex((e) => e.id === s.effortId);
+    const next = list[(at + 1) % list.length];
+    pick(a).effort = next.id;
+    savePrefs();
+    const live = s.status === 'running' || s.status === 'starting';
+    if (!live) {
+      s.effortId = next.id;
+      this.sync();
+      toast(`${next.label}. Used when this session starts.`);
+      return;
+    }
+    const ok = await confirmDialog(`${next.label}?`, 'The model reads this when it starts, so it has to be loaded again. The chat stays on screen, but the model will not remember it.', 'Restart the model');
+    if (!ok) {
+      this.sync();
+      toast(`${next.label} is saved for new sessions. This one keeps ${effortLabel(a, s.effortId)}.`);
+      return;
+    }
+    s.effortId = next.id;
+    s.toolsIntro = false;
+    this.sync();
+    await restartSession(s);
+  },
+
   async cycleEffort() {
     const s = active();
     if (!this.applies(s)) return;
+    if (this.launchEfforts(s).length) return this.cycleLaunchEffort(s);
     const levels = await this.levels(s);
     if (!levels.length) return;
     const order = ['auto', ...levels];
@@ -516,7 +601,16 @@ const WebSearch = {
     acc.dataset.mode = this.accurate() ? 'auto' : 'off';
     acc.textContent = this.accurate() ? 'Accurate: on' : 'Accurate: off';
     acc.title = 'On: lower randomness and a tight word pool, so the model guesses and invents less.';
-    // shown only for a model that can think; the levels come from the model itself
+    const launch = this.launchEfforts(s);
+    if (launch.length) {
+      const cur = launch.find((x) => x.id === s.effortId) || launch[0];
+      e.hidden = false;
+      e.dataset.mode = cur.id === launch[0].id ? 'off' : 'auto';
+      e.textContent = cur.label;
+      e.title = `How long the model thinks before it answers. Click to change: ${launch.map((x) => x.label.replace(/^Thinking: /, '')).join(', ')}. The model restarts to apply it.`;
+      return;
+    }
+    // Ollama: shown only for a model that can think; the levels come from the model itself
     this.levels(s).then((levels) => {
       const cur = active();
       e.hidden = !(cur && cur.id === s.id && levels.length);
