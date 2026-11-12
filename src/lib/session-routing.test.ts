@@ -1,6 +1,6 @@
-const assert = require('node:assert/strict');
-const test = require('node:test');
-const routing = require('../public/session-routing.js');
+import assert from 'node:assert/strict';
+import { test } from 'vitest';
+import * as routing from './session-routing';
 
 const codex = {
   modes: [

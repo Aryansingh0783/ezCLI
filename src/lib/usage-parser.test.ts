@@ -1,6 +1,6 @@
-const assert = require('node:assert/strict');
-const test = require('node:test');
-const usage = require('../public/usage-parser.js');
+import assert from 'node:assert/strict';
+import { test } from 'vitest';
+import * as usage from './usage-parser';
 
 test('accumulates an explicit multi-metric text summary', () => {
   const state = usage.createUsageState();

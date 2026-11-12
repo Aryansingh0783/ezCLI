@@ -1,3 +1,4 @@
+import { crashPlan } from './core/crash';
 import { late } from './late';
 
 /* ezCLI frontend: talks to the Rust backend over the Tauri IPC bridge.
@@ -1304,22 +1305,24 @@ export async function attachPty(s, ptyId, isCurrentLaunch = () => true) {
     s.exitCode = e.payload;
     s.working = false;
     s.term.write(`\r\n\x1b[38;2;106;106;112m── process exited (code ${e.payload}) ──\x1b[0m\r\n`);
-    // llama.cpp itself crashed (Windows access violation, or a segfault/abort elsewhere) while loading the model
-    if (s.agentId === 'gguf' && [3221225477, -1073741819, 139, 134].includes(Number(e.payload))) {
-      // a crash that already happened in CPU mode is not a GPU problem: switching to CPU or the CPU-only build cannot help
-      const steps =
-        s.modeId === 'cpu'
-          ? 'It crashed in CPU mode too, so it is not a GPU problem. Try, in this order:\r\n' +
-            '  1. Models > llama.cpp > "Check for update" or "Update": this model\'s architecture may need a newer build.\r\n' +
-            '  2. Try a different model file, for example one from "Recommended for this PC".\x1b[0m\r\n'
-          : 'Try, in this order:\r\n' +
-            '  1. Change "GPU (all layers)" to CPU (the button under the message box) and start a new chat.\r\n' +
-            '  2. Models > llama.cpp > "CPU-only build" (a GPU driver problem crashes the GPU build).\r\n' +
-            '  3. If it crashes on CPU too, update llama.cpp (Models > llama.cpp) or try a different model file, for example one from "Recommended for this PC".\x1b[0m\r\n';
-      s.term.write(
-        '\r\n\x1b[38;2;230;180;80mllama.cpp crashed while loading this model. ezCLI started it correctly; the crash is inside llama.cpp.\r\n' +
-          steps
-      );
+    // llama.cpp itself crashed (access violation, segfault, abort): see core/crash.ts for the policy
+    const ag = agent(s.agentId);
+    const plan = crashPlan({
+      agentId: s.agentId,
+      modeId: s.modeId,
+      exitCode: e.payload,
+      modes: ((ag && ag.modes) || []).map((m) => m.id),
+      alreadyFailedOver: Boolean(s.crashFailover)
+    });
+    if (plan.kind !== 'none') s.term.write(`\r\n\x1b[38;2;230;180;80m${plan.notice.replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
+    if (plan.kind === 'failover') {
+      s.crashFailover = true;
+      s.modeId = plan.toMode;
+      toast(`${s.title}: llama.cpp crashed on the GPU. Restarting on the CPU.`, 'error');
+      // after this handler has finished with the dead process
+      setTimeout(() => {
+        if (s.ptyId === ptyId && s.status === 'exited') restartSession(s).catch((err) => toast(String(err), 'error'));
+      }, 0);
     }
     recordUsage(s);
     updateTabMeta(s);

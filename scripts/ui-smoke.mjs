@@ -232,11 +232,67 @@ if (direct) (async () => {
       await page.close();
     }
   }
+  // A reply arriving in many small pieces: what is already on screen must stay the same nodes in the
+  // same place. Finished blocks are compared by identity and by position; nothing above the text being
+  // typed may move, and the page must not throw.
+  {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    page.on('pageerror', (e) => problems.push(`stream: script error: ${e.message}`));
+    await page.addInitScript(mockScript(agents));
+    await page.goto(url);
+    await page.waitForTimeout(900);
+    const skip = await page.$('text=/explore on my own/');
+    if (skip) await skip.click({ timeout: 2000 }).catch(() => {});
+    const result = await page.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const s = await window.ezcli.createSession('gguf', { modelId: 'M:\\AI\\models\\Qwen3.8-27B-Uncensored-Q4_K_M.gguf' });
+      await wait(700);
+      const emit = (t) => window.__emit('pty-data:' + s.ptyId, t);
+      emit('llama.cpp chat\r\n> ');
+      const box = document.getElementById('ptyInput');
+      box.value = 'Explain merging';
+      box.dispatchEvent(new Event('input'));
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await wait(1200);
+      emit('Explain merging\r\n\r\n');
+      const reply = '# Merging lists\r\n\r\nThere are **two** common ways to do it.\r\n\r\n1. Concatenate\r\n2. Interleave\r\n\r\n```python\r\nprint(a + b)\r\n```\r\n\r\n' + Array.from({ length: 12 }, (_, i) => `Paragraph ${i} keeps the stream going with ordinary words.\r\n\r\n`).join('');
+      const col = document.getElementById('chatCol');
+      const seen = new Map();
+      let moved = 0;
+      let replaced = 0;
+      let checks = 0;
+      for (let i = 0; i < reply.length; i += 7) {
+        emit(reply.slice(i, i + 7));
+        await wait(12);
+        if (!col) continue;
+        const heading = col.querySelector('h1, h2, h3');
+        const code = col.querySelector('.cm-code');
+        for (const [key, el] of [['heading', heading], ['code', code]]) {
+          if (!el) continue;
+          const top = Math.round(el.getBoundingClientRect().top + col.parentElement.scrollTop);
+          const was = seen.get(key);
+          if (was) {
+            checks++;
+            if (was.el !== el) replaced++;
+            if (was.top !== top) moved++;
+          }
+          seen.set(key, { el, top });
+        }
+      }
+      await wait(600);
+      return { hasCol: Boolean(col), checks, moved, replaced, paragraphs: col ? col.querySelectorAll('p').length : 0 };
+    });
+    if (!result.hasCol || result.checks < 20) problems.push(`stream: the chat view never showed the streamed reply: ${JSON.stringify(result)}`);
+    if (result.replaced) problems.push(`stream: ${result.replaced} finished blocks were replaced while text was arriving`);
+    if (result.moved) problems.push(`stream: finished blocks moved ${result.moved} times while text was arriving`);
+    if (result.paragraphs < 12) problems.push(`stream: only ${result.paragraphs} of the streamed paragraphs were drawn`);
+    await page.close();
+  }
   await browser.close();
   srv.close();
   if (problems.length) {
     console.error(`UI smoke test failed (${problems.length}):\n- ${[...new Set(problems)].join('\n- ')}`);
     process.exit(1);
   }
-  console.log(`UI smoke test passed: ${SCREENS.length} screens x ${SIZES.length} sizes x 2 themes, no errors, no overflow.`);
+  console.log(`UI smoke test passed: ${SCREENS.length} screens x ${SIZES.length} sizes x 2 themes, no errors, no overflow; a streamed reply replaced and moved nothing.`);
 })();

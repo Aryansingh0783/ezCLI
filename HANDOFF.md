@@ -4,10 +4,39 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-11-04 by Claude (llama-cli crash investigation)
+Last updated: 2026-11-12 by Claude (front end moved to Vite + TypeScript; see the block directly below)
 
 > **Staleness notice:** sections 0-6 below describe v1.2.1 and are historical. Use the block below
 > for the current state, and `git log` for history between v2.2 and v5.12.
+
+## Front end layout since the modernization PR (2026-11-12)
+
+Paths such as `public/app.js` and `public/features/*.js` in the notes below are now `src/app.ts` and
+`src/features/*.ts`. What changed:
+
+- **Build:** Vite + TypeScript. `npm ci`, then `npm run build` writes `dist/`, which Tauri embeds
+  (`frontendDist: ../dist`; `cargo tauri build` and `cargo tauri dev` run the npm scripts themselves).
+  Node is needed to build and test only. `public/` now holds static files only (xterm, fonts, icons).
+  Any `cargo` command needs `dist/` to exist first, because the Tauri macro embeds it.
+- **Modules:** every old script is an ES module under `src/`; `src/main.ts` imports them in the old
+  load order. `src/late.ts` is the one place modules reach each other when an import would be circular.
+- **IPC:** `scripts/gen-ipc.mjs` reads the `#[tauri::command]` functions and writes `src/core/ipc.gen.ts`
+  (`npm run ipc`; CI runs `npm run ipc:check`). Call the backend through `invoke` from `src/core/ipc.ts`.
+- **State:** `src/stores/app.ts` (signals from `@preact/signals-core`) holds sessions, agents and prefs.
+- **Chat drawing:** `src/core/markdown.ts` splits a reply into blocks and `src/core/stream-view.ts` draws
+  them: a finished block is never touched again, the block being typed is appended to. `src/core/thinking.ts`
+  splits reasoning from the answer.
+- **Local-model crash:** `src/core/crash.ts`. The first llama.cpp crash (0xC0000005, 139, 134) in a GPU mode
+  restarts the same model in CPU mode once and says so; a crash on the CPU gets advice, not a restart.
+  **Not verified on Windows hardware.** The cause of the qwen4exp crash is still unknown.
+- **PTY:** `pty_mgr.rs` closes its side of the terminal 400 ms after the child exits (before, a finished
+  tab kept its ConPTY and reader thread until it was closed) and finished sessions no longer use one of
+  the 24 slots. Tested on Linux only; the ConPTY path was not run.
+- **Models list:** `local_models.rs` leaves out `.gguf` files whose first bytes are not a GGUF header.
+- **Look:** one dense dark theme (`src/styles/theme.css` over `src/styles/app.css`). Glass, calm and v4
+  style layers and the Glass toggle are gone.
+- **Tests:** `npm test` (Vitest, `src/**/*.test.ts`), `npm run test:smoke` (Playwright, needs `npm run build`
+  first; `PW_CHROME=/path/to/chrome` to use an installed browser), `cargo test --lib` in `src-tauri`.
 
 ## Current state (v5.12.13, 2026-11-03)
 

@@ -1040,6 +1040,7 @@ Then:
 ```bash
 git clone https://github.com/Aryansingh0783/ezCLI.git
 cd ezCLI
+npm ci                 # once: build and test tooling (Vite, TypeScript, Vitest); the app ships no Node
 cargo tauri dev        # live window, Rust hot-reload on save
 cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_<version>_x64_en-US.msi
 ```
@@ -1288,13 +1289,10 @@ there is no Node server or WebSocket relay.
 
 ## Design source
 
-The base tokens (radii, type scale, spacing, the lime accent) come from the Freebuff
-dark shell and sit at the top of `public/styles.css`. The liquid glass style in
-`public/features/glass.css` layers translucent surfaces, a backdrop blur, and an SVG
-displacement filter over those tokens, so every accent colour and both themes apply to
-it. The spotlight cards and the glowing border on the home box are vanilla
-re-implementations of ideas from React Bits and 21st.dev; no React or bundler is added.
-The frontend passes the Impeccable design detector with no findings.
+One dense dark theme. `src/styles/theme.css` holds the look: a neutral dark canvas, 1px borders,
+monospaced labels, tabular numbers and muted green / amber / red for state. `src/styles/app.css`
+holds the layout rules. There are no gradients, blur layers or entry animations, and state is
+shown as text (`WORKING`, `IDLE`, `READY`).
 
 ## License
 

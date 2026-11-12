@@ -364,6 +364,7 @@ Then clone and build:
 ```bash
 git clone https://github.com/Aryansingh0783/ezCLI.git
 cd ezCLI
+npm ci                 # once: build and test tooling (Vite, TypeScript, Vitest); the app ships no Node
 cargo tauri dev        # live window, Rust rebuilds on save
 cargo tauri build      # produces src-tauri/target/release/bundle/msi/*.msi
 ```
