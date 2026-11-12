@@ -1,0 +1,29 @@
+{
+  "name": "ezcli-frontend",
+  "private": true,
+  "version": "5.12.14",
+  "type": "module",
+  "description": "Build tooling for the ezCLI window. Node is needed to build and test only; the shipped app has no Node runtime.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:smoke": "node scripts/ui-smoke.mjs",
+    "ipc": "node scripts/gen-ipc.mjs",
+    "ipc:check": "node scripts/gen-ipc.mjs --check"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "acorn": "^8.19.0",
+    "eslint-scope": "^9.1.2",
+    "jsdom": "^31.0.0",
+    "playwright": "^1.65.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@preact/signals-core": "^1.14.5"
+  }
+}

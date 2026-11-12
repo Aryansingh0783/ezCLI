@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ezCLI</title>
+    <meta name="description" content="A desktop window for the Claude and OpenAI coding CLIs." />
+    <script>
+      // Apply the saved theme before first paint so the window never flashes.
+      (function () {
+        try {
+          var s = JSON.parse(localStorage.getItem('ezcli.v2') || '{}');
+          var t = s.theme || 'system';
+          if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          document.documentElement.dataset.theme = t;
+          document.documentElement.dataset.style = s.style === 'solid' ? 'solid' : 'glass';
+          var acc = { sky: ['#5cc8ff', '#0b6fb0'], violet: ['#b69cff', '#6a3fd0'], amber: ['#ffc04d', '#9a6200'], rose: ['#ff7aa2', '#b8325c'], mint: ['#4fe3c1', '#0f7f68'] }[s.accent];
+          if (acc) document.documentElement.style.setProperty('--brand', acc[t === 'light' ? 1 : 0]);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/vendor/xterm/css/xterm.css" />
+    <link rel="icon" type="image/png" href="/brand/favicon.png" />
+  </head>
+  <body>
+    <!-- Shown only if app.js never mounts (missing asset, script error at load). -->
+    <main id="startupRecovery" role="alert">
+      <section>
+        <h1>ezCLI couldn’t load</h1>
+        <p>Part of the interface did not start. Reload once; if this screen comes back, reinstall the latest version.</p>
+        <a class="btn primary" href="">Reload ezCLI</a>
+      </section>
+    </main>
+
+    <div class="app" id="app" hidden>
+      <!-- titlebar: brand, session tabs, window controls. The whole bar drags the window. -->
+      <header class="tabbar" data-tauri-drag-region>
+        <button class="brand-btn" id="brandBtn" title="Home" aria-label="Home">
+          <img class="mark-img" src="/brand/ezcli-mark.png" alt="" width="22" height="22" draggable="false" />
+        </button>
+        <div class="tabs" id="tabs" role="tablist" aria-label="Open tabs" data-tauri-drag-region></div>
+        <button class="tab-new" id="tabNew" title="New session (Ctrl+Alt+N)" aria-label="New session">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+        <span class="drag-fill" data-tauri-drag-region></span>
+        <button class="head-icon" id="closedTabsBtn" title="Closed tabs (Ctrl+Alt+Shift+T)" aria-label="Closed tabs">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+        </button>
+        <button class="head-icon explorer-toggle" id="explorerToggle" title="Explorer (Ctrl+Alt+B)" aria-label="Toggle explorer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></svg>
+          <span class="explorer-tab-dot" id="explorerDot" hidden></span>
+        </button>
+        <div class="window-controls">
+          <button class="window-control" id="winMin" aria-label="Minimize window">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" /></svg>
+          </button>
+          <button class="window-control" id="winMax" aria-label="Maximize window">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2.5" y="2.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.2" /></svg>
+          </button>
+          <button class="window-control close" id="winClose" aria-label="Close window">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.2" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="app-body">
+        <!-- spaces: one per project folder, each with its own tabs -->
+        <nav class="rail" aria-label="Spaces">
+          <div class="spaces" id="spaces"></div>
+          <button class="rail-btn rail-add" id="spaceAdd" title="Open folder…" aria-label="New space">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+          <span class="grow"></span>
+          <button class="rail-btn" id="brainBtn" title="Second brain: one graph of every project" aria-label="Second brain">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="7" r="2.2" /><circle cx="18" cy="6" r="2.2" /><circle cx="12" cy="17" r="2.2" /><path d="M7.8 8.2l3 7M16.4 7.6l-3.4 8M8.2 7h7.6" /></svg>
+            <span class="rail-label">Brain</span>
+          </button>
+          <button class="rail-btn" id="browserBtn" title="Agent browser: the window agents use with PC control. Watch it or browse yourself." aria-label="Agent browser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" /></svg>
+            <span class="rail-label">Browser</span>
+          </button>
+          <button class="rail-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+            <span class="rail-label">Settings</span>
+          </button>
+          <button class="rail-btn" id="helpBtn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9" /><path d="M9.6 9.3a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.8-.9 1.4v.4" /><path d="M12 17h.01" /></svg>
+            <span class="rail-label">Keys</span>
+          </button>
+        </nav>
+
+        <main class="main">
+          <!-- home: start a new session in the active space -->
+          <section class="home" id="home" aria-label="New session">
+            <div class="home-inner dash">
+              <header class="dash-head">
+                <div class="dash-titles">
+                  <h1 id="homeTitle">Overview</h1>
+                  <p class="dash-sub" id="homeGreeting"></p>
+                </div>
+                <div class="dash-head-actions">
+                  <button class="dash-icon-btn" id="homeSearch" title="Search past sessions" aria-label="Search past sessions">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" /></svg>
+                  </button>
+                  <button class="dash-icon-btn" id="homeHistory" title="Recent sessions and history" aria-label="Sessions and history">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+                  </button>
+                  <button class="project-trigger dash-project" id="homeProject" title="Change the folder this space runs in">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+                    <span id="homeProjectLabel">Folder</span>
+                    <svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
+                </div>
+              </header>
+
+              <div class="dash-grid">
+               <div class="dash-col dash-col-main">
+                <section class="dash-cell dash-hero">
+                  <div class="dash-section-head"><h2>Start a session</h2></div>
+                  <div class="composer-box" id="homeComposer">
+                    <label class="sr-only" for="homeInput">First message</label>
+                    <textarea id="homeInput" rows="2" placeholder="How can I help you today?"></textarea>
+                    <div class="composer-row runconfig">
+                      <div class="pill-group">
+                        <button class="pill-pick" id="homeAgent" aria-label="Choose agent">
+                          <span class="pill-cap">Agent</span><span class="pill-val"></span>
+                        </button>
+                        <button class="pill-pick" id="homeModel" aria-label="Choose model">
+                          <span class="pill-cap">Model</span><span class="pill-val"></span>
+                        </button>
+                        <button class="pill-pick" id="homeEffort" aria-label="Choose reasoning effort">
+                          <span class="pill-cap">Effort</span><span class="pill-val"></span>
+                        </button>
+                        <button class="pill-pick" id="homeMode" aria-label="Choose mode">
+                          <span class="pill-cap">Mode</span><span class="pill-val"></span>
+                        </button>
+                      </div>
+                      <div class="composer-tools">
+                        <span class="send-key"><kbd>Enter</kbd></span>
+                        <button class="send-btn" id="homeSend" aria-label="Start session" title="Start session">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="home-route-note" id="homeRouteNotice" role="status" hidden></p>
+                </section>
+
+                <section class="dash-cell dash-stats" id="dashStats" aria-label="Your week" hidden></section>
+
+                <section class="dash-cell dash-table">
+                  <div class="dash-section-head">
+                    <h2>Recent sessions</h2>
+                    <button type="button" class="dash-link" id="homeAllSessions">All sessions</button>
+                  </div>
+                  <div id="continueRow"></div>
+                </section>
+               </div>
+
+               <div class="dash-col dash-col-side">
+                <section class="dash-cell dash-assets">
+                  <div class="dash-section-head"><h2>Your agents</h2></div>
+                  <div class="agent-grid" id="agentStrip" role="radiogroup" aria-label="Agent"></div>
+                </section>
+
+                <aside class="dash-cell dash-promo">
+                  <div class="dash-promo-body">
+                    <h2>Quick starts</h2>
+                    <p>Hand the agent a focused task in one tap.</p>
+                    <div class="suggested-prompts" id="suggested" aria-label="Suggested next steps"></div>
+                  </div>
+                </aside>
+               </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- a live session -->
+          <section class="workspace" id="workspace" aria-label="Session">
+            <div class="session-head">
+              <span class="agent-status" id="headStatus"></span>
+              <span class="head-title" id="headTitle"></span>
+              <button class="head-chip head-agent" id="headAgent" title="Change backend (relaunches this session)" hidden></button>
+              <button class="head-chip" id="headModel" title="Start a fresh session with another model" hidden></button>
+              <button class="head-chip head-control" id="headControl" title="Grant or revoke local PC control for this live session"></button>
+              <button class="head-chip head-connectors" id="headConnectors" title="Your configured connectors attach automatically; click to turn them off for just this tab" hidden></button>
+              <span class="head-branch" id="headBranch" hidden></span>
+              <span class="grow"></span>
+              <button class="btn primary" id="actResume" title="Launch this session again" hidden>Resume</button>
+              <button class="btn quiet" id="actRestart" title="Stop and launch again">Restart</button>
+              <button class="btn quiet" id="actStop" title="Stop the running process">Stop</button>
+              <div class="open-in">
+                <button class="btn open-in-primary" id="openInPrimary" title="Open the session folder">Open</button>
+                <button class="btn open-in-menu-trigger" id="openInMenu" aria-label="Open in…">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="agent-notice session-agent-notice" id="sessionAgentNotice" role="alert" hidden></div>
+            <div class="terminal-panel">
+              <div class="term-hosts" id="termHosts"></div>
+              <button class="scroll-bottom-btn" id="scrollBottom" hidden aria-label="Jump to latest output">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg>
+              </button>
+            </div>
+            <div class="thread-bottom">
+              <div class="composer-box" id="ptyComposer">
+                <div class="composer-context" id="composerContext" hidden></div>
+                <label class="sr-only" for="ptyInput">Send to the CLI</label>
+                <textarea id="ptyInput" rows="1" placeholder="Message the CLI. Enter sends, Shift+Enter adds a line, ↑ recalls history"></textarea>
+                <div class="composer-row">
+                  <button class="chip" id="btnInterrupt" title="Send Ctrl+C to the process">Ctrl+C</button>
+                  <button class="chip" id="btnEsc" title="Send Escape to the process">Esc</button>
+                  <button class="chip" id="btnHistory" title="Prompt history" aria-label="Prompt history">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>
+                    History
+                  </button>
+                  <button class="chip attachment-btn" id="btnAttachImage" title="Attach images or videos" aria-label="Attach images or videos" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l9.1-9.1a4 4 0 0 1 5.7 5.7l-9.1 9.1a2 2 0 0 1-2.8-2.8l8.4-8.4" /></svg>
+                    Attach
+                  </button>
+                  <span class="grow"></span>
+                  <button class="send-btn" id="btnSend" aria-label="Send" title="Send">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- explorer: files and git changes for the active space -->
+          <aside class="explorer" id="explorer" aria-label="Explorer" hidden>
+            <button class="pane-resize-handle" id="explorerResize" aria-label="Resize explorer panel"></button>
+            <div class="explorer-header">
+              <div class="explorer-tabs" role="tablist">
+                <button class="explorer-tab active" data-xtab="files" role="tab">Files</button>
+                <button class="explorer-tab" data-xtab="changes" role="tab">
+                  Changes <span class="explorer-tab-count" id="changesCount" hidden></span>
+                </button>
+              </div>
+              <button class="head-icon" id="explorerRefresh" title="Refresh" aria-label="Refresh">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8" /><path d="M21 3v5h-5" /></svg>
+              </button>
+              <button class="head-icon" id="explorerClose" title="Close (Ctrl+Alt+B)" aria-label="Close explorer">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" /></svg>
+              </button>
+            </div>
+            <div class="explorer-content" id="explorerContent"></div>
+          </aside>
+        </main>
+      </div>
+
+      <footer class="statusbar">
+        <span class="st-state" id="stState">idle</span>
+        <code id="stCmd">no session</code>
+        <span class="live-usage" id="liveUsage" hidden aria-label="Session usage">
+          <span class="live-usage-label">Usage</span>
+          <span class="live-usage-metrics" id="liveUsageMetrics"></span>
+        </span>
+        <span class="grow"></span>
+        <code id="stCwd"></code>
+        <span id="stSize"></span>
+      </footer>
+    </div>
+
+    <div class="scrim" id="scrim" hidden></div>
+    <div class="menu" id="menu" role="menu" hidden></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <span class="sr-only" id="usageAnnouncer" role="status" aria-live="polite" aria-atomic="true"></span>
+
+    <dialog class="sheet" id="helpSheet">
+      <h2>Keyboard shortcuts</h2>
+      <dl class="keys">
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>N</kbd></dt><dd>New session in this space</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>W</kbd></dt><dd>Close the current tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Shift</kbd><kbd>T</kbd></dt><dd>Reopen the last closed tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></dt><dd>Jump to a tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next tab</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>B</kbd></dt><dd>Show or hide the explorer</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>K</kbd></dt><dd>Clear the terminal</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>/</kbd></dt><dd>Focus the composer</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>P</kbd></dt><dd>Command palette</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>M</kbd></dt><dd>Compare agents: one prompt, several models</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>L</kbd></dt><dd>Prompt library</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd></dt><dd>Search past sessions</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>E</kbd></dt><dd>Export the session as Markdown</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>D</kbd></dt><dd>Voice typing</dd>
+        <dt><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>=</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, reset</dd>
+        <dt><kbd>Enter</kbd> / <kbd>Shift</kbd><kbd>Enter</kbd></dt><dd>Send / new line in the composer</dd>
+        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Walk prompt history from an empty composer</dd>
+      </dl>
+      <p class="note">
+        Everything else goes straight to the terminal. Arrow keys, <kbd>Tab</kbd>, <kbd>Ctrl</kbd><kbd>C</kbd> and the
+        agent’s own slash commands work exactly as they do in a normal shell.
+      </p>
+      <form method="dialog"><button class="btn primary">Close</button></form>
+    </dialog>
+
+    <dialog class="sheet onboarding-sheet" id="onboardingSheet" aria-labelledby="onboardingTitle">
+      <h2 id="onboardingTitle">Start with a working CLI</h2>
+      <p class="note" id="onboardingSummary"></p>
+      <div class="onboarding-intro">
+        <label class="onboarding-name"><span>Your name</span><input type="text" id="onboardingName" placeholder="What should we call you?" maxlength="24" autocomplete="given-name" spellcheck="false" /></label>
+        <div class="onboarding-install"><span>Some agents aren’t installed yet. Add them all in one go, with Node.js if this PC needs it.</span><button class="btn" type="button" data-install-all hidden>Install all agents</button></div>
+      </div>
+      <div class="onboarding-scroll">
+      <details class="backend-found">
+        <summary id="backendFoundSummary">What ezCLI found</summary>
+        <ul class="backend-facts" id="backendFacts" aria-label="Detected setup"></ul>
+      </details>
+      <div class="backend-choices" id="backendChoices" role="radiogroup" aria-label="Choose default backend"></div>
+      <section class="onboarding-config" id="onboardingConfig" aria-label="Selected session configuration" hidden>
+        <div class="onboarding-config-head"><span>Selected session</span><strong id="onboardingAgentLabel"></strong></div>
+        <div class="onboarding-config-picks">
+          <button class="onboarding-pick" type="button" id="onboardingModel" aria-label="Choose a model">
+            <span class="onboarding-pick-cap">Model</span><strong id="onboardingModelValue"></strong>
+            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <button class="onboarding-pick" type="button" id="onboardingEffort" aria-label="Choose reasoning effort">
+            <span class="onboarding-pick-cap">Effort</span><strong id="onboardingEffortValue"></strong>
+            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+        </div>
+        <p class="agent-notice onboarding-agent-notice" id="onboardingGeminiNotice" role="status" hidden><strong>Gemini CLI setup:</strong> Personal Google sign-in no longer works here. Start a Gemini session and paste a free API key to connect, or use Antigravity CLI for a personal Google account.</p>
+        <p class="agent-notice onboarding-agent-notice" id="onboardingOllamaNotice" role="status" hidden></p>
+      </section>
+      <div class="free-installs" id="freeInstalls" hidden></div>
+      <p class="note onboarding-note">ezCLI only opens local CLIs. It does not send prompts to a model itself, and you can switch backends for any session.</p>
+      </div>
+      <div class="row-actions onboarding-actions">
+        <button class="btn quiet" type="button" id="onboardingSkip">I’ll explore on my own</button>
+        <span class="grow"></span>
+        <button class="btn primary" type="button" id="onboardingContinue" autofocus>Use selected backend</button>
+      </div>
+    </dialog>
+
+    <dialog class="sheet" id="settingsSheet">
+      <h2>Settings</h2>
+      <div class="settings-section">
+        <h3>Appearance</h3>
+        <div class="theme-preset-grid" id="themePresets" role="radiogroup" aria-label="Theme"></div>
+        <p class="note theme-sub">Or set the base mode and accent yourself:</p>
+        <div class="segmented" id="themeSeg" role="radiogroup" aria-label="Appearance">
+          <button class="theme-option" data-theme-opt="system" role="radio">Match system</button>
+          <button class="theme-option" data-theme-opt="dark" role="radio">Dark</button>
+          <button class="theme-option" data-theme-opt="light" role="radio">Light</button>
+        </div>
+        <div class="segmented style-seg" id="styleSeg" role="radiogroup" aria-label="Window style">
+          <button class="theme-option" data-style-opt="glass" role="radio">Liquid glass</button>
+          <button class="theme-option" data-style-opt="solid" role="radio">Solid</button>
+        </div>
+        <div class="accent-seg" id="accentSeg" role="radiogroup" aria-label="Accent colour"></div>
+        <div class="term-prefs" id="termPrefs">
+          <label class="term-pref-row"><span>Terminal font</span>
+            <select id="termFont" class="select" aria-label="Terminal font"></select></label>
+          <div class="term-pref-row"><span>Line spacing</span>
+            <div class="segmented" id="termLineSeg" role="radiogroup" aria-label="Line spacing">
+              <button class="theme-option" data-term-line="compact" role="radio">Compact</button>
+              <button class="theme-option" data-term-line="comfortable" role="radio">Comfortable</button>
+              <button class="theme-option" data-term-line="relaxed" role="radio">Relaxed</button>
+            </div></div>
+          <div class="term-pref-row"><span>Cursor</span>
+            <div class="segmented" id="termCursorSeg" role="radiogroup" aria-label="Cursor shape">
+              <button class="theme-option" data-term-cursor="bar" role="radio">Bar</button>
+              <button class="theme-option" data-term-cursor="block" role="radio">Block</button>
+              <button class="theme-option" data-term-cursor="underline" role="radio">Underline</button>
+            </div></div>
+          <label class="toggle-row"><input type="checkbox" id="termBlink" /> <span>Blinking cursor</span></label>
+          <label class="term-pref-row"><span>Terminal background</span>
+            <select id="termLook" class="select" aria-label="Terminal background"><option value="clear">Transparent</option><option value="glass">Dark glass</option><option value="solid">Solid</option></select></label>
+          <p class="muted term-look-hint">Transparent follows your window colour. A few CLIs draw as if the screen were dark (a logo can look washed out on a light window); pick Dark glass if one does.</p>
+          <label class="toggle-row"><input type="checkbox" id="termGpu" /> <span>Draw the terminal with the graphics card (experimental: faster on huge output, but text can look tighter on a 100% display)</span></label>
+        </div>
+        <div class="stepper">
+          <span>Terminal text</span>
+          <button class="btn" id="fontDown" aria-label="Smaller">−</button>
+          <span id="fontSizeLabel">13 px</span>
+          <button class="btn" id="fontUp" aria-label="Larger">+</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Agents</h3>
+        <p class="note">Launch commands live in <code id="agentsPath">~/.ezcli/agents.json</code>. Edit it, then reload.</p>
+        <div class="row-actions">
+          <button class="btn" data-install-all hidden>Install all agents</button>
+          <button class="btn" id="openConfig">Open config folder</button>
+          <button class="btn" id="reloadAgents">Reload agents</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>General</h3>
+        <label class="term-pref-row"><span>Your name (for the greeting)</span>
+          <input id="prefName" class="select" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Optional" aria-label="Your name" /></label>
+        <label class="toggle-row"><input type="checkbox" id="prefCalm" /> <span>Calm layout: a quieter home, with controls that appear on hover</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefChat" /> <span>Show sessions as a chat. The terminal is one click away in the header.</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefNotifications" /> <span>Notify me when a long task finishes in a tab I'm not looking at</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefCloseToTray" /> <span>Keep running in the tray when I close the window</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefProjectDefaults" /> <span>Remember the agent, model and mode for each folder</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefShowPaid" /> <span>Show paid models that use my own API key (hidden by default)</span></label>
+        <label class="toggle-row"><input type="checkbox" id="prefTranscripts" /> <span>Save session text on this PC so past sessions can be searched</span></label>
+        <div class="row-actions wrap">
+          <button class="btn" id="openImports">Sessions</button>
+          <button class="btn" id="openSearch">Search sessions</button>
+          <button class="btn" id="openUsage">Usage</button>
+          <button class="btn" id="openHealth">Health check</button>
+          <button class="btn" id="openUpdates">Check for updates</button>
+          <button class="btn" id="openRemote">Remote view</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Knowledge graph</h3>
+        <p class="note"><a href="https://github.com/safishamsi/graphify" target="_blank" rel="noopener">Graphify</a> (third-party, open source) turns each project into a graph your agents can query. ezCLI merges them into one second brain: a graph window, plus notes for <a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a>. It stays on this PC, in <code>~/.ezcli/second-brain</code>. ezCLI shows you each command before it runs.</p>
+        <p class="note" id="graphifyStatus">Checking…</p>
+        <p class="note" id="brainStatus">Checking…</p>
+        <div class="row-actions wrap">
+          <button class="btn quiet" id="graphifyInstall">Install Graphify</button>
+          <button class="btn quiet" id="graphifySetup">Add to my agents</button>
+          <button class="btn quiet" id="graphifyBuild">Build this project's graph</button>
+          <button class="btn quiet" id="graphifyOpen">Open project graph</button>
+        </div>
+        <div class="row-actions wrap">
+          <button class="btn quiet" id="brainUpdate">Update second brain</button>
+          <button class="btn quiet" id="brainGraph">Open second brain</button>
+          <button class="btn quiet" id="brainObsidian">Open notes</button>
+          <button class="btn quiet" id="brainInstallObsidian">Install Obsidian (optional)</button>
+        </div>
+        <pre class="install-log" id="graphifyLog" hidden></pre>
+        <label class="toggle-row"><input type="checkbox" id="graphAuto" /> <span>Keep each project’s graph up to date while agents work on it, and fold it into the second brain (needs Graphify installed)</span></label>
+      </div>
+      <div class="settings-section">
+        <h3>Connectors</h3>
+        <p class="note">Connect a remote MCP server you've already set up yourself, <a href="https://klavis.ai" target="_blank" rel="noopener">Strata</a>, your own tool server, or anything else that speaks MCP over HTTP. These are third-party servers, not part of ezCLI, and ezCLI never creates an account or connects anything on its own: you set each one up and paste in its URL. Once added and enabled, a connector attaches automatically to every session that can receive it, no per-session toggle. Turn one off for one tab with the Connectors chip in that session's header, or disable/remove it here to turn it off everywhere.</p>
+        <ul class="connector-list" id="connectorList"></ul>
+        <div class="row-actions">
+          <button class="btn quiet" id="addConnector">Add connector</button>
+        </div>
+      </div>
+      <form method="dialog"><button class="btn primary">Done</button></form>
+    </dialog>
+
+    <dialog class="sheet wide" id="usageSheet">
+      <h2>Session usage</h2>
+      <p class="note">
+        ezCLI never calls model APIs, so it can't see your actual spend. Billing and token
+        totals live with each provider.
+      </p>
+      <div class="usage-table" id="usageTable"></div>
+      <div class="row-actions wrap">
+        <button class="btn" id="openAnthropic">Anthropic Console →</button>
+        <button class="btn" id="openOpenai">OpenAI Dashboard →</button>
+        <span class="grow"></span>
+        <button class="btn quiet" id="resetUsage">Reset local counters</button>
+      </div>
+      <form method="dialog" class="row-actions end"><button class="btn primary">Done</button></form>
+    </dialog>
+
+    <dialog class="sheet" id="confirmSheet">
+      <h2 id="confirmTitle">Are you sure?</h2>
+      <p class="note" id="confirmBody"></p>
+      <form method="dialog" class="row-actions end">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn danger" value="ok" id="confirmOk">Confirm</button>
+      </form>
+    </dialog>
+
+    <script src="/vendor/xterm/lib/xterm.js"></script>
+    <script src="/vendor/addon-webgl/lib/addon-webgl.js"></script>
+    <script src="/vendor/addon-unicode11/lib/addon-unicode11.js"></script>
+    <script src="/vendor/addon-fit/lib/addon-fit.js"></script>
+    <script src="/vendor/addon-web-links/lib/addon-web-links.js"></script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

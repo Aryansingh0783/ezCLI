@@ -1,0 +1,4089 @@
+import { late } from './late';
+
+/* ezCLI frontend: talks to the Rust backend over the Tauri IPC bridge.
+ *
+ * Layout follows the Freebuff desktop shell: a rail of spaces (one per
+ * project folder), a frameless titlebar of session tabs, a home screen for
+ * starting sessions, and a resizable explorer for files and git changes.
+ * Every session is still a real CLI in a real pseudo-terminal. */
+
+import { invoke, listen } from './core/ipc';
+import { addSession, setActive, state, touchSessions } from './stores/app';
+import type { Session } from './stores/app';
+import * as Usage from './core/usage-parser';
+import { isContinuationMode, freshModeId, modelSwitchPlan } from './core/session-routing';
+
+export { invoke, listen };
+export const T = window.__TAURI__;
+/** An element by id. Typed loosely (see types/globals.d.ts): callers read input and button fields off it. */
+export const $ = (id: string): HTMLElement | null => document.getElementById(id);
+export { Usage, isContinuationMode, freshModeId, modelSwitchPlan };
+
+/* ------------------------------------------------------------ preferences */
+
+export const PREFS_KEY = 'ezcli.v2';
+const DEFAULT_PREFS = {
+  theme: 'light',
+  palette: 'claude',
+  accent: 'coral',
+  calm: true,
+  termFont: 'jetbrains',
+  termLine: 'comfortable',
+  termCursor: 'bar',
+  termBlink: true,
+  // Off by default: the GPU renderer snaps cells to whole pixels, so text can look
+  // tighter than the HTML renderer at 100% display scale. Opt-in under Settings.
+  gpu: false,
+  pinnedSessions: [],
+  homeDraft: '',
+  fontSize: 13,
+  zoom: 1,
+  spaces: [],
+  activeSpace: null,
+  explorerOpen: false,
+  explorerWidth: 440,
+  explorerTab: 'files',
+  agentId: null,
+  // First-run detection is informative, not a gate. We persist dismissal too
+  // so experienced users are never shown the wizard repeatedly.
+  onboarded: false,
+  picks: {},
+  openTarget: null,
+  closed: [],
+  history: [],
+  // Parked tabs persisted across restarts. Each entry is enough to relaunch
+  // the exact same CLI configuration; the process itself does not survive.
+  parked: [],
+  // Session counters we can honestly measure (we never call model APIs).
+  usage: {},
+  // Custom remote MCP servers the user configured themselves (Settings →
+  // Connectors), e.g. Klavis AI's Strata or any other MCP endpoint. Empty by
+  // default; ezCLI never adds one itself. Each entry is { id, name, url,
+  // enabled }. See public/features/connectors.js.
+  connectors: [],
+  // Build a Graphify graph for every project a session starts in.
+  graphAuto: true
+};
+
+function loadPrefs() {
+  try {
+    return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') };
+  } catch {
+    return { ...DEFAULT_PREFS };
+  }
+}
+export const prefs = loadPrefs();
+let saveTimer = 0;
+export function savePrefs() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      /* storage unavailable; preferences just won't persist */
+    }
+  }, 150);
+}
+
+// Migrate the old single-Strata-field prefs (pre-connectors-list) into one
+// connector entry, once, and persist immediately so the stale `strataUrl`
+// key in localStorage can't re-trigger this on a later load (e.g. after the
+// user deliberately clears the connectors list down to empty).
+if (typeof prefs.strataUrl === 'string') {
+  if (prefs.strataUrl.trim() && !(prefs.connectors || []).length) {
+    prefs.connectors = [{ id: `c${Date.now().toString(36)}`, name: 'Strata', url: prefs.strataUrl.trim(), enabled: true }];
+  }
+  delete prefs.strataUrl;
+  savePrefs();
+}
+
+/* ----------------------------------------------------------------- themes */
+
+export const TERM_THEMES = {
+  dark: {
+    background: '#15171d',
+    foreground: '#d5d9e4',
+    cursor: '#7cff3f',
+    cursorAccent: '#15171d',
+    selectionBackground: 'rgba(255,255,255,0.22)',
+    selectionInactiveBackground: 'rgba(255,255,255,0.12)',
+    black: '#2b2f3a',
+    red: '#f7768e',
+    green: '#9ece6a',
+    yellow: '#e0af68',
+    blue: '#7aa2f7',
+    magenta: '#bb9af7',
+    cyan: '#7dcfff',
+    white: '#a9b1d6',
+    brightBlack: '#6b7285',
+    brightRed: '#ff899d',
+    brightGreen: '#b9f27c',
+    brightYellow: '#ffc777',
+    brightBlue: '#8db0ff',
+    brightMagenta: '#c7a9ff',
+    brightCyan: '#a4daff',
+    brightWhite: '#eef1fa'
+  },
+  light: {
+    background: '#ffffff',
+    foreground: '#1d1d20',
+    cursor: '#368f06',
+    cursorAccent: '#ffffff',
+    selectionBackground: 'rgba(54,143,6,0.18)',
+    black: '#1d1d20',
+    red: '#c04747',
+    green: '#2e8b57',
+    yellow: '#966600',
+    blue: '#2d6cb0',
+    magenta: '#7a48cf',
+    cyan: '#1f7f7a',
+    white: '#63636b',
+    brightBlack: '#8b8b95',
+    brightRed: '#a13a3a',
+    brightGreen: '#2f6a44',
+    brightYellow: '#7a5200',
+    brightBlue: '#1f5590',
+    brightMagenta: '#5f34a8',
+    brightCyan: '#14615d',
+    brightWhite: '#1d1d20'
+  }
+};
+
+// The terminal pane is always a dark surface, in the light themes too (see
+// reference.css), so it always uses the dark colour set. The light set draws
+// dark text, which is unreadable on that pane.
+const TERM_LIGHT = TERM_THEMES.light;
+TERM_THEMES.light = TERM_THEMES.dark;
+
+/* ---------------------------------------------------------- terminal setup */
+
+export const TERM_FONTS = {
+  jetbrains: { label: 'JetBrains Mono', stack: "'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace" },
+  cascadia: { label: 'Cascadia Code', stack: "'Cascadia Code', 'Cascadia Mono', Consolas, ui-monospace, monospace" },
+  consolas: { label: 'Consolas', stack: "Consolas, 'Cascadia Mono', ui-monospace, monospace" },
+  system: { label: 'System monospace', stack: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace" }
+};
+const TERM_LINES = { compact: 1.15, comfortable: 1.35, relaxed: 1.55 };
+
+/** The terminal paints an opaque background that matches its pane exactly (the pane
+ *  colour changes with the palette). A transparent terminal looks fine in the HTML
+ *  renderer but the GPU renderer composites it as black boxes behind the text. */
+/** How the terminal pane is painted:
+ *   clear  fully transparent; on a light window the text switches to dark ink so the
+ *          terminal simply sits on the page, on a dark window it stays light text
+ *   glass  a translucent, blurred dark pane
+ *   solid  an opaque dark pane
+ *  Transparency needs the HTML renderer; the GPU renderer always draws solid. */
+const termLook = () => (prefs.gpu === true ? 'solid' : prefs.termLook || (prefs.termGlass === false ? 'solid' : 'clear'));
+
+function cssRgb(value, fallback) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(value).trim());
+  if (!m) return fallback;
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
+
+function syncTermBackground() {
+  const cs = getComputedStyle(document.documentElement);
+  const bg = cs.getPropertyValue('--term-bg').trim() || '#15171d';
+  const panel = cs.getPropertyValue('--panel').trim() || '#ffffff';
+  const look = termLook();
+  const lightInk = look === 'clear' && resolvedTheme() === 'light';
+  // The channels of a transparent background still tell the contrast fixer what the text sits on.
+  TERM_THEMES.dark.background = look === 'solid' ? bg : `rgba(${look === 'clear' ? cssRgb(bg, '21, 23, 29') : '0, 0, 0'}, 0)`;
+  TERM_THEMES.dark.cursorAccent = bg;
+  TERM_THEMES.light = lightInk
+    ? { ...TERM_LIGHT, background: `rgba(${cssRgb(panel, '255, 255, 255')}, 0)`, cursorAccent: panel }
+    : TERM_THEMES.dark;
+  const root = document.documentElement.dataset;
+  root.termGlass = look === 'glass' ? 'on' : look === 'clear' ? 'clear' : 'off';
+}
+
+/** One configuration for every terminal in the app. */
+function termOptions(extra = {}) {
+  syncTermBackground();
+  return {
+    fontFamily: (TERM_FONTS[prefs.termFont] || TERM_FONTS.jetbrains).stack,
+    fontSize: prefs.fontSize,
+    fontWeight: '400',
+    fontWeightBold: '600',
+    lineHeight: TERM_LINES[prefs.termLine] || TERM_LINES.comfortable,
+    letterSpacing: 0,
+    cursorStyle: prefs.termCursor || 'bar',
+    cursorWidth: 2,
+    cursorBlink: prefs.termBlink !== false,
+    cursorInactiveStyle: 'outline',
+    // Lifts any colour a CLI picks that would be hard to read on the pane.
+    minimumContrastRatio: 4.5,
+    drawBoldTextInBrightColors: false,
+    rescaleOverlappingGlyphs: true,
+    smoothScrollDuration: 70,
+    allowProposedApi: true,
+    allowTransparency: termLook() !== 'solid',
+    theme: TERM_THEMES[resolvedTheme()],
+    scrollback: 20000,
+    ...extra
+  };
+}
+
+/** Open a path printed in terminal output in the explorer's file view. */
+export async function openTerminalPath(raw) {
+  const path = raw.replace(/:\d+(?::\d+)?$/, '').replaceAll('\\', '/');
+  const s = active();
+  const base = ((s && s.cwd) || (space() && space().path) || '').replaceAll('\\', '/').replace(/\/$/, '');
+  const abs = /^[A-Za-z]:\//.test(path) || path.startsWith('/') ? path : `${base}/${path.replace(/^\.\//, '')}`;
+  try {
+    await invoke('read_file', { path: abs });
+  } catch {
+    return toast(`Couldn’t open ${path}`, 'error');
+  }
+  // Open first: opening the explorer resets it to the file list.
+  setExplorerOpen(true);
+  state.explorer.view = 'file';
+  state.explorer.file = abs;
+  renderExplorer();
+}
+
+/** Build a terminal inside `host` with every add-on it needs. */
+export function createTerminal(host, extra?) {
+  const term = new Terminal(termOptions(extra));
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  try {
+    term.loadAddon(new WebLinksAddon.WebLinksAddon((e, uri) => (T.opener ? T.opener.openUrl(uri) : window.open(uri))));
+  } catch {
+    /* optional add-on */
+  }
+  // File paths in the output (src/app.js:42, C:\proj\a.rs) open in the explorer.
+  term.registerLinkProvider({
+    provideLinks(y, cb) {
+      const line = term.buffer.active.getLine(y - 1);
+      if (!line) return cb(undefined);
+      const text = line.translateToString(true);
+      const re = /(?:[A-Za-z]:[\\/]|\.{0,2}[\\/])?(?:[\w.@-]+[\\/])*[\w.@-]+\.[A-Za-z][A-Za-z0-9]{0,5}(?::\d+(?::\d+)?)?/g;
+      const links = [];
+      for (let m; (m = re.exec(text)); ) {
+        const raw = m[0];
+        if (/^\d+\.\d+/.test(raw) || /^(?:https?|www)/i.test(raw) || !/[\\/]/.test(raw)) continue;
+        if (text[m.index - 1] === '/' || text[m.index - 1] === '@') continue;
+        links.push({
+          range: { start: { x: m.index + 1, y }, end: { x: m.index + raw.length + 1, y } },
+          text: raw,
+          activate: () => openTerminalPath(raw)
+        });
+      }
+      cb(links.length ? links : undefined);
+    }
+  });
+  try {
+    // Correct widths for emoji, CJK and box-drawing so TUIs line up.
+    term.loadAddon(new Unicode11Addon.Unicode11Addon());
+    term.unicode.activeVersion = '11';
+  } catch {
+    /* optional add-on */
+  }
+  term.open(host);
+  // Our Ctrl+Alt shortcuts must never be swallowed by the terminal.
+  wireTerminalInput(term, host);
+  return { term, fit };
+}
+
+/** Optional GPU (WebGL) rendering. Browsers cap live GPU contexts, so only the tab
+ *  you are looking at gets one. */
+export function setGpu(s, on) {
+  if (on && !s.gl && typeof WebglAddon !== 'undefined' && prefs.gpu === true) {
+    try {
+      const gl = new WebglAddon.WebglAddon();
+      gl.onContextLoss(() => {
+        gl.dispose();
+        if (s.gl === gl) s.gl = null;
+      });
+      s.term.loadAddon(gl);
+      s.gl = gl;
+    } catch {
+      s.gl = null;
+    }
+  } else if (!on && s.gl) {
+    try {
+      s.gl.dispose();
+    } catch {
+      /* already gone */
+    }
+    s.gl = null;
+  }
+}
+export function syncGpu() {
+  for (const s of state.sessions) setGpu(s, s.id === state.activeId);
+}
+
+/** Push the font, spacing and cursor preferences into every open terminal. */
+export function applyTermPrefs() {
+  const o = termOptions();
+  for (const s of state.sessions) {
+    for (const k of ['fontFamily', 'fontSize', 'lineHeight', 'cursorStyle', 'cursorBlink', 'allowTransparency']) s.term.options[k] = o[k];
+    s.term.options.theme = { ...o.theme, cursor: s.term.options.theme && s.term.options.theme.cursor };
+  }
+  requestAnimationFrame(() => state.sessions.forEach(fitSession));
+}
+
+/** A web font that finishes loading after a terminal measured its cells leaves
+ *  the grid misaligned; nudge each terminal to measure again. */
+export function remeasureTerminals() {
+  for (const s of state.sessions) {
+    const f = s.term.options.fontFamily;
+    s.term.options.fontFamily = `${f}, monospace`;
+    s.term.options.fontFamily = f;
+  }
+  requestAnimationFrame(() => state.sessions.forEach(fitSession));
+}
+
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+export const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme);
+
+/** Palettes are either light or dark. The Light / Dark / Match system switch is a mode, and a
+ *  palette from the other mode would leave light text on a white window (or the reverse), so
+ *  the matching palette is used instead. The saved choice is kept and returns with its mode. */
+const DARK_PALETTES = new Set(['midnight', 'nebula', 'ocean', 'claude-dark']);
+function effectivePalette() {
+  const p = prefs.palette || 'claude';
+  const dark = DARK_PALETTES.has(p);
+  const t = resolvedTheme();
+  if (t === 'dark' && !dark) return p === 'claude' ? 'claude-dark' : 'midnight';
+  if (t === 'light' && dark) return p === 'claude-dark' ? 'claude' : 'daylight';
+  return p;
+}
+
+export function applyTheme() {
+  const t = resolvedTheme();
+  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.palette = effectivePalette();
+  document.documentElement.dataset.layout = prefs.calm === false ? 'dashboard' : 'calm';
+  syncTermBackground();
+  for (const s of state.sessions) s.term.options.theme = TERM_THEMES[t];
+  document.querySelectorAll('[data-theme-opt]').forEach((b) => {
+    const on = b.dataset.themeOpt === prefs.theme;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+}
+
+/* ------------------------------------------------------------------ icons */
+
+export const svg = (d, w = 15, sw = 1.8) =>
+  `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+export const ICONS: Record<string, string> = {
+  code: svg('<path d="m9 18-6-6 6-6"/><path d="m15 6 6 6-6 6"/>', 13),
+  chat: svg('<path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z"/>', 13),
+  term: svg('<path d="m5 8 4 4-4 4"/><path d="M12 16h7"/>', 13),
+  folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', 14, 1.6),
+  file: svg('<path d="M5 4a1 1 0 0 1 1-1h8l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M14 3v6h5"/>', 14, 1.6),
+  close: svg('<path d="M6 6l12 12M18 6 6 18"/>', 11, 2.4),
+  twisty: svg('<path d="m9 6 6 6-6 6"/>', 10, 2.4),
+  back: svg('<path d="m15 18-6-6 6-6"/>', 14, 2),
+  check: svg('<path d="m5 13 4 4L19 7"/>', 13, 2.4),
+  spark: svg('<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>', 14),
+  branch: svg('<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8M18 10a6 6 0 0 1-6 6H8"/>', 12),
+  plus: svg('<path d="M12 5v14M5 12h14"/>', 13, 2)
+};
+
+/* ------------------------------------------------------------------ state */
+
+export { state };
+
+/* ------------------------------------------------------------- extensions
+ *
+ * Feature modules in public/features/ subscribe to these instead of patching
+ * the core. Each handler runs in isolation: one failing feature never breaks
+ * the session plumbing. */
+
+export const hooks = { boot: [], output: [], idle: [], exit: [], launched: [], closing: [], tabs: [], view: [], shortcut: [], sent: [] };
+function emit(name, ...args) {
+  for (const fn of hooks[name] || []) {
+    try {
+      fn(...args);
+    } catch (err) {
+      console.error(`[ezcli ${name} hook]`, err);
+    }
+  }
+}
+export const WINDOW_PARAMS = new URLSearchParams(location.search);
+/** Only the first window restores and saves parked tabs; extra windows start empty. */
+export const IS_MAIN_WINDOW = !WINDOW_PARAMS.get('window');
+
+export const esc = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+export const agent = (id) => state.agents.find((a) => a.id === id);
+export const active = () => state.sessions.find((s) => s.id === state.activeId) || null;
+export const space = (id = prefs.activeSpace) => prefs.spaces.find((x) => x.id === id) || null;
+export const spaceSessions = (id = prefs.activeSpace) => state.sessions.filter((s) => s.spaceId === id);
+export const basename = (p) => String(p).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
+export const spaceIdFor = (path) => String(path).replace(/[\\/]+$/, '').toLowerCase();
+
+/** A `.cmd` shim may set the terminal title to its shell executable. That is
+ * useful shell metadata, but never a useful session name. */
+function isMeaningfulTerminalTitle(title) {
+  const text = String(title ?? '').trim();
+  if (!text || text.length >= 80) return false;
+  // Console hosts title a window "Windows PowerShell", "Administrator: Command
+  // Prompt" or a full exe path; none of those name the session.
+  const shell = basename(text).toLowerCase().replace(/^administrator:\s*/, '');
+  return ![
+    'cmd', 'cmd.exe', 'command prompt', 'powershell', 'powershell.exe', 'windows powershell', 'pwsh', 'pwsh.exe',
+    'bash', 'bash.exe', 'sh', 'sh.exe', 'zsh', 'zsh.exe', 'fish', 'fish.exe', 'node', 'node.exe'
+  ].includes(shell);
+}
+
+/* AgentOut will expose this value after the backend reload. The fallback makes
+ * a just-updated frontend truthful with an older local backend too. */
+const IMAGE_TRANSPORT_FALLBACK = Object.freeze({
+  'claude-code': 'clipboard_only',
+  'claude-chat': 'clipboard_only',
+  codex: 'initial_flag',
+  opencode: 'interactive_at_reference',
+  gemini: 'interactive_at_reference',
+  antigravity: 'clipboard_only',
+  freebuff: 'none',
+  chatgpt: 'none'
+});
+function imageTransport(a) {
+  const value = String(a && (a.imageTransport || a.image_transport) || IMAGE_TRANSPORT_FALLBACK[a && a.id] || 'none').toLowerCase();
+  return ['interactive_at_reference', 'clipboard_only', 'initial_flag', 'initial_positional', 'none'].includes(value) ? value : 'none';
+}
+
+/* ------------------------------------------------------------- persistence
+ *
+ * Sessions themselves cannot survive the app dying: the PTY and the agent
+ * process go with it. What we persist is enough metadata to recreate the
+ * tab in the same configuration (agent, model, mode, cwd, title) so a
+ * restart does not lose the user's workspace. Restored tabs are "parked"
+ * and show a Resume button that calls launch() to spawn a fresh CLI. */
+
+export function snapshotParked() {
+  if (!IS_MAIN_WINDOW) return;
+  prefs.activeBySpace = { ...state.activeBySpace };
+  if (state.activeId && active()) prefs.activeBySpace[active().spaceId] = state.activeId;
+  prefs.parked = state.sessions
+    .filter((s) => space(s.spaceId))
+    .map((s) => ({
+      id: s.id,
+      spaceId: s.spaceId,
+      agentId: s.agentId,
+      modelId: s.modelId,
+      modeId: s.modeId,
+      effortId: s.effortId,
+      cwd: s.cwd,
+      title: s.title,
+      exitCode: s.exitCode,
+      providerSessionId: s.providerSessionId || '',
+      transcriptId: s.transcriptId || '',
+      prompts: (s.prompts || []).slice(-30),
+      wasRunning: s.status === 'running',
+      durationMs: Math.max(0, (s.lastOutputAt || Date.now()) - s.startedAt)
+    }));
+  savePrefs();
+}
+
+/** Count a finished session against the per-agent totals shown in Usage. */
+function recordUsage(s) {
+  if (!s || !s.agentId) return;
+  const row = (prefs.usage[s.agentId] ||= { sessions: 0, seconds: 0, lastAt: 0 });
+  row.sessions += 1;
+  row.seconds += Math.max(0, Math.round(((s.lastOutputAt || Date.now()) - s.startedAt) / 1000));
+  row.lastAt = Date.now();
+  savePrefs();
+}
+
+/** A syntactically safe saved dynamic-model id. It remains displayable before
+ * a live catalog has been refreshed, but it is never enough to launch a
+ * require-selection agent by itself. */
+/** Agents whose "model" is a file on this PC. Its id is the file's full path (`M:\\AI\\models\\x.gguf`,
+ *  `/home/me/models/x.gguf`), which the provider/model-name pattern below rejects. The backend stays the real
+ *  gatekeeper: it launches only a path it found itself while scanning. */
+const PATH_MODEL_AGENTS = new Set(['gguf']);
+const looksLikeModelPath = (id) =>
+  typeof id === 'string' && id.length <= 1024 && !/[\u0000-\u001f"]/.test(id) && /\.gguf$/i.test(id) && /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(id);
+const isCatalogModelId = (a, id) => Boolean(
+  a && a.dynamic_models &&
+  typeof id === 'string' &&
+  (PATH_MODEL_AGENTS.has(a.id) ? looksLikeModelPath(id) : /^[A-Za-z0-9][\w.:/@-]*$/.test(id)) &&
+  !(a.models || []).some((m) => m.id === id)
+);
+
+/** A dynamic model that this app has actually obtained from the agent or its
+ * documented catalog during the current run. */
+const isLiveCatalogModel = (a, id) => Boolean(
+  isCatalogModelId(a, id) &&
+  Array.isArray(state.catalogs[a.id]) &&
+  state.catalogs[a.id].includes(id)
+);
+
+/** The last folder name and the file name of a model path, for the menu. */
+function modelPathParts(id) {
+  const parts = String(id).split(/[\\/]/).filter(Boolean);
+  const file = (parts.pop() || '').replace(/\.gguf$/i, '');
+  return { file, folder: parts.pop() || '' };
+}
+
+function catalogModelDisplay(a, id) {
+  if (a && a.id === 'ollama-cloud') return id;
+  if (a && PATH_MODEL_AGENTS.has(a.id)) return modelPathParts(id).file || String(id);
+  const slash = String(id).indexOf('/');
+  return slash >= 0 ? String(id).slice(slash + 1) : id;
+}
+
+/** Static models from agents.json plus, for agents with a live catalog, every
+ *  model that catalog reported. Catalog entries keep their full id. */
+export function allModels(a) {
+  // Models that need the user's own paid API key stay hidden unless they opt in.
+  const staticModels = (a.models || []).filter((m) => (prefs.showPaidModels || !m.paid) && !(a.requiresModelSelection && m.id === 'default' && !(m.args || []).length));
+  const known = new Set(staticModels.map((m) => m.id));
+  const cat = (state.catalogs[a.id] || []).filter((id) => !known.has(id)).map((id) => {
+    const slash = id.indexOf('/');
+    return {
+      id,
+      label: catalogModelDisplay(a, id),
+      // for a model file the folder tells two files with the same name apart
+      provider: PATH_MODEL_AGENTS.has(a.id) ? modelPathParts(id).folder : slash >= 0 ? id.slice(0, slash) : ''
+    };
+  });
+  return [...staticModels, ...cat];
+}
+/** "Free" or "Paid" for a model, from the agent's modelPricing in agents.json. */
+export function modelPrice(a, id) {
+  const own = a && (a.models || []).find((m) => m.id === id);
+  if (own && own.paid) return 'Paid';
+  const pricing = a && a.modelPricing;
+  if (!pricing) return '';
+  const bare = (x) => String(x).toLowerCase().replace(/(-cloud|:cloud)$/, '');
+  const free = (pricing.free || []).map(bare).includes(bare(id)) || pricing.default === 'free';
+  if (free) return 'Free';
+  return pricing.default === 'paid' ? 'Paid' : '';
+}
+
+export const modelLabel = (a, id) => {
+  if (!a) return '';
+  const m = allModels(a).find((x) => x.id === id);
+  if (m) return m.label;
+  // A saved catalog pick whose catalog hasn't loaded yet still shows its name.
+  return isCatalogModelId(a, id) ? catalogModelDisplay(a, id) : label(a.models, id);
+};
+export const effortLabel = (a, id) => label((a && a.efforts) || [], id);
+
+export function pick(a) {
+  const p = (prefs.picks[a.id] ||= {});
+  const catalogIsLoaded = Array.isArray(state.catalogs[a.id]);
+  const known = allModels(a).some((m) => m.id === p.model) ||
+    (catalogIsLoaded ? isLiveCatalogModel(a, p.model) : isCatalogModelId(a, p.model));
+  if (!known) p.model = a.requiresModelSelection ? '' : (a.models[0] ? a.models[0].id : 'default');
+  if (!a.modes.some((m) => m.id === p.mode)) p.mode = a.modes[0] ? a.modes[0].id : 'default';
+  const efforts = a.efforts || [];
+  if (!efforts.some((e) => e.id === p.effort)) p.effort = efforts[0] ? efforts[0].id : 'default';
+  return p;
+}
+
+/** Fresh tabs may use a saved Plan/Auto choice, but a saved Continue/Resume
+ * choice must never silently reconnect every tab to one provider conversation. */
+function normalizeSavedContinuationModes() {
+  let changed = false;
+  for (const a of state.agents) {
+    const p = prefs.picks[a.id];
+    if (!p || !isContinuationMode(a, p.mode)) continue;
+    p.mode = freshModeId(a, p.mode);
+    changed = true;
+  }
+  // A parked tab has no provider-side conversation identifier, only a generic
+  // `resume latest` argument. Reusing it after an app restart would therefore
+  // attach it to whatever unrelated conversation the CLI considers latest.
+  for (const sn of prefs.parked || []) {
+    const a = agent(sn.agentId);
+    if (!a || !isContinuationMode(a, sn.modeId)) continue;
+    sn.modeId = freshModeId(a, sn.modeId);
+    changed = true;
+  }
+  if (changed) savePrefs();
+  return changed;
+}
+
+function resetContinuationPick(a) {
+  const p = pick(a);
+  if (!isContinuationMode(a, p.mode)) return false;
+  p.mode = freshModeId(a, p.mode);
+  savePrefs();
+  return true;
+}
+
+export const label = (list, id) => (list.find((x) => x.id === id) || list[0] || { label: 'Default' }).label;
+
+/** Ask an agent for its live model list (e.g. OpenCode's key-free models).
+ *  Runs only when the user opens the Model menu or presses refresh. */
+export async function fetchCatalog(a, { quiet = false } = {}) {
+  try {
+    // a model file's folder may be one the user added: send the saved folders so the scan includes them
+    state.catalogs[a.id] = await invoke('agent_models', { agentId: a.id, folders: PATH_MODEL_AGENTS.has(a.id) ? (Array.isArray(prefs.modelFolders) ? prefs.modelFolders : []) : null });
+    // A stored dynamic id is only a display placeholder until it appears in
+    // the catalog refreshed for this app run. Do not let a stale preference
+    // survive into a required-model launch.
+    const p = prefs.picks[a.id];
+    if (a.requiresModelSelection && p && p.model && !isLiveCatalogModel(a, p.model)) {
+      p.model = '';
+      savePrefs();
+    }
+    return state.catalogs[a.id];
+  } catch (err) {
+    if (!quiet) toast(String(err), 'error');
+    return state.catalogs[a.id] || [];
+  }
+}
+
+/** Resolve a live catalog model before an operation can stop or create a CLI.
+ * The Rust backend repeats this check, but doing it here preserves a user's
+ * prompt and their currently running session when a stored choice went stale. */
+async function resolveRequiredModel(a, requestedModel, { quiet = false } = {}) {
+  if (!a || !a.requiresModelSelection) return requestedModel;
+  if (!Array.isArray(state.catalogs[a.id]) && (a.available || a.catalogAvailableWithoutCommand)) {
+    await fetchCatalog(a, { quiet });
+  }
+  const selected = requestedModel || pick(a).model;
+  if (isLiveCatalogModel(a, selected)) return selected;
+  const p = prefs.picks[a.id];
+  if (p && p.model === selected) {
+    p.model = '';
+    savePrefs();
+  }
+  if (!quiet) toast(`Choose a live ${a.label} model from the Model menu before starting a session.`, 'error');
+  return '';
+}
+
+/* ------------------------------------------------------------------- boot */
+
+async function boot() {
+  if (!T) {
+    $('startupRecovery').querySelector('p').textContent = 'ezCLI needs to run inside its desktop window.';
+    return;
+  }
+  let info;
+  try {
+    info = await invoke('list_agents');
+  } catch (err) {
+    $('startupRecovery').querySelector('p').textContent = 'The backend did not respond: ' + String(err);
+    return;
+  }
+  state.agents = info.agents;
+  state.homeCwd = info.cwd;
+  state.sep = info.sep || '\\';
+  state.configPath = info.config_path || '';
+  // Older builds persisted Continue/Resume as the default for every future
+  // tab. Those variants reopen a provider's globally latest conversation, so
+  // reset the saved carry-over once rather than recreating one chat everywhere.
+  const resetSavedResumeModes = normalizeSavedContinuationModes();
+  invoke('open_targets')
+    .then((t) => {
+      state.openTargets = Array.isArray(t) ? t : [];
+      renderHead();
+    })
+    .catch(() => {});
+
+  if (!prefs.spaces.length) addSpace(info.cwd, { silent: true });
+  if (!space()) prefs.activeSpace = prefs.spaces[0].id;
+  if (!agent(prefs.agentId) || !agent(prefs.agentId).available) {
+    const first = state.agents.find((a) => a.available) || state.agents[0];
+    prefs.agentId = first ? first.id : null;
+  }
+
+  // Detection only reports installation/auth presence. It never returns a
+  // credential value to the webview. A failure leaves the app fully usable.
+  try {
+    state.backends = await invoke('detect_backends');
+    const recommended = agent(state.backends.recommended);
+    if (!prefs.onboarded && recommended && recommended.available) {
+      prefs.agentId = recommended.id;
+    }
+  } catch {
+    state.backends = null;
+  }
+  // Hardware facts are advisory only: they help explain when a local Ollama
+  // model may fit, but they never restrict Ollama Cloud models.
+  invoke('detect_system_profile')
+    .then((profile) => {
+      state.systemProfile = profile;
+      renderOnboarding();
+      renderOnboardingConfig();
+    })
+    .catch(() => { state.systemProfile = null; });
+
+  // Recreate every tab that was open at last shutdown as a parked session.
+  // Nothing has launched yet; the user resumes with one click.
+  for (const sn of IS_MAIN_WINDOW ? prefs.parked || [] : []) {
+    if (!space(sn.spaceId) || !agent(sn.agentId)) continue;
+    buildParked(sn);
+  }
+  // Persisted per-space active tab from the last run.
+  state.activeBySpace = { ...(prefs.activeBySpace || {}) };
+
+  $('startupRecovery').remove();
+  $('app').hidden = false;
+
+  applyTheme();
+  applyZoom();
+  applyExplorerWidth();
+  setExplorerOpen(prefs.explorerOpen, { quiet: true });
+  renderAll();
+  wire();
+  refreshGit();
+  setInterval(tick, 1000);
+  $('homeInput').focus();
+  if (resetSavedResumeModes) {
+    toast('Saved Continue/Resume modes were reset to Default. Pick one again only when you want to reopen the latest CLI conversation.');
+  }
+  if (IS_MAIN_WINDOW) showOnboarding();
+  emit('boot');
+}
+
+function renderAll() {
+  renderSpaces();
+  renderTabs();
+  renderHome();
+  renderView();
+}
+
+/* ------------------------------------------------------------------ spaces */
+
+export function addSpace(path, { silent = false } = {}) {
+  const id = spaceIdFor(path);
+  if (!prefs.spaces.some((x) => x.id === id)) prefs.spaces.push({ id, path, name: basename(path) });
+  prefs.activeSpace = id;
+  savePrefs();
+  if (!silent) {
+    selectSpace(id);
+    toast(`Opened ${basename(path)}`, 'ok');
+  }
+}
+
+function initials(name) {
+  const parts = String(name).split(/[\s._-]+/).filter(Boolean);
+  const s = parts.length > 1 ? parts[0][0] + parts[1][0] : String(name).slice(0, 2);
+  return s.toUpperCase();
+}
+
+export function sessionDot(s) {
+  if (s.status === 'error') return 'error';
+  if (s.status === 'parked') return 'parked';
+  if (s.status !== 'running') return '';
+  if (s.working) return 'working';
+  if (s.unseen) return 'unseen';
+  return 'running';
+}
+
+function spaceDot(id) {
+  const list = spaceSessions(id);
+  if (list.some((s) => s.status === 'running' && s.working)) return 'working';
+  if (list.some((s) => s.unseen)) return 'unseen';
+  if (list.some((s) => s.status === 'running')) return 'running';
+  return '';
+}
+
+export function renderSpaces() {
+  $('spaces').innerHTML = prefs.spaces
+    .map((sp) => {
+      const dot = spaceDot(sp.id);
+      return `<button class="space ${sp.id === prefs.activeSpace ? 'active' : ''}" data-space="${esc(sp.id)}" title="${esc(
+        sp.name
+      )}\n${esc(sp.path)}" aria-label="${esc(sp.name)}"><span class="space-ini">${esc(initials(sp.name))}</span><span class="space-name">${esc(sp.name)}</span>${
+        dot ? `<span class="status-dot ${dot}"></span>` : ''
+      }</button>`;
+    })
+    .join('');
+}
+
+export function selectSpace(id) {
+  if (!space(id)) return;
+  if (state.activeId) state.activeBySpace[prefs.activeSpace] = state.activeId;
+  prefs.activeSpace = id;
+  savePrefs();
+  const remembered = state.activeBySpace[id];
+  const next = spaceSessions(id).find((s) => s.id === remembered) || null;
+  state.explorer.root = null;
+  selectSession(next ? next.id : null);
+  renderSpaces();
+  renderHome();
+  refreshGit();
+  if (prefs.explorerOpen) renderExplorer(true);
+}
+
+export async function chooseFolder() {
+  const defaultPath = space() ? space().path : state.homeCwd;
+  try {
+    const dir = T.dialog && T.dialog.open
+      ? await T.dialog.open({ directory: true, multiple: false, defaultPath })
+      : await invoke('plugin:dialog|open', { options: { directory: true, multiple: false, defaultPath } });
+    if (dir) addSpace(Array.isArray(dir) ? dir[0] : dir);
+  } catch (err) {
+    // No native dialog (plugin missing): fall back to typing a path.
+    const typed = window.prompt('Folder to open as a space:', defaultPath);
+    if (!typed) return;
+    try {
+      const r = await invoke('list_dir', { path: typed });
+      addSpace(r.path);
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  }
+}
+
+function spaceMenu(anchor, sp) {
+  const n = spaceSessions(sp.id).length;
+  openMenu(anchor, {
+    title: sp.name,
+    items: [
+      { label: 'Rename…', run: () => renameSpace(sp) },
+      { label: 'Open in…', run: () => openInMenu(anchor, sp.path) },
+      { label: 'Copy path', run: () => copy(sp.path) },
+      { sep: true },
+      {
+        label: n ? `Remove space (close ${n} tab${n > 1 ? 's' : ''} first)` : 'Remove space',
+        danger: true,
+        disabled: n > 0 || prefs.spaces.length < 2,
+        run: () => {
+          prefs.spaces = prefs.spaces.filter((x) => x.id !== sp.id);
+          if (prefs.activeSpace === sp.id) prefs.activeSpace = prefs.spaces[0].id;
+          savePrefs();
+          selectSpace(prefs.activeSpace);
+        }
+      }
+    ]
+  });
+}
+
+function renameSpace(sp) {
+  const name = window.prompt('Space name:', sp.name);
+  if (!name || !name.trim()) return;
+  sp.name = name.trim();
+  savePrefs();
+  renderSpaces();
+  renderHome();
+}
+
+/* ------------------------------------------------------------------- tabs */
+
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function tabMeta(s) {
+  const a = agent(s.agentId);
+  const model = modelLabel(a, s.modelId);
+  let st;
+  if (s.status === 'parked') st = 'parked';
+  else if (s.status === 'starting') st = 'starting';
+  else if (s.status === 'error') st = 'failed';
+  else if (s.status === 'exited') st = `exited ${s.exitCode ?? ''}`.trim();
+  else st = s.working ? 'working' : fmtElapsed(Date.now() - s.startedAt);
+  const dot = sessionDot(s);
+  return `${dot ? `<span class="status-dot ${dot}"></span>` : '<span class="status-dot"></span>'}
+    <span class="tab-badge">${esc(st)}</span>${model && model !== 'Default' ? `<span class="tab-model">${esc(model)}</span>` : ''}`;
+}
+
+export function renderTabs() {
+  // Whatever led here changed something a tab shows; let signal subscribers know too.
+  touchSessions();
+  snapshotParked();
+  const list = spaceSessions();
+  $('tabs').innerHTML = list
+    .map((s) => {
+      const a = agent(s.agentId);
+      return `<div class="tab ${s.id === state.activeId ? 'active' : ''}" data-tab="${s.id}" role="tab" draggable="true"
+          aria-selected="${s.id === state.activeId}" title="${esc(s.title)}, ${esc(s.cwd)}">
+        <div class="tab-row"><span class="tab-icon">${ICONS[a && a.icon] || ICONS.term}</span>
+          <span class="tab-title">${esc(s.title)}</span></div>
+        <div class="tab-meta" data-meta="${s.id}">${tabMeta(s)}</div>
+        <button class="tab-close" data-close="${s.id}" aria-label="Close ${esc(s.title)}">${ICONS.close}</button>
+      </div>`;
+    })
+    .join('');
+  const el = $('tabs').querySelector('.tab.active');
+  if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  emit('tabs');
+}
+
+function updateTabMeta(s) {
+  const el = $('tabs').querySelector(`[data-meta="${s.id}"]`);
+  if (el) el.innerHTML = tabMeta(s);
+}
+
+/** Extra tab-menu entries contributed by feature modules. */
+export const tabMenuItems = [];
+export function tabMenuExtras(s) {
+  return tabMenuItems.flatMap((fn) => {
+    try {
+      return fn(s) || [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function tabMenu(anchor, s, x, y) {
+  const others = spaceSessions().filter((o) => o.id !== s.id);
+  openMenu(anchor, {
+    at: x != null ? { x, y } : null,
+    items: [
+      { label: 'Rename…', run: () => renameTab(s) },
+      {
+        label: 'Duplicate',
+        run: () => createSession(s.agentId, {
+          modelId: s.modelId,
+          modeId: s.modeId,
+          effortId: s.effortId,
+          cwd: s.cwd
+        })
+      },
+      { label: 'Restart', run: () => restartSession(s) },
+      { label: 'Copy folder path', run: () => copy(s.cwd) },
+      ...tabMenuExtras(s),
+      { sep: true },
+      { label: 'Close', hint: 'Ctrl+Alt+W', run: () => closeSession(s.id) },
+      {
+        label: 'Close other tabs',
+        disabled: !others.length,
+        run: () => {
+          others.forEach((o) => closeSession(o.id, { quiet: true }));
+          toast(`Closed ${others.length} tab${others.length === 1 ? '' : 's'}. Reopen them from the Closed tabs menu.`);
+        }
+      }
+    ]
+  });
+}
+
+function renameTab(s) {
+  const el = $('tabs').querySelector(`[data-tab="${s.id}"] .tab-title`);
+  if (!el) return;
+  const input = document.createElement('input');
+  input.className = 'files-search';
+  input.style.height = '18px';
+  input.value = s.title;
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  const done = (commit) => {
+    if (commit && input.value.trim()) s.title = input.value.trim();
+    renderTabs();
+    renderHead();
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') done(true);
+    if (e.key === 'Escape') done(false);
+  });
+  input.addEventListener('blur', () => done(true), { once: true });
+}
+
+/* --------------------------------------------------------------- sessions */
+
+/** Put a parked tab's saved terminal text back on screen, so closing the app
+ *  does not lose what the conversation looked like. */
+async function restoreSavedText(s) {
+  const dim = (t) => `\x1b[38;2;139;145;160m${t}\x1b[0m`;
+  const hint = s.providerSessionId
+    ? 'Resume continues the same conversation.'
+    : 'Resume starts the CLI again in this folder.';
+  let saved = '';
+  if (s.transcriptId) {
+    try {
+      saved = (await invoke('read_transcript', { id: s.transcriptId })).text || '';
+    } catch {
+      /* no saved copy yet: the tab was never run, or the file was deleted */
+    }
+  }
+  if (saved.trim()) {
+    s.term.write(saved.replace(/\r?\n/g, '\r\n'));
+    s.term.write(`\r\n${dim('── restored from your last session ──')}\r\n`);
+  }
+  s.term.writeln(dim(`Session from your last run. ${hint}`));
+  s.term.scrollToBottom();
+}
+
+/** Materialize a parked snapshot as a session shell. No PTY, no listeners,
+ *  until the user clicks Resume. Visuals and tab metadata work from the
+ *  snapshot so the workspace reads the same as it did at shutdown. */
+function buildParked(sn) {
+  const a = agent(sn.agentId);
+  if (!a) return null;
+  const host = document.createElement('div');
+  host.className = 'term-host';
+  host.style.visibility = 'hidden';
+  $('termHosts').appendChild(host);
+
+  const { term, fit } = createTerminal(host);
+
+
+  const s: Session = {
+    id: sn.id || `t${++state.seq}`,
+    ptyId: null,
+    launchEpoch: 0,
+    spaceId: sn.spaceId,
+    agentId: sn.agentId,
+    modelId: sn.modelId,
+    modeId: sn.modeId,
+    effortId: sn.effortId || pick(a).effort,
+    cwd: sn.cwd,
+    title: sn.title,
+    status: 'parked',
+    exitCode: sn.exitCode,
+    startedAt: Date.now(),
+    lastOutputAt: 0,
+    working: false,
+    unseen: false,
+    command: '',
+    pendingPrompt: '',
+    draft: '',
+    context: [],
+    // Image paths are deliberately transient: unlike prompt history or parked
+    // session metadata, a selected local image is never written to localStorage.
+    imageRefs: [],
+    // The CLI's own conversation id and ezCLI's saved copy of this tab, so the
+    // conversation survives the app closing.
+    providerSessionId: sn.providerSessionId || '',
+    resumeNext: Boolean(sn.providerSessionId),
+    transcriptId: sn.transcriptId || '',
+    prompts: Array.isArray(sn.prompts) ? sn.prompts : [],
+    usage: Usage.createUsageState(),
+    pcControl: false,
+    term,
+    fit,
+    host,
+    unlisten: []
+  };
+  restoreSavedText(s);
+  // Keep the id generator ahead of any imported id so future tabs don't collide.
+  const n = Number(String(s.id).replace(/[^0-9]/g, '')) || 0;
+  if (n > state.seq) state.seq = n;
+  addSession(s);
+
+  term.onData((d) => s.ptyId && invoke('send_input', { id: s.ptyId, data: d }).catch(() => {}));
+  term.onScroll(() => s.id === state.activeId && updateScrollButton(s));
+  return s;
+}
+
+/** What a new tab may be given instead of the saved picks for its agent. */
+export interface NewSessionOptions {
+  modelId?: string;
+  modeId?: string;
+  effortId?: string;
+  spaceId?: string;
+  cwd?: string;
+  title?: string;
+  prompt?: string;
+  /** The CLI's own conversation id to reopen. */
+  resumeId?: string;
+  /** A continue/resume mode is normally swapped for a fresh one; this keeps it. */
+  allowContinuation?: boolean;
+}
+export async function createSession(agentId, opts: NewSessionOptions = {}) {
+  const a = agent(agentId);
+  if (!a) return null;
+  if (!a.available) {
+    // llama.cpp runs the model files found on this PC: offer to install it, and start this chat afterwards
+    if (a.id === 'gguf' && typeof late.Models !== 'undefined') {
+      late.Models.needLlama(opts.modelId);
+      return null;
+    }
+    notInstalledToast(a);
+    return null;
+  }
+  const p = pick(a);
+  const selectedModel = await resolveRequiredModel(a, opts.modelId || p.model);
+  if (a.requiresModelSelection && !selectedModel) return null;
+  const requestedModeId = opts.modeId ?? p.mode;
+  // Only the home picker can deliberately ask to reopen a provider-side
+  // conversation. Every other source of a new tab is a fresh CLI session.
+  const modeId = opts.allowContinuation && isContinuationMode(a, requestedModeId)
+    ? requestedModeId
+    : freshModeId(a, requestedModeId);
+  const sp = space(opts.spaceId) || space();
+  const host = document.createElement('div');
+  host.className = 'term-host';
+  host.style.visibility = 'hidden';
+  $('termHosts').appendChild(host);
+
+  const { term, fit } = createTerminal(host);
+
+  const count = state.sessions.filter((x) => x.agentId === agentId).length + 1;
+  const s: Session = {
+    id: `t${++state.seq}`,
+    ptyId: null,
+    launchEpoch: 0,
+    spaceId: sp.id,
+    agentId,
+    modelId: selectedModel,
+    modeId,
+    effortId: opts.effortId ?? p.effort,
+    cwd: opts.cwd || sp.path,
+    title: opts.title || `${a.label} ${count}`,
+    status: 'starting',
+    exitCode: null,
+    startedAt: Date.now(),
+    lastOutputAt: 0,
+    working: false,
+    unseen: false,
+    command: '',
+    pendingPrompt: opts.prompt || '',
+    draft: '',
+    context: [],
+    // Image paths are deliberately transient: unlike prompt history or parked
+    // session metadata, a selected local image is never written to localStorage.
+    imageRefs: [],
+    // Set when continuing a conversation the CLI already knows by id.
+    providerSessionId: opts.resumeId || '',
+    resumeNext: Boolean(opts.resumeId),
+    transcriptId: '',
+    prompts: opts.prompt ? [opts.prompt] : [],
+    usage: Usage.createUsageState(),
+    pcControl: false,
+    term,
+    fit,
+    host,
+    unlisten: []
+  };
+  addSession(s);
+
+  term.onData((d) => s.ptyId && invoke('send_input', { id: s.ptyId, data: d }).catch(() => {}));
+  term.onScroll(() => s.id === state.activeId && updateScrollButton(s));
+  term.onTitleChange((t) => {
+    // Some CLIs set a meaningful terminal title; adopt it unless renamed.
+    if (!opts.title && isMeaningfulTerminalTitle(t)) {
+      s.title = t.trim();
+      renderTabs();
+      if (s.id === state.activeId) renderHead();
+    }
+  });
+
+  selectSession(s.id);
+  requestAnimationFrame(() => launch(s));
+  return s;
+}
+
+/** Invalidate an in-flight launch before replacing or closing its session. */
+export function invalidateLaunch(s) {
+  s.launchEpoch = Number.isSafeInteger(s.launchEpoch) ? s.launchEpoch + 1 : 1;
+  return s.launchEpoch;
+}
+
+/** Spawn (or respawn) the CLI behind a session. Each launch gets a fresh
+ *  pty id and epoch so a late async result cannot touch a newer process. */
+async function launch(s) {
+  const launchEpoch = invalidateLaunch(s);
+  const isCurrentLaunch = () => s.launchEpoch === launchEpoch;
+  if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
+  // The backend only passes a catalog model if it fetched that catalog itself;
+  // make sure it has, or the session would quietly start on the default model.
+  const la = agent(s.agentId);
+  if (la && la.requiresModelSelection) {
+    const selectedModel = await resolveRequiredModel(la, s.modelId, { quiet: true });
+    if (!isCurrentLaunch()) return false;
+    if (!selectedModel) {
+      s.status = 'error';
+      s.term.write(`\r\n\x1b[38;2;231;163;163mChoose a live ${la.label} model from the Model menu before launching this session.\x1b[0m\r\n`);
+      updateTabMeta(s);
+      renderSpaces();
+      if (s.id === state.activeId) {
+        renderHead();
+        renderStatus();
+      }
+      return false;
+    }
+    s.modelId = selectedModel;
+  } else if (la && isCatalogModelId(la, s.modelId) && !state.catalogs[la.id]) {
+    await fetchCatalog(la, { quiet: true });
+    if (!isCurrentLaunch()) return false;
+  }
+  for (const un of s.unlisten.splice(0)) safe(un);
+  // A relaunch creates a fresh underlying CLI session, so observed metrics
+  // must not leak from the prior process into this one.
+  s.usage = Usage.createUsageState();
+  s.pcControl = false;
+  s.connectorsActive = [];
+  // Window-unique: every window numbers its tabs from 1, and the backend
+  // keeps one session table for all windows.
+  const ptyId = `p${WINDOW_PARAMS.get('window') || 1}-${++state.seq}`;
+  s.ptyId = ptyId;
+  s.status = 'starting';
+  s.startedAt = Date.now();
+  s.exitCode = null;
+
+  if (!(await attachPty(s, ptyId, isCurrentLaunch))) return false;
+
+  try {
+    s.fit.fit();
+  } catch {
+    /* geometry races are retried on resize */
+  }
+  // Conversation memory: resume the CLI's own conversation when we know its id,
+  // otherwise start under an id we choose (Claude Code) so it can be resumed
+  // later. Codex picks its own id; sessions.js reads it back after launch.
+  const la2 = agent(s.agentId);
+  let sessionId = '';
+  let resuming = false;
+  if (s.resumeNext && s.providerSessionId && la2 && la2.sessionResume) {
+    // Only resume a conversation the CLI actually stored; a tab that ran nothing
+    // but local commands has none, and starting fresh beats an empty screen.
+    const stored = await invoke('provider_session_exists', { agentId: s.agentId, sessionId: s.providerSessionId }).catch(() => true);
+    if (!isCurrentLaunch()) return false;
+    if (stored) {
+      sessionId = s.providerSessionId;
+      resuming = true;
+    } else {
+      s.term.writeln('\x1b[38;2;106;106;112m(That conversation was never stored by the CLI, so this starts a new one.)\x1b[0m');
+      s.providerSessionId = '';
+    }
+  }
+  if (!resuming) {
+    if (la2 && la2.sessionNew) {
+      s.providerSessionId = crypto.randomUUID();
+      sessionId = s.providerSessionId;
+    } else {
+      // A fresh launch is a new conversation; Codex's id is found after it starts.
+      s.providerSessionId = '';
+    }
+  }
+  s.resumeNext = false;
+  try {
+    const r = await invoke('start_session', {
+      id: ptyId,
+      agentId: s.agentId,
+      modelId: s.modelId,
+      modeId: s.modeId,
+      effortId: s.effortId,
+      cwd: s.cwd,
+      cols: s.term.cols,
+      rows: s.term.rows,
+      pcControl: Boolean(s.wantPcControl),
+      // Every enabled connector is on by default whenever configured in
+      // Settings: no per-session opt-in. s.connectorsOff is an explicit
+      // opt-OUT for one tab.
+      connectors:
+        !s.connectorsOff && (prefs.connectors || []).some((c) => c.enabled && c.url)
+          ? prefs.connectors.filter((c) => c.enabled && c.url).map((c) => ({ name: c.name || 'Connector', url: c.url }))
+          : null,
+      providerSessionId: sessionId || null,
+      resume: resuming
+    });
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) {
+      invoke('kill_session', { id: ptyId }).catch(() => {});
+      return false;
+    }
+    s.status = 'running';
+    s.command = r.command;
+    s.cwd = r.cwd;
+    s.pcControl = Boolean(r.pcControl);
+    s.connectorsActive = r.connectorsActive || [];
+    if (typeof late.Graphify !== 'undefined') late.Graphify.auto(s.cwd);
+    if (s.pendingPrompt) {
+      // If the CLI never goes quiet, deliver the first message anyway.
+      setTimeout(() => deliverPending(s), 10000);
+    }
+    emit('launched', s);
+  } catch (err) {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) {
+      invoke('kill_session', { id: ptyId }).catch(() => {});
+      return false;
+    }
+    s.status = 'error';
+    // A failed launch must not leave a pending PC-control request behind.
+    s.wantPcControl = false;
+    s.connectorsOff = false;
+    s.term.write(`\r\n\x1b[38;2;231;163;163m${String(err).replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
+  }
+  updateTabMeta(s);
+  renderSpaces();
+  if (s.id === state.activeId) {
+    renderHead();
+    renderStatus();
+  }
+  return s.status === 'running';
+}
+
+/** Subscribe a session to a PTY's output and exit events. Used by launch()
+ *  and by a window that adopts a running PTY moved from another window. */
+export async function attachPty(s, ptyId, isCurrentLaunch = () => true) {
+  const unlistenData = await listen(`pty-data:${ptyId}`, (e) => {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
+    s.term.write(e.payload);
+    const usageChanged = Usage.ingest(s.usage, e.payload, false);
+    s.lastOutputAt = Date.now();
+    if (!s.working) {
+      s.working = true;
+      updateTabMeta(s);
+      renderSpaces();
+      if (s.id === state.activeId) renderStatus();
+    }
+    if (s.id !== state.activeId || !document.hasFocus()) {
+      if (!s.unseen && s.id !== state.activeId) {
+        s.unseen = true;
+        updateTabMeta(s);
+      }
+    }
+    if (s.id === state.activeId) {
+      updateScrollButton(s);
+      if (usageChanged) renderStatus();
+    }
+    emit('output', s, e.payload);
+  });
+  if (!isCurrentLaunch()) {
+    safe(unlistenData);
+    return false;
+  }
+  s.unlisten.push(unlistenData);
+  const unlistenExit = await listen(`pty-exit:${ptyId}`, (e) => {
+    if (!isCurrentLaunch() || s.ptyId !== ptyId) return;
+    invoke('set_pc_control', { sessionId: ptyId, enabled: false }).catch(() => {});
+    s.pcControl = false;
+    s.connectorsActive = [];
+    // Consent covers one process. Relaunching after an exit asks again.
+    s.wantPcControl = false;
+    s.connectorsOff = false;
+    Usage.ingest(s.usage, '', true);
+    s.status = 'exited';
+    s.exitCode = e.payload;
+    s.working = false;
+    s.term.write(`\r\n\x1b[38;2;106;106;112m── process exited (code ${e.payload}) ──\x1b[0m\r\n`);
+    // llama.cpp itself crashed (Windows access violation, or a segfault/abort elsewhere) while loading the model
+    if (s.agentId === 'gguf' && [3221225477, -1073741819, 139, 134].includes(Number(e.payload))) {
+      // a crash that already happened in CPU mode is not a GPU problem: switching to CPU or the CPU-only build cannot help
+      const steps =
+        s.modeId === 'cpu'
+          ? 'It crashed in CPU mode too, so it is not a GPU problem. Try, in this order:\r\n' +
+            '  1. Models > llama.cpp > "Check for update" or "Update": this model\'s architecture may need a newer build.\r\n' +
+            '  2. Try a different model file, for example one from "Recommended for this PC".\x1b[0m\r\n'
+          : 'Try, in this order:\r\n' +
+            '  1. Change "GPU (all layers)" to CPU (the button under the message box) and start a new chat.\r\n' +
+            '  2. Models > llama.cpp > "CPU-only build" (a GPU driver problem crashes the GPU build).\r\n' +
+            '  3. If it crashes on CPU too, update llama.cpp (Models > llama.cpp) or try a different model file, for example one from "Recommended for this PC".\x1b[0m\r\n';
+      s.term.write(
+        '\r\n\x1b[38;2;230;180;80mllama.cpp crashed while loading this model. ezCLI started it correctly; the crash is inside llama.cpp.\r\n' +
+          steps
+      );
+    }
+    recordUsage(s);
+    updateTabMeta(s);
+    renderSpaces();
+    if (s.id === state.activeId) {
+      renderHead();
+      renderStatus();
+    } else {
+      toast(`${s.title} exited (code ${e.payload})`, e.payload === 0 ? '' : 'error', () => {
+        selectSpace(s.spaceId);
+        selectSession(s.id);
+      });
+    }
+    emit('exit', s, e.payload);
+  });
+  if (!isCurrentLaunch()) {
+    safe(unlistenExit);
+    return false;
+  }
+  s.unlisten.push(unlistenExit);
+  return true;
+}
+
+/** What is on a session's visible terminal screen, as plain text. A TUI draws
+ *  a question wherever it likes (Codex puts its prompt at the top of an
+ *  otherwise empty screen), so look at every visible row, not just the bottom. */
+function screenTail(s, count = s.term.rows) {
+  const b = s.term.buffer.active;
+  const lines = [];
+  for (let i = Math.max(0, b.length - count); i < b.length; i++) {
+    const l = b.getLine(i);
+    const t = l ? l.translateToString(true).trim() : '';
+    if (t) lines.push(t);
+  }
+  return lines.join('\n');
+}
+
+/** A CLI can stop on its own question (update, trust this folder, sign in)
+ *  where Enter means "yes". Text sent then would answer it by accident: Codex's
+ *  update prompt defaults to "Update now", which runs `npm install -g`. */
+function cliBlocker(s) {
+  const text = screenTail(s);
+  if (/update available/i.test(text) && /esc skip|skip until next version/i.test(text)) return { kind: 'update' };
+  if (/yes, i trust this folder|do you trust the files in this folder|trust this folder/i.test(text)) return { kind: 'trust', hint: 'confirm whether you trust this folder' };
+  if (/press enter to log ?in|please (log|sign) ?in to continue/i.test(text)) return { kind: 'login', hint: 'sign in' };
+  return null;
+}
+
+/** True when it is safe to send. An update prompt is skipped with Esc (the
+ *  harmless choice); every other question is left for the user to answer. */
+export async function prepareToSend(s, { quiet = false } = {}) {
+  for (let i = 0; i < 3; i++) {
+    const block = cliBlocker(s);
+    if (!block) return true;
+    if (block.kind !== 'update') {
+      if (!quiet) toast(`${(agent(s.agentId) || {}).label || 'The CLI'} is waiting for you to ${block.hint}. Answer it in the terminal, then send again.`, 'error');
+      return false;
+    }
+    await invoke('send_input', { id: s.ptyId, data: '\x1b' }).catch(() => {});
+    await sleep(700);
+  }
+  return !cliBlocker(s);
+}
+
+/** Deliver the first message typed on the home screen once the CLI is ready.
+ *  If the CLI is stuck on a question, keep the message and try again. */
+async function deliverPending(s) {
+  if (!s.pendingPrompt || s.status !== 'running' || s.delivering) return;
+  s.delivering = true;
+  try {
+    for (let tries = 0; tries < 60 && s.pendingPrompt && s.status === 'running'; tries++) {
+      if (await prepareToSend(s, { quiet: tries !== 0 })) {
+        const text = s.pendingPrompt;
+        s.pendingPrompt = '';
+        await sendText(s, text);
+        return;
+      }
+      await sleep(2500);
+    }
+  } finally {
+    s.delivering = false;
+  }
+}
+
+/** Stop a process immediately and invalidate any launch that has not finished. */
+export function stopSession(s) {
+  if (!s || !s.ptyId) return false;
+  const ptyId = s.ptyId;
+  invalidateLaunch(s);
+  if (s.status === 'running') recordUsage(s);
+  s.ptyId = null;
+  s.status = 'exited';
+  s.exitCode = null;
+  s.working = false;
+  s.wantPcControl = false;
+  s.pcControl = false;
+  s.connectorsOff = false;
+  s.connectorsActive = [];
+  for (const un of s.unlisten.splice(0)) safe(un);
+  s.term.write('\r\n\x1b[38;2;106;106;112m── stopped by user ──\x1b[0m\r\n');
+  updateTabMeta(s);
+  renderSpaces();
+  if (s.id === state.activeId) {
+    renderHead();
+    renderStatus();
+  }
+  invoke('kill_session', { id: ptyId }).catch(() => {});
+  return true;
+}
+
+export async function restartSession(s, { keepPcControl = false, keepConnectorsOff = false } = {}) {
+  const a = agent(s.agentId);
+  const selectedModel = await resolveRequiredModel(a, s.modelId);
+  if (a && a.requiresModelSelection && !selectedModel) return false;
+  if (selectedModel) s.modelId = selectedModel;
+  // PC-control consent covers one process; only its own chip may carry a
+  // fresh grant into the next launch. Connectors are the opposite: on by
+  // default, so a restart not triggered by the Connectors chip itself drops
+  // any opt-out and reattaches them.
+  if (!keepPcControl) s.wantPcControl = false;
+  if (!keepConnectorsOff) s.connectorsOff = false;
+  invalidateLaunch(s);
+  if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  s.term.write('\r\n\x1b[38;2;106;106;112m── restarting ──\x1b[0m\r\n');
+  return launch(s);
+}
+
+export function selectSession(id) {
+  const prev = active();
+  if (prev) prev.draft = $('ptyInput').value;
+  // The store ignores a tab that no longer exists, so a late callback cannot select nothing.
+  const s = setActive(id);
+  id = s ? s.id : null;
+  for (const x of state.sessions) x.host.style.visibility = x.id === id ? 'visible' : 'hidden';
+  $('ptyInput').value = s ? s.draft : '';
+  autoGrow($('ptyInput'));
+  renderContext();
+  renderTabs();
+  renderSpaces();
+  renderView();
+  if (s) {
+    requestAnimationFrame(() => {
+      fitSession(s);
+      syncGpu();
+      s.term.focus();
+      updateScrollButton(s);
+    });
+  } else {
+    syncGpu();
+  }
+}
+
+export async function closeSession(id, { quiet = false } = {}) {
+  const i = state.sessions.findIndex((s) => s.id === id);
+  if (i === -1) return;
+  const s = state.sessions[i];
+  emit('closing', s);
+  invalidateLaunch(s);
+  if (s.status === 'running') recordUsage(s);
+  if (s.ptyId) invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
+  if (s.ptyId) invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  for (const un of s.unlisten) safe(un);
+  s.term.dispose();
+  s.host.remove();
+  state.sessions = state.sessions.filter((x) => x !== s);
+
+  const entry = {
+    agentId: s.agentId,
+    modelId: s.modelId,
+    modeId: s.modeId,
+    effortId: s.effortId,
+    cwd: s.cwd,
+    spaceId: s.spaceId,
+    title: s.title,
+    closedAt: Date.now()
+  };
+  prefs.closed.unshift(entry);
+  prefs.closed = prefs.closed.slice(0, 25);
+  savePrefs();
+  if (!quiet) toast(`Closed “${s.title}”`, '', () => reopenClosed(entry), 'Undo');
+
+  if (state.activeId === id) {
+    const siblings = spaceSessions(s.spaceId);
+    const next = siblings.length ? siblings[Math.min(i, siblings.length - 1)] : null;
+    // index above is global; fall back to the last sibling if it overshot
+    selectSession(next ? next.id : null);
+  } else {
+    renderTabs();
+    renderSpaces();
+  }
+}
+
+export function reopenClosed(entry) {
+  prefs.closed = prefs.closed.filter((c) => c !== entry);
+  savePrefs();
+  if (entry.spaceId && space(entry.spaceId) && entry.spaceId !== prefs.activeSpace) selectSpace(entry.spaceId);
+  createSession(entry.agentId, {
+    modelId: entry.modelId,
+    modeId: entry.modeId,
+    effortId: entry.effortId,
+    cwd: entry.cwd,
+    title: entry.title
+  });
+}
+
+function closedTabsMenu(anchor) {
+  openMenu(anchor, {
+    title: 'Closed tabs',
+    search: 'Search closed tabs',
+    empty: 'Nothing closed yet.',
+    items: prefs.closed.map((c) => ({
+      label: c.title,
+      hint: `${basename(c.cwd)} · ${fmtAgo(c.closedAt)}`,
+      run: () => reopenClosed(c)
+    }))
+  });
+}
+
+export function fitSession(s) {
+  if (!s) return;
+  try {
+    s.fit.fit();
+  } catch {
+    return;
+  }
+  if (s.ptyId && s.status === 'running') {
+    invoke('resize_session', { id: s.ptyId, cols: s.term.cols, rows: s.term.rows }).catch(() => {});
+  }
+  if (s.id === state.activeId) renderStatus();
+}
+// A declaration, not a const, so the compare grid can extend it.
+export function fitActive() {
+  return fitSession(active());
+}
+
+export function updateScrollButton(s) {
+  const b = s.term.buffer.active;
+  $('scrollBottom').hidden = b.viewportY >= b.baseY;
+}
+
+/** One-second heartbeat: settles "working" into idle and ticks tab clocks. */
+function tick() {
+  const now = Date.now();
+  let changed = false;
+  for (const s of state.sessions) {
+    if (s.working && now - s.lastOutputAt > 1500) {
+      s.working = false;
+      changed = true;
+      onIdle(s);
+    }
+    if (s.status === 'running') updateTabMeta(s);
+  }
+  if (changed) {
+    renderSpaces();
+    renderStatus();
+  }
+}
+
+let gitTimer = 0;
+function onIdle(s) {
+  // A conservative multi-line summary is held until the terminal goes quiet,
+  // so a single labelled value can never be mistaken for complete telemetry.
+  Usage.ingest(s.usage, '', true);
+  deliverPending(s);
+  emit('idle', s);
+  // The agent probably just edited files; refresh the change count.
+  if (s.spaceId === prefs.activeSpace) {
+    clearTimeout(gitTimer);
+    gitTimer = setTimeout(refreshGit, 400);
+  }
+}
+
+/* ------------------------------------------------------------------ views */
+
+function renderView() {
+  const s = active();
+  $('home').classList.toggle('is-hidden', Boolean(s));
+  $('workspace').classList.toggle('is-active', Boolean(s));
+  renderSessionAgentNotice(s);
+  renderHead();
+  renderStatus();
+  emit('view', s);
+}
+
+export function renderSessionAgentNotice(s = active()) {
+  const notice = $('sessionAgentNotice');
+  if (!notice) return;
+  const isGemini = Boolean(s && s.agentId === 'gemini');
+  const isOllamaCloud = Boolean(s && s.agentId === 'ollama-cloud');
+  notice.hidden = !isGemini && !isOllamaCloud;
+  if (!isGemini) notice.classList.remove('gem-notice');
+  if (isGemini && typeof late.GeminiSetup !== 'undefined') {
+    late.GeminiSetup.render(notice, s);
+  } else {
+    notice.innerHTML = isOllamaCloud
+      ? '<strong>Ollama Cloud:</strong> This tab launches a remote model. It requires an Ollama sign-in from your own terminal (<code>ollama signin</code>); ezCLI never handles your account or API key.'
+      : '';
+  }
+}
+
+/* The home greeting changes the way Claude's does: a line for the time of day, now and then a
+ * friendlier one, with your name. One line is chosen per launch (and re-chosen when the part of
+ * the day changes), so it never flickers when the screen redraws. The name is the one set in
+ * Settings, else the folder name of your user account. */
+const GREETINGS = {
+  early: ['Working late, {n}?', 'Burning the midnight oil, {n}?', 'Still up, {n}?', 'Night owl hours, {n}', 'Late one, {n}?'],
+  morning: ['Good morning, {n}', 'Morning, {n}', 'Early start, {n}?', 'Ready for a good one, {n}?', 'Hi {n}, fresh start'],
+  afternoon: ['Good afternoon, {n}', 'Afternoon, {n}', 'Back at it, {n}', 'How is the day going, {n}?', 'Hi {n}, keep it rolling'],
+  evening: ['Good evening, {n}', 'Evening, {n}', 'Still building, {n}?', 'Winding down, {n}?', 'Hi {n}, one more thing?'],
+  any: ['Welcome back, {n}', 'Hello, {n}', "What's on your mind, {n}?", 'Ready when you are, {n}', 'What shall we make, {n}?']
+};
+function homeName() {
+  // Only a name the person gave. Guessing from the Windows account folder showed whatever
+  // name the PC was set up with, which is often not theirs.
+  return String(prefs.displayName || '').trim().slice(0, 24);
+}
+const greetingCache = { key: '', text: '' };
+function homeGreeting() {
+  const h = new Date().getHours();
+  const part = h < 5 ? 'early' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+  const name = homeName();
+  const key = `${part}|${name}`;
+  if (greetingCache.key !== key) {
+    // the time-of-day lines are twice as likely as the general ones
+    const pool = [...GREETINGS[part], ...GREETINGS[part], ...GREETINGS.any];
+    let line = pool[Math.floor(Math.random() * pool.length)];
+    // Without a name, most lines read oddly ("One more thing?"); use the plain greeting.
+    if (!name) line = { early: 'Working late?', morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening' }[part];
+    greetingCache.key = key;
+    greetingCache.text = line.replace(/\{n\}/g, name).replace(/\s+([?,])/g, '$1').trim();
+    greetingCache.text = greetingCache.text.charAt(0).toUpperCase() + greetingCache.text.slice(1);
+  }
+  return greetingCache.text;
+}
+
+export function renderHome() {
+  const sp = space();
+  const a = agent(prefs.agentId);
+  const hour = new Date().getHours();
+  const hello = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const calm = prefs.calm !== false;
+  $('homeTitle').textContent = calm ? homeGreeting() : 'Overview';
+  $('homeGreeting').textContent = calm ? today : `${hello} · ${today}`;
+  $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
+  const projEl = $('homeProject');
+  if (projEl) projEl.title = sp ? sp.path : 'Choose a folder';
+  const routeNotice = $('homeRouteNotice');
+  const routeAdvice = ollamaRouteAdvice(a);
+  routeNotice.hidden = !routeAdvice;
+  routeNotice.textContent = routeAdvice;
+  if (a) {
+    const p = pick(a);
+    const caret =
+      '<svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>';
+    const fill = (id, cap, val, show = true) => {
+      const el = $(id);
+      el.hidden = !show;
+      el.innerHTML = `<span class="pill-cap">${cap}</span><span class="pill-val">${esc(val)}</span>${caret}`;
+      // The value can be clipped (long catalog model names); keep it readable.
+      el.title = `${cap}: ${val}`;
+    };
+    fill('homeAgent', 'Agent', a.label);
+    fill('homeModel', 'Model', modelLabel(a, p.model), a.models.length > 0 || a.dynamic_models);
+    fill('homeEffort', 'Effort', effortLabel(a, p.effort), (a.efforts || []).length > 1);
+    fill('homeMode', 'Mode', label(a.modes, p.mode), a.modes.length > 1);
+  }
+
+  $('agentStrip').innerHTML = state.agents
+    .map(
+      (x) => `<button class="agent-option agent-card ${x.id === prefs.agentId ? 'selected' : ''} ${x.available ? '' : 'missing'}" data-agent="${esc(x.id)}"
+        role="radio" aria-checked="${x.id === prefs.agentId}"
+        title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH. Click to install it.`)}">
+        <span class="agent-card-ico">${ICONS[x.icon] || ICONS.term}</span>
+        <span class="agent-card-text"><span class="agent-card-name">${esc(x.label)}</span>
+        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Click to install'}</span></span>
+        ${x.free ? '<span class="free-badge">Free</span>' : ''}
+      </button>`
+    )
+    .join('');
+
+  const prompts = [
+    ['Explain this codebase', 'Give me a tour of this project: what it does, how it is laid out, and where to start reading.'],
+    ['Review my changes', 'Review my uncommitted changes. Point out bugs, risky edits and anything I forgot.'],
+    ['Find and fix a bug', 'Find the most likely bug in this project, explain it, and fix it.'],
+    ['Write tests', 'Find the least-tested important code in this project and write tests for it.']
+  ];
+  $('suggested').innerHTML = prompts
+    .map(
+      ([t, body], i) => `<button class="suggested-prompt" data-suggest="${i}">
+        <span class="suggested-prompt-mark">${ICONS.spark}</span><span><b>${esc(t)}</b>${esc(body)}</span></button>`
+    )
+    .join('');
+  $('suggested').querySelectorAll('[data-suggest]').forEach((b) =>
+    b.addEventListener('click', () => {
+      $('homeInput').value = prompts[Number(b.dataset.suggest)][1];
+      autoGrow($('homeInput'));
+      $('homeInput').focus();
+    })
+  );
+}
+
+export function renderHead() {
+  const s = active();
+  if (!s) return;
+  const a = agent(s.agentId);
+  const dot = sessionDot(s);
+  $('headStatus').innerHTML = `<span class="status-dot ${dot}"></span>`;
+  $('headTitle').textContent = `${s.title}`;
+
+  const agentEl = $('headAgent');
+  if (agentEl) {
+    agentEl.hidden = !a;
+    agentEl.textContent = a ? a.label : '';
+  }
+
+  // Visible model pill in the session head is the quickest way to see
+  // which model is actually driving the running process.
+  const modelEl = $('headModel');
+  if (modelEl) {
+    const name = modelLabel(a, s.modelId);
+    modelEl.hidden = !name;
+    modelEl.textContent = name;
+    modelEl.title = `Model: ${name}. Select another model to start a fresh session.`;
+  }
+
+  const g = state.git[space(s.spaceId) ? space(s.spaceId).path : ''];
+  $('headBranch').hidden = !(g && g.repo);
+  if (g && g.repo) $('headBranch').innerHTML = `${ICONS.branch}${esc(g.branch)}`;
+  $('actStop').disabled = s.status !== 'running';
+  const control = $('headControl');
+  const supportsPc = Boolean(a && a.pc_control);
+  control.disabled = !supportsPc || s.status !== 'running' || !s.ptyId;
+  control.classList.toggle('granted', Boolean(s.pcControl));
+  control.textContent = s.pcControl ? 'PC control on' : 'PC control off';
+  control.title = !supportsPc
+    ? `PC control isn't available for ${a ? a.label : 'this agent'} yet`
+    : s.pcControl
+      ? 'Restart this session without PC control'
+      : 'Restart this session with PC control (screenshot, mouse and keyboard)';
+  // Connectors (Settings → Connectors) are custom remote MCP servers the
+  // user configured themselves: on by default for every compatible session
+  // once at least one is enabled there, no per-session opt-in. The chip
+  // only exists once one is configured, and lets you opt OUT for just this
+  // one tab if you don't want them attached.
+  const connectorsChip = $('headConnectors');
+  const enabledConnectors = (prefs.connectors || []).filter((c) => c.enabled && c.url);
+  connectorsChip.hidden = !enabledConnectors.length;
+  if (enabledConnectors.length) {
+    const active = s.connectorsActive || [];
+    connectorsChip.disabled = !supportsPc || s.status !== 'running' || !s.ptyId;
+    connectorsChip.classList.toggle('granted', Boolean(active.length));
+    connectorsChip.textContent = active.length ? `Connectors on (${active.length})` : 'Connectors off';
+    const names = enabledConnectors.map((c) => c.name || 'Connector').join(', ');
+    connectorsChip.title = !supportsPc
+      ? `Connectors aren't available for ${a ? a.label : 'this agent'} yet`
+      : active.length
+        ? `Restart this session without ${names} for this tab only`
+        : `Restart this session with ${names} (configured in Settings)`;
+  }
+  $('actRestart').hidden = s.status === 'parked';
+  $('actRestart').textContent = s.status === 'running' ? 'Restart' : 'Relaunch';
+
+  const resume = $('actResume');
+  if (resume) {
+    resume.hidden = s.status !== 'parked';
+  }
+
+  const t = preferredTarget();
+  $('openInPrimary').textContent = t ? `Open in ${t.label}` : 'Open';
+  $('openInPrimary').disabled = !t;
+}
+
+function renderStatus() {
+  const s = active();
+  const st = $('stState');
+  if (!s) {
+    st.textContent = 'idle';
+    st.className = 'st-state';
+    $('stCmd').textContent = space() ? `${tabCount(spaceSessions().length)} in ${space().name}` : 'no session';
+    $('stCwd').textContent = space() ? space().path : '';
+    $('stSize').textContent = '';
+    renderLiveUsage(null);
+    return;
+  }
+  const label = s.status === 'running' ? (s.working ? 'working' : 'running') : s.status;
+  st.textContent = label;
+  st.className = `st-state ${s.status === 'running' ? (s.working ? 'working' : 'running') : s.status === 'error' ? 'error' : ''}`;
+  $('stCmd').textContent = s.command || (agent(s.agentId) || {}).command || '';
+  $('stCwd').textContent = s.cwd;
+  $('stSize').textContent = `${s.term.cols}×${s.term.rows}`;
+  renderLiveUsage(s);
+}
+
+export function renderLiveUsage(s) {
+  const strip = $('liveUsage');
+  const metrics = $('liveUsageMetrics');
+  const announcer = $('usageAnnouncer');
+  if (!s || !s.usage) {
+    strip.hidden = true;
+    metrics.textContent = '';
+    announcer.textContent = '';
+    return;
+  }
+
+  const usage = s.usage;
+  if (!usage.observed) {
+    // Most CLIs print no usage. A permanent "not reported" label is noise, so
+    // the strip appears only once a CLI actually reports something.
+    strip.hidden = true;
+    metrics.textContent = '';
+    announcer.textContent = '';
+    return;
+  }
+
+  strip.hidden = false;
+  strip.classList.remove('unavailable');
+  const hasTokens = (values) => ['input', 'output', 'cached'].some((key) => values[key] != null);
+  const turn = hasTokens(usage.turn) ? Usage.formatTokens(Usage.tokenTotal(usage.turn)) : '-';
+  const total = hasTokens(usage.total) ? Usage.formatTokens(Usage.tokenTotal(usage.total)) : '-';
+  const field = (key, label, value) =>
+    `<span class="live-usage-item" data-usage="${key}"><b>${label}</b>${value}</span>`;
+  const cost = usage.total.cost == null ? '' : field('cost', 'cost', Usage.formatCost(usage.total.cost));
+  metrics.innerHTML = [
+    field('input', 'in', Usage.formatTokens(usage.total.input)),
+    field('output', 'out', Usage.formatTokens(usage.total.output)),
+    field('cached', 'cache', Usage.formatTokens(usage.total.cached)),
+    field('turn', '+turn', turn),
+    field('total', 'total', total),
+    cost
+  ].join('');
+
+  const summary = `Observed session usage: input ${Usage.formatTokens(usage.total.input)} tokens, output ${Usage.formatTokens(usage.total.output)} tokens, cached ${Usage.formatTokens(usage.total.cached)} tokens, current turn ${turn} tokens, session total ${total} tokens${usage.total.cost == null ? '' : `, cost ${Usage.formatCost(usage.total.cost)}`}.`;
+  strip.title = summary;
+  strip.setAttribute('aria-label', summary);
+  if (usage.updatedAt !== usage.announcedAt) {
+    announcer.textContent = summary;
+    usage.announcedAt = usage.updatedAt;
+  }
+}
+
+/* ------------------------------------------------------------- composer */
+
+function renderContext() {
+  const s = active();
+  const box = $('composerContext');
+  const files = s && Array.isArray(s.context) ? s.context : [];
+  const images = attachmentsOf(s);
+  renderImageAttachControl(s);
+  if (!s || (!files.length && !images.length)) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.hidden = false;
+  const filePills = files
+    .map(
+      (p, i) => `<span class="context-pill" title="${esc(p)}"><span>@${esc(p)}</span>
+      <button data-ctx="${i}" aria-label="Remove ${esc(p)}">${ICONS.close}</button></span>`
+    )
+    .join('');
+  box.innerHTML = filePills + attachmentPills(s);
+  box.querySelectorAll('[data-ctx]').forEach((b) =>
+    b.addEventListener('click', () => {
+      s.context.splice(Number(b.dataset.ctx), 1);
+      renderContext();
+    })
+  );
+  box.querySelectorAll('[data-image-ref]').forEach((b) =>
+    b.addEventListener('click', () => {
+      s.imageRefs.splice(Number(b.dataset.imageRef), 1);
+      renderContext();
+    })
+  );
+}
+
+/* ---------------------------------------------------------- attachments
+ *
+ * ezCLI never uploads media. It hands each CLI a local file the way that CLI
+ * really reads pictures, chosen by the agent's declared image transport:
+ *   interactive_at_reference  an @path mention (OpenCode, Gemini). Both read
+ *                             inside the project only, so files from elsewhere
+ *                             are copied into a git-ignored .ezcli-attachments
+ *                             folder in the session folder first.
+ *   clipboard_only,           Claude Code and Codex attach an image path that
+ *   initial_flag              arrives as a bracketed paste. Without bracketed
+ *                             paste the quoted path goes in the prompt instead.
+ *   initial_positional        `ollama run` loads image paths in the prompt
+ *                             (multimodal models only).
+ * Only Gemini reads video. For every other agent a video becomes a few still
+ * frames sampled with the user's own ffmpeg. */
+
+const IMAGE_FILE_EXTENSIONS = ['avif', 'bmp', 'gif', 'heic', 'heif', 'jpeg', 'jpg', 'png', 'tif', 'tiff', 'webp'];
+const VIDEO_FILE_EXTENSIONS = ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'wmv', 'mpeg', 'mpg', '3gp'];
+const extRe = (list) => new RegExp(`\\.(${list.join('|')})$`, 'i');
+const isImageFile = (path) => extRe(IMAGE_FILE_EXTENSIONS).test(String(path));
+const isVideoFile = (path) => extRe(VIDEO_FILE_EXTENSIONS).test(String(path));
+const NATIVE_VIDEO_TRANSPORT_AGENTS = new Set(['gemini']);
+const VIDEO_FRAME_COUNT = 6;
+const FFMPEG_INSTALL = 'winget install Gyan.FFmpeg';
+
+function attachTransport(a) {
+  const t = imageTransport(a);
+  return t === 'none' ? null : t;
+}
+
+/** Older code stored bare path strings; normalise to attachment objects. */
+function attachmentsOf(s) {
+  if (!s) return [];
+  if (!Array.isArray(s.imageRefs)) s.imageRefs = [];
+  s.imageRefs = s.imageRefs.map((x) => (typeof x === 'string' ? { kind: 'image', path: x } : x)).filter((x) => x && x.path);
+  return s.imageRefs;
+}
+
+const isInside = (p, base) => {
+  const norm = (x) => String(x).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  return Boolean(base) && norm(p).startsWith(norm(base) + '/');
+};
+
+function renderImageAttachControl(s = active()) {
+  const button = $('btnAttachImage');
+  if (!button) return;
+  const a = s && agent(s.agentId);
+  const transport = attachTransport(a);
+  button.dataset.imageTransport = transport || 'none';
+  const usable = Boolean(s && a && transport);
+  button.hidden = !usable;
+  button.disabled = !usable;
+  if (!usable) return;
+  const video = NATIVE_VIDEO_TRANSPORT_AGENTS.has(a.id) ? 'videos' : 'videos (as sampled frames)';
+  const copy = `Attach images or ${video} for ${a.label}. You can also paste a screenshot or drop files here.`;
+  button.title = copy;
+  button.setAttribute('aria-label', copy);
+}
+
+/** A file path the target CLI can read for an @mention: inside the session
+ *  folder and free of spaces. Anything else is copied in first. */
+async function workspaceCopy(s, path) {
+  if (isInside(path, s.cwd) && !/\s/.test(relativeTo(path, s.cwd))) return path;
+  return invoke('stage_attachment', { path, workspace: s.cwd });
+}
+
+export async function addAttachments(paths, s = active()) {
+  const a = s && agent(s.agentId);
+  if (!s || !a) return toast('Open a session first, then attach files to it.');
+  const transport = attachTransport(a);
+  const media = paths.filter((p) => isImageFile(p) || isVideoFile(p));
+  const others = paths.filter((p) => !media.includes(p));
+  others.forEach((p) => addToChat(p));
+  if (!media.length) return;
+  if (!transport) {
+    toast(`${a.label} cannot read images or video through its CLI, so nothing was attached.`, 'error');
+    return;
+  }
+  const atRef = transport === 'interactive_at_reference';
+  const list = attachmentsOf(s);
+  let added = 0;
+  for (const original of media) {
+    try {
+      if (isImageFile(original)) {
+        const path = atRef ? await workspaceCopy(s, original) : original;
+        if (!list.some((x) => x.path === path)) list.push({ kind: 'image', path });
+        added++;
+      } else if (NATIVE_VIDEO_TRANSPORT_AGENTS.has(a.id)) {
+        const path = await workspaceCopy(s, original);
+        if (!list.some((x) => x.path === path)) list.push({ kind: 'video', path, name: basename(original) });
+        added++;
+      } else {
+        toast(`Sampling ${VIDEO_FRAME_COUNT} frames from ${basename(original)}…`);
+        const got = await invoke('extract_video_frames', {
+          path: original,
+          count: VIDEO_FRAME_COUNT,
+          workspace: atRef ? s.cwd : null
+        });
+        list.push({ kind: 'video', path: original, name: basename(original), duration: got.duration, frames: got.frames });
+        added++;
+      }
+    } catch (err) {
+      if (String(err).includes('FFMPEG_MISSING')) {
+        toast(`Videos need ffmpeg to sample frames for ${a.label}. Install it with: ${FFMPEG_INSTALL}, then try again. Click to copy.`, 'error', () => copy(FFMPEG_INSTALL));
+      } else {
+        toast(`Couldn’t attach ${basename(original)}: ${String(err)}`, 'error');
+      }
+    }
+  }
+  if (s.id === state.activeId) {
+    renderContext();
+    $('ptyInput').focus();
+  }
+  if (added) toast(`Attached ${added} file${added === 1 ? '' : 's'} for ${a.label}. They stay on this PC; the CLI reads them locally.`, 'ok');
+}
+
+async function chooseImageReferences() {
+  const s = active();
+  const a = s && agent(s.agentId);
+  if (!s || !a) return toast('Open a session first, then attach files to it.');
+  if (!attachTransport(a)) {
+    toast(`${a.label} cannot read images or video through its CLI.`, 'error');
+    return;
+  }
+  let chosen;
+  const options = {
+    multiple: true,
+    defaultPath: s.cwd || state.homeCwd,
+    filters: [
+      { name: 'Images and videos', extensions: [...IMAGE_FILE_EXTENSIONS, ...VIDEO_FILE_EXTENSIONS] },
+      { name: 'Images', extensions: IMAGE_FILE_EXTENSIONS },
+      { name: 'Videos', extensions: VIDEO_FILE_EXTENSIONS }
+    ]
+  };
+  try {
+    chosen = T.dialog && T.dialog.open ? await T.dialog.open(options) : await invoke('plugin:dialog|open', { options });
+  } catch (err) {
+    toast(`Couldn’t open the file picker: ${String(err)}`, 'error');
+    return;
+  }
+  const paths = Array.isArray(chosen) ? chosen : chosen ? [chosen] : [];
+  if (paths.length) await addAttachments(paths, s);
+}
+
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+
+/** Ctrl+V of a screenshot (Win+Shift+S) or a copied image. */
+async function pasteImages(e) {
+  const items = [...((e.clipboardData && e.clipboardData.items) || [])].filter(
+    (i) => i.kind === 'file' && /^image\//i.test(i.type)
+  );
+  if (!items.length) return;
+  e.preventDefault();
+  const s = active();
+  const a = s && agent(s.agentId);
+  if (!s || !a) return toast('Open a session first, then paste the image.');
+  const transport = attachTransport(a);
+  if (!transport) return toast(`${a.label} cannot read images through its CLI.`, 'error');
+  const list = attachmentsOf(s);
+  for (const item of items) {
+    const blob = item.getAsFile();
+    if (!blob) continue;
+    try {
+      const path = await invoke('save_pasted_image', {
+        data: (await blobToBase64(blob)) as string,
+        mime: blob.type,
+        workspace: transport === 'interactive_at_reference' ? s.cwd : null
+      });
+      list.push({ kind: 'image', path, name: 'Pasted image' });
+    } catch (err) {
+      toast(`Couldn’t paste the image: ${String(err)}`, 'error');
+    }
+  }
+  renderContext();
+}
+
+/** Files dropped anywhere on the window go to the active session. Tauri
+ *  delivers real paths for native drops, so nothing is read into memory. */
+function wireFileDrop() {
+  const composer = $('ptyComposer');
+  const off = () => {
+    composer.classList.remove('drop-ready');
+    $('home').classList.remove('drop-ready');
+  };
+  listen('tauri://drag-enter', () => (active() ? composer : $('home')).classList.add('drop-ready'));
+  listen('tauri://drag-leave', off);
+  listen('tauri://drag-drop', async (e) => {
+    off();
+    const paths = (e.payload && (e.payload as { paths?: string[] }).paths) || [];
+    if (!paths.length) return;
+    if (active()) return addAttachments(paths);
+    // No session open: a dropped folder becomes a project.
+    let added = 0;
+    for (const p of paths) {
+      const isDir = await invoke('list_dir', { path: p }).then(() => true, () => false);
+      if (isDir) {
+        addSpace(p, { silent: true });
+        added++;
+      }
+    }
+    if (added) toast(`Opened ${added === 1 ? 'the folder' : `${added} folders`} as ${added === 1 ? 'a project' : 'projects'}.`, 'ok');
+    else toast('Drop a folder here to open it as a project, or open a session first to attach files.');
+  });
+}
+
+/** The text a CLI receives for one attached file. */
+function attachmentRef(transport, s, path) {
+  if (transport === 'interactive_at_reference') return `@${relativeTo(path, s.cwd)}`;
+  if (transport === 'initial_positional') return path;
+  return /\s/.test(path) ? `"${path}"` : path;
+}
+
+const fmtSeconds = (t) => `${Number(t).toFixed(1)}s`;
+
+/* Verified live: Claude Code and Codex turn a pasted image path into an
+ * "[Image #n]" attachment in their own composer. */
+const PASTE_ATTACH_AGENTS = new Set(['claude-code', 'claude-chat', 'codex']);
+
+/** Prompt lines describing the attachments, plus the image paths to paste
+ *  first when the CLI attaches pasted image paths itself. */
+function attachmentPrompt(s, a) {
+  const transport = attachTransport(a);
+  const paste = Boolean(a && PASTE_ATTACH_AGENTS.has(a.id) && s.term && s.term.modes && s.term.modes.bracketedPasteMode);
+  const lines = [];
+  const pastes = [];
+  const ref = (path) => {
+    if (!paste) return attachmentRef(transport, s, path);
+    pastes.push(path);
+    return `[Image #${pastes.length}]`;
+  };
+  for (const x of attachmentsOf(s)) {
+    if (x.kind === 'image') {
+      lines.push(`Image: ${ref(x.path)}${paste ? ` (${x.name || basename(x.path)})` : ''}`);
+    } else if (!x.frames) {
+      lines.push(`Video: ${attachmentRef(transport, s, x.path)}`);
+    } else {
+      const total = x.duration ? ` (${fmtSeconds(x.duration)} long)` : '';
+      lines.push(`Frames sampled from the video "${x.name}"${total}, in order:`);
+      for (const f of x.frames) lines.push(`  at ${fmtSeconds(f.at)}: ${ref(f.path)}`);
+    }
+  }
+  return { lines, pastes };
+}
+function attachmentPills(s) {
+  return attachmentsOf(s)
+    .map((x, i) => {
+      const name = x.name || basename(x.path);
+      const kind = x.kind === 'image' ? 'Image' : x.frames ? `Video · ${x.frames.length} frames` : 'Video';
+      const tip = x.frames
+        ? `${x.frames.length} still frames sampled locally from ${x.path}`
+        : `Local file, read by the CLI on this PC: ${x.path}`;
+      return `<span class="context-pill image-context" title="${esc(tip)}"><span class="context-kind">${esc(kind)}</span><span>${esc(name)}</span>
+      <button data-image-ref="${i}" aria-label="Remove ${esc(name)}">${ICONS.close}</button></span>`;
+    })
+    .join('');
+}
+
+export function addToChat(absPath) {
+  const s = active();
+  if (!s) return toast('Open a session first, then add files to it.');
+  const rel = relativeTo(absPath, s.cwd);
+  if (!s.context.includes(rel)) s.context.push(rel);
+  renderContext();
+  $('ptyInput').focus();
+}
+
+function relativeTo(p, base) {
+  const norm = (x) => String(x).replace(/\\/g, '/').replace(/\/+$/, '');
+  const a = norm(p);
+  const b = norm(base);
+  if (a.toLowerCase().startsWith(b.toLowerCase() + '/')) return a.slice(b.length + 1);
+  return a;
+}
+
+/** Put one message into a CLI's input box and submit it.
+ *
+ *  Terminal UIs (Codex, Claude Code, OpenCode) treat fast typed characters as
+ *  a paste and swallow the Enter that follows, so a message needed a second
+ *  manual Enter. When the CLI enabled bracketed paste we send the text as a
+ *  real paste (one atomic insert), wait for the UI to take it, then press
+ *  Enter. Without bracketed paste we type the text on one line instead.
+ *  Per-agent overrides live in agents.json under "submit". */
+/** How many times `text` appears as your message in the CLI's own log (when the chat reads one). */
+function logged(s, text) {
+  const t = String(text).trim();
+  return s.chat ? s.chat.events.filter((e) => e.kind === 'user' && e.text.trim() === t).length : 0;
+}
+
+/** `shown` is what the chat records as your message when more than `text` is sent (web results). */
+export function sendText(s, text, shown?, opts?) {
+  if (!s.ptyId) return Promise.resolve(false);
+  const loggedBefore = logged(s, shown || text);
+  emit('sent', s, shown || text, opts);
+  const cfg = (agent(s.agentId) || {}).submit || {};
+  const bracketed = Boolean(s.term.modes && s.term.modes.bracketedPasteMode);
+  const usePaste = cfg.paste === 'always' || (cfg.paste !== 'never' && bracketed);
+  // Longer messages take the UI longer to lay out before it will accept Enter.
+  const delay = Number.isFinite(cfg.delayMs) ? cfg.delayMs : Math.min(900, 220 + Math.floor(text.length / 12));
+  const ptyId = s.ptyId;
+  const out = (data) => invoke('send_input', { id: ptyId, data }).catch(() => {});
+  if (usePaste) out(`\x1b[200~${text.replace(/\r?\n/g, '\r')}\x1b[201~`);
+  else out(text.replace(/\r?\n/g, ' '));
+  return new Promise((resolve) => {
+    setTimeout(async () => {
+      // The tab may have been restarted or closed while we waited.
+      if (s.ptyId !== ptyId) return resolve(false);
+      await out('\r');
+      resolve(true);
+      // A CLI that is still loading (a resumed conversation, a slow start) can drop that Enter
+      // and leave the message sitting in its input box. Check, and press Enter again if so.
+      // "Working" can't tell us: a CLI with text in its box redraws its blinking cursor
+      // constantly. Instead, if the same text is still sitting in the box on two checks a second
+      // apart, the Enter was lost; press it again (at most twice).
+      const head = text.replace(/\s+/g, ' ').trim().slice(0, 24);
+      let presses = 0;
+      let seen = 0;
+      for (let t = 0; t < 30 && head && presses < 2; t++) {
+        await sleep(1000);
+        if (s.ptyId !== ptyId) return;
+        // It reached the CLI's own conversation log: done.
+        if (logged(s, text) > loggedBefore) return;
+        if (!stillInInput(s, head)) {
+          seen = 0;
+          if (t > 3) return; // it went through
+          continue;
+        }
+        if (++seen < 2) continue;
+        await out('\r');
+        presses++;
+        seen = 0;
+        await sleep(1500);
+      }
+    }, usePaste ? delay : Math.max(120, delay));
+  });
+}
+
+/** Is `head` still on the CLI's input line (the last few rows, after its prompt sign)? */
+function stillInInput(s, head) {
+  // Only the last prompt line counts: earlier ones are the CLI echoing messages already sent.
+  const b = s.term.buffer.active;
+  for (let i = b.length - 1; i >= Math.max(0, b.length - 8); i--) {
+    const line = b.getLine(i);
+    if (!line) continue;
+    const raw = line.translateToString(true);
+    const t = raw.replace(/\s+/g, ' ');
+    // A prompt sign ("> text") or the left edge of a boxed input ("│  text", "┃  text").
+    const boxed = /^s*[│┃║]s+(S.*)$/.exec(t);
+    const at = boxed ? t.length - boxed[1].length - 2 : t.search(/[>❯›] /);
+    if (at < 0) continue;
+    if (boxed) {
+      // a boxed line only counts when it is the input: the lowest box on the screen
+      if (!boxed[1].startsWith(head)) continue;
+      let below = false;
+      for (let j = i + 1; j < b.length && j <= i + 3; j++) {
+        const nx = b.getLine(j);
+        if (nx && /^s*[╰└╹▀]/.test(nx.translateToString(true))) below = true;
+      }
+      if (!below) continue;
+      const col = raw.indexOf(head.slice(0, 8));
+      const cell = col >= 0 ? line.getCell(col) : null;
+      return !(cell && cell.isDim());
+    }
+    if (!t.slice(at + 2).trimStart().startsWith(head)) return false;
+    // Claude Code shows a dimmed suggestion of your next prompt in the same box; that is not
+    // typed text, and Enter must never be pressed for it.
+    const col = raw.indexOf(head.slice(0, 8));
+    const cell = col >= 0 ? line.getCell(col) : null;
+    return !(cell && cell.isDim());
+  }
+  return false;
+}
+
+export function pushHistory(text) {
+  const t = text.trim();
+  if (!t) return;
+  prefs.history = [t, ...prefs.history.filter((h) => h !== t)].slice(0, 100);
+  savePrefs();
+}
+
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Paste each image path on its own so the CLI recognises it as an image. */
+async function pasteImagePaths(s, paths) {
+  if (!paths.length || !(s.term.modes && s.term.modes.bracketedPasteMode)) return;
+  for (const p of paths) {
+    await invoke('send_input', { id: s.ptyId, data: `\x1b[200~${p}\x1b[201~` }).catch(() => {});
+    await sleep(150);
+  }
+}
+
+/** Set by Ctrl+Enter or the Queue button: the next send waits its turn instead of going out now. */
+export let queueNext = false;
+
+export async function sendComposer() {
+  const el = $('ptyInput');
+  const s = active();
+  const wantQueue = queueNext;
+  queueNext = false;
+  if (!s) return;
+  const v = el.value;
+  const files = Array.isArray(s.context) ? s.context : [];
+  const images = attachmentsOf(s);
+  if (!v.trim() && !files.length && !images.length) return;
+  // A tab restored from last time: typing into it resumes the conversation and sends the
+  // message once the CLI is ready, instead of refusing with "not running".
+  if (s.status === 'parked' && v.trim() && !files.length && !images.length) {
+    pushHistory(v);
+    s.pendingPrompt = v.trim();
+    s.draft = '';
+    el.value = '';
+    autoGrow(el);
+    await launch(s);
+    deliverPending(s);
+    return;
+  }
+  if (s.status !== 'running') {
+    toast('This session is not running.', 'error', () => restartSession(s));
+    return;
+  }
+  // Only when you ask for it (Ctrl+Enter or the Queue button): the message waits its turn above the box.
+  // A plain Enter always sends now, the way the CLI's own prompt would take it.
+  if (wantQueue && v.trim() && !files.length && !images.length && typeof late.MessageQueue !== 'undefined' && late.MessageQueue.busy(s)) {
+    late.MessageQueue.add(s, v);
+    s.draft = '';
+    el.value = '';
+    autoGrow(el);
+    return;
+  }
+  const fileRefs = files.map((p) => `@${p}`).join(' ');
+  // Local paths in the form this CLI reads; ezCLI never uploads the files.
+  const media = attachmentPrompt(s, agent(s.agentId));
+  const ask = v.trim() || (images.length ? 'Look at the attached media.' : '');
+  const text = [fileRefs, ...media.lines, ask].filter(Boolean).join('\n').trim();
+  if (!(await prepareToSend(s))) return;
+  pushHistory(v);
+  // Clear first so a second Enter during the paste can't send twice.
+  s.context = [];
+  s.imageRefs = [];
+  s.draft = '';
+  el.value = '';
+  histPos = -1;
+  autoGrow(el);
+  renderContext();
+  await pasteImagePaths(s, media.pastes);
+  const outgoing = typeof late.WebSearch !== 'undefined' ? await late.WebSearch.augment(s, text) : text;
+  await sendText(s, outgoing, outgoing === text ? undefined : text);
+}
+
+/** Send one plain message the way the composer does (used by the message queue). */
+export async function sendPlain(s, text) {
+  if (!(await prepareToSend(s))) return false;
+  pushHistory(text);
+  const outgoing = typeof late.WebSearch !== 'undefined' ? await late.WebSearch.augment(s, text) : text;
+  return sendText(s, outgoing, outgoing === text ? undefined : text);
+}
+
+let histPos = -1;
+function walkHistory(el, dir) {
+  if (!prefs.history.length) return false;
+  const next = histPos + dir;
+  if (next < -1 || next >= prefs.history.length) return false;
+  histPos = next;
+  el.value = histPos === -1 ? '' : prefs.history[histPos];
+  autoGrow(el);
+  el.setSelectionRange(el.value.length, el.value.length);
+  return true;
+}
+
+function historyMenu(anchor) {
+  openMenu(anchor, {
+    title: 'Prompt history',
+    search: 'Search history',
+    empty: 'No prompts sent yet.',
+    items: prefs.history.map((h) => ({
+      label: h.replace(/\s+/g, ' ').slice(0, 120),
+      run: () => {
+        $('ptyInput').value = h;
+        autoGrow($('ptyInput'));
+        $('ptyInput').focus();
+      }
+    }))
+  });
+}
+
+/* --------------------------------------------------------------- explorer */
+
+export function setExplorerOpen(open, { quiet = false } = {}) {
+  prefs.explorerOpen = open;
+  savePrefs();
+  $('explorer').hidden = !open;
+  $('explorerToggle').classList.toggle('on', open);
+  document.querySelector('.main').classList.toggle('explorer-docked', open);
+  if (open && !quiet) renderExplorer(true);
+  if (open && quiet) renderExplorer(true);
+  requestAnimationFrame(fitActive);
+}
+
+/** The explorer never takes more than the window can spare: the session keeps at least 320px,
+ *  so the explorer cannot cover the composer when the window is narrow or the sidebar is open. */
+function applyExplorerWidth() {
+  const main = document.querySelector('.main');
+  const room = main.clientWidth - 320;
+  const width = Math.max(260, Math.min(prefs.explorerWidth, room));
+  main.style.setProperty('--explorer-width', `${Math.round(width)}px`);
+}
+window.addEventListener('resize', () => applyExplorerWidth());
+{
+  let last = 0;
+  new ResizeObserver(() => {
+    const w = document.querySelector('.main').clientWidth;
+    if (Math.abs(w - last) > 1) {
+      last = w;
+      applyExplorerWidth();
+    }
+  }).observe(document.querySelector('.main'));
+}
+
+function explorerRoot() {
+  const s = active();
+  return s ? s.cwd : space() ? space().path : state.homeCwd;
+}
+
+export function renderExplorer(reset = false) {
+  if (!prefs.explorerOpen) return;
+  const ex = state.explorer;
+  const root = explorerRoot();
+  if (reset || ex.root !== root) {
+    if (ex.root !== root) {
+      ex.expanded = new Set();
+      ex.cache = new Map();
+      ex.filter = '';
+    }
+    ex.root = root;
+    ex.view = 'list';
+  }
+  document.querySelectorAll('[data-xtab]').forEach((t) => t.classList.toggle('active', t.dataset.xtab === prefs.explorerTab));
+  if (ex.view === 'file') return renderFileView();
+  if (ex.view === 'diff') return renderDiffView();
+  if (prefs.explorerTab === 'files') renderFiles();
+  else renderChanges();
+}
+
+async function loadDir(path) {
+  const ex = state.explorer;
+  if (ex.cache.has(path)) return ex.cache.get(path);
+  const data = await invoke('list_dir', { path });
+  ex.cache.set(path, data.entries);
+  return data.entries;
+}
+
+const NOISE = new Set(['.git', 'node_modules', 'target', '.next', 'dist', '__pycache__', '.venv']);
+
+async function renderFiles() {
+  const ex = state.explorer;
+  const box = $('explorerContent');
+  if (!box.querySelector('.files-search')) {
+    box.innerHTML = `<div class="files-toolbar"><input class="files-search" id="fileFilter" placeholder="Filter files" aria-label="Filter files" /></div>
+      <div class="crumbs" id="fileCrumbs"></div><ul class="explorer-list" id="fileList"><li class="explorer-empty">Loading files…</li></ul>`;
+    const f = $('fileFilter');
+    f.value = ex.filter;
+    f.addEventListener('input', () => {
+      ex.filter = f.value;
+      drawFileRows();
+    });
+  }
+  $('fileCrumbs').textContent = ex.root;
+  try {
+    await loadDir(ex.root);
+    for (const d of ex.expanded) await loadDir(d).catch(() => ex.expanded.delete(d));
+  } catch (err) {
+    $('fileList').innerHTML = `<li class="explorer-empty"><b>Couldn’t list files</b>${esc(String(err))}</li>`;
+    return;
+  }
+  drawFileRows();
+}
+
+function drawFileRows() {
+  const ex = state.explorer;
+  const list = $('fileList');
+  if (!list) return;
+  const rows = [];
+  const q = ex.filter.trim().toLowerCase();
+  if (q) {
+    // Search everything loaded so far (the root plus expanded folders).
+    for (const [, entries] of ex.cache) {
+      for (const e of entries) if (e.name.toLowerCase().includes(q)) rows.push({ e, depth: 0, rel: relativeTo(e.path, ex.root) });
+    }
+    rows.sort((a, b) => a.rel.localeCompare(b.rel));
+  } else {
+    const walk = (dir, depth) => {
+      for (const e of ex.cache.get(dir) || []) {
+        rows.push({ e, depth });
+        if (e.dir && ex.expanded.has(e.path)) walk(e.path, depth + 1);
+      }
+    };
+    walk(ex.root, 0);
+  }
+  if (!rows.length) {
+    list.innerHTML = `<li class="explorer-empty">${q ? 'No loaded files match. Expand folders to search inside them.' : 'Empty folder.'}</li>`;
+    return;
+  }
+  list.innerHTML = rows
+    .slice(0, 3000)
+    .map(({ e, depth, rel }) => {
+      const open = e.dir && ex.expanded.has(e.path);
+      const name = rel
+        ? `<span class="dir-part">${esc(rel.slice(0, rel.length - e.name.length))}</span>${esc(e.name)}`
+        : esc(e.name);
+      return `<li><button class="file-row ${open ? 'open' : ''}" style="--depth:${depth}" data-path="${esc(e.path)}" data-dir="${e.dir ? 1 : 0}">
+        <span class="twisty">${e.dir ? ICONS.twisty : ''}</span>
+        <span class="ico">${e.dir ? ICONS.folder : ICONS.file}</span>
+        <span class="name ${NOISE.has(e.name) ? 'dir-part' : ''}">${name}</span>
+        ${e.dir ? '' : `<span class="meta">${fmtSize(e.size)}</span>`}</button></li>`;
+    })
+    .join('');
+}
+
+async function toggleDir(path) {
+  const ex = state.explorer;
+  if (ex.expanded.has(path)) ex.expanded.delete(path);
+  else {
+    try {
+      await loadDir(path);
+      ex.expanded.add(path);
+    } catch (err) {
+      return toast(String(err), 'error');
+    }
+  }
+  drawFileRows();
+}
+
+async function renderFileView() {
+  const ex = state.explorer;
+  const box = $('explorerContent');
+  box.innerHTML = viewerHead(ex.file, true) + '<pre class="code-view numbered" id="codeView"><span class="ln">Loading file…</span></pre>';
+  wireViewerHead(ex.file);
+  let data;
+  try {
+    data = await invoke('read_file', { path: ex.file });
+  } catch (err) {
+    $('codeView').innerHTML = `<span class="ln">Couldn’t open this file: ${esc(String(err))}</span>`;
+    return;
+  }
+  if (data.binary) {
+    $('codeView').classList.remove('numbered');
+    $('codeView').innerHTML = '<span class="ln">Binary file.</span>';
+    return;
+  }
+  const lines = data.text.split('\n');
+  $('codeView').innerHTML = lines.map((l) => `<span class="ln">${esc(l) || ' '}</span>`).join('');
+  if (data.truncated) box.insertAdjacentHTML('beforeend', `<div class="code-note">Showing the first 256 KB of ${fmtSize(data.size)}.</div>`);
+}
+
+function viewerHead(path, canAdd) {
+  return `<div class="viewer-head">
+    <button class="head-icon" id="viewerBack" aria-label="Back">${ICONS.back}</button>
+    <span class="path" title="${esc(path)}">${esc(relativeTo(path, state.explorer.root))}</span>
+    ${canAdd ? '<button class="btn" id="viewerAdd" title="Mention this file in your next message">Add to chat</button>' : ''}
+  </div>`;
+}
+function wireViewerHead(path) {
+  $('viewerBack').addEventListener('click', () => {
+    state.explorer.view = 'list';
+    renderExplorer();
+  });
+  const add = $('viewerAdd');
+  if (add) add.addEventListener('click', () => addToChat(path));
+}
+
+export async function refreshGit() {
+  const sp = space();
+  if (!sp) return;
+  let g;
+  try {
+    g = await invoke('git_status', { path: active() ? active().cwd : sp.path });
+  } catch {
+    g = { repo: false, reason: 'Could not run git.' };
+  }
+  state.git[sp.path] = g;
+  const n = g.repo ? g.files.length : 0;
+  $('changesCount').hidden = !n;
+  $('changesCount').textContent = n;
+  $('explorerDot').hidden = !n || prefs.explorerOpen;
+  renderHead();
+  if (prefs.explorerOpen && prefs.explorerTab === 'changes' && state.explorer.view === 'list') renderChanges(true);
+}
+
+export function changeKind(f) {
+  if (f.untracked) return ['U', 'added'];
+  const c = f.code.trim();
+  if (c.includes('D')) return ['D', 'deleted'];
+  if (c.includes('A')) return ['A', 'added'];
+  if (c.includes('R')) return ['R', 'modified'];
+  return ['M', 'modified'];
+}
+
+export async function renderChanges(fromCache = false) {
+  const box = $('explorerContent');
+  const sp = space();
+  if (!fromCache) {
+    box.innerHTML = '<div class="explorer-empty">Loading changes…</div>';
+    await refreshGit();
+    return;
+  }
+  const g = state.git[sp.path];
+  if (!g) return;
+  if (!g.repo) {
+    box.innerHTML = `<div class="explorer-empty"><b>No repository</b>${esc(g.reason || 'This folder is not a git repository.')}</div>`;
+    return;
+  }
+  if (!g.files.length) {
+    box.innerHTML = `<div class="crumbs">${esc(g.branch)} · ${esc(g.root)}</div><div class="explorer-empty"><b>No changes</b>Working tree clean.</div>`;
+    return;
+  }
+  const add = g.files.reduce((n, f) => n + (f.added || 0), 0);
+  const del = g.files.reduce((n, f) => n + (f.removed || 0), 0);
+  box.innerHTML = `<div class="files-toolbar"><span class="head-branch">${ICONS.branch}${esc(g.branch)}</span><span class="grow"></span>
+      <span class="meta">${g.files.length} change${g.files.length > 1 ? 's' : ''} · <span class="num-add">+${add}</span> <span class="num-del">−${del}</span></span></div>
+    <ul class="explorer-list">${g.files
+      .map((f) => {
+        const [code, kind] = changeKind(f);
+        // An untracked folder arrives once, as "path/to/folder/".
+        const name = basename(f.file) + (f.file.endsWith('/') ? '/' : '');
+        const dir = f.file.slice(0, f.file.length - name.length);
+        const nums =
+          f.added != null ? `<span class="meta"><span class="num-add">+${f.added}</span> <span class="num-del">−${f.removed}</span></span>` : '';
+        return `<li><button class="file-row" data-file="${esc(f.file)}" data-untracked="${f.untracked ? 1 : 0}" title="${esc(f.file)}">
+          <span class="change-status ${kind}">${code}</span>
+          <span class="name"><span class="dir-part">${esc(dir)}</span>${esc(name)}</span>${nums}</button></li>`;
+      })
+      .join('')}</ul>`;
+}
+
+async function renderDiffView() {
+  const ex = state.explorer;
+  const g = state.git[space().path];
+  const abs = g && g.root ? `${g.root}/${ex.diff.file}` : ex.diff.file;
+  const box = $('explorerContent');
+  box.innerHTML = viewerHead(abs, true) + '<pre class="code-view" id="codeView"><span class="ln">Loading diff…</span></pre>';
+  wireViewerHead(abs);
+  let data;
+  try {
+    data = await invoke('git_diff', { path: g ? g.root : explorerRoot(), file: ex.diff.file, untracked: ex.diff.untracked });
+  } catch (err) {
+    $('codeView').innerHTML = `<span class="ln">${esc(String(err))}</span>`;
+    return;
+  }
+  if (!data.diff) {
+    $('codeView').innerHTML = `<span class="ln">${esc(data.note || 'No changes to show.')}</span>`;
+    return;
+  }
+  $('codeView').innerHTML = data.diff
+    .split('\n')
+    .map((line) => {
+      let cls = '';
+      if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ')) cls = 'd-meta';
+      else if (line.startsWith('+')) cls = 'd-add';
+      else if (line.startsWith('-')) cls = 'd-del';
+      else if (line.startsWith('@@')) cls = 'd-hunk';
+      return `<span class="ln ${cls}">${esc(line) || ' '}</span>`;
+    })
+    .join('');
+}
+
+function startExplorerResize(e) {
+  e.preventDefault();
+  const main = document.querySelector('.main');
+  const rect = main.getBoundingClientRect();
+  document.body.classList.add('resizing-pane');
+  let raf = 0;
+  const move = (ev) => {
+    const w = Math.round(Math.min(Math.max(rect.right - ev.clientX, 260), rect.width - 320));
+    prefs.explorerWidth = w;
+    applyExplorerWidth();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(fitActive);
+  };
+  const up = () => {
+    document.body.classList.remove('resizing-pane');
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    savePrefs();
+    fitActive();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+/* --------------------------------------------------------------- open in */
+
+function preferredTarget() {
+  return (
+    state.openTargets.find((t) => t.id === prefs.openTarget) ||
+    state.openTargets.find((t) => !['files', 'terminal'].includes(t.id)) ||
+    state.openTargets[0] ||
+    null
+  );
+}
+
+async function openIn(targetId, path) {
+  try {
+    await invoke('open_in', { target: targetId, path });
+    prefs.openTarget = targetId;
+    savePrefs();
+    renderHead();
+  } catch (err) {
+    toast(String(err), 'error');
+  }
+}
+
+function openInMenu(anchor, path) {
+  const cur = preferredTarget();
+  openMenu(anchor, {
+    title: 'Open in',
+    items: state.openTargets.map((t) => ({ label: t.label, on: cur && t.id === cur.id, run: () => openIn(t.id, path) }))
+  });
+}
+
+/* ------------------------------------------------------------------ menus */
+
+/**
+ * items: [{ label, hint, on, disabled, danger, run } | { sep: true }]
+ * opts: { title, search (placeholder), empty, at: {x, y} }
+ */
+/** One row of a popup menu. A row with `sep` is a divider; a `disabled` row is a note, not a choice. */
+export interface MenuItem {
+  label?: string;
+  hint?: string;
+  badge?: string;
+  on?: boolean;
+  disabled?: boolean;
+  sep?: boolean;
+  run?: () => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [extra: string]: any;
+}
+export interface MenuOptions {
+  title?: string;
+  items?: MenuItem[];
+  search?: boolean | string;
+  empty?: string;
+  /** Open at this point (a right-click) instead of under the anchor. */
+  at?: { x: number; y: number };
+}
+export function openMenu(anchor, { title, items, search, empty, at }: MenuOptions = {}) {
+  const menu = $('menu');
+  const draw = (q = '') => {
+    const shown = items.filter((it) => it.sep || !q || it.label.toLowerCase().includes(q) || (it.hint || '').toLowerCase().includes(q));
+    const real = shown.filter((it) => !it.sep);
+    menu.querySelector('.menu-items').innerHTML = real.length
+      ? shown
+          .map((it) =>
+            it.sep
+              ? '<div class="menu-sep"></div>'
+              : `<button class="header-menu-item ${it.on ? 'on' : ''} ${it.danger ? 'danger' : ''}" data-i="${items.indexOf(it)}" ${
+                  it.disabled ? 'disabled' : ''
+                } role="menuitem"><span class="header-menu-check">${ICONS.check}</span><span class="label">${esc(it.label)}</span>${
+                  it.badge ? `<span class="${it.badge === 'Free' ? 'free-badge' : 'paid-badge'}">${esc(it.badge)}</span>` : ''
+                }${it.hint ? `<span class="hint">${esc(it.hint)}</span>` : ''}</button>`
+          )
+          .join('')
+      : `<div class="menu-empty">${esc(empty || 'Nothing here.')}</div>`;
+  };
+  menu.innerHTML =
+    (title ? `<div class="menu-head">${esc(title)}</div>` : '') +
+    (search && items.length ? `<input class="menu-search" placeholder="${esc(search)}" aria-label="${esc(search)}" />` : '') +
+    '<div class="menu-items"></div>';
+  draw();
+  menu.hidden = false;
+  $('scrim').hidden = false;
+
+  // Fit each picker to the usable side of its anchor. A long live model
+  // catalog must scroll inside a framed menu, never spill under the titlebar
+  // or leave the selected control detached from its choices.
+  const r = at
+    ? { left: at.x, right: at.x, top: at.y, bottom: at.y }
+    : anchor.getBoundingClientRect();
+  const inset = 10;
+  const gap = 6;
+  const roomBelow = window.innerHeight - r.bottom - gap - inset;
+  const roomAbove = r.top - gap - inset;
+  const placeBelow = roomBelow >= Math.min(menu.scrollHeight, 260) || roomBelow >= roomAbove;
+  const available = Math.max(120, placeBelow ? roomBelow : roomAbove);
+  menu.style.maxHeight = `${available}px`;
+  const left = Math.min(r.left, window.innerWidth - menu.offsetWidth - inset);
+  const top = placeBelow
+    ? Math.min(r.bottom + gap, window.innerHeight - menu.offsetHeight - inset)
+    : Math.max(inset, r.top - gap - menu.offsetHeight);
+  menu.style.left = `${Math.max(inset, left)}px`;
+  menu.style.top = `${top}px`;
+
+  menu.onclick = (e) => {
+    const b = e.target.closest('[data-i]');
+    if (!b || b.disabled) return;
+    const it = items[Number(b.dataset.i)];
+    closeMenu();
+    it.run && it.run();
+  };
+  const input = menu.querySelector('.menu-search');
+  if (input) {
+    input.focus();
+    input.addEventListener('input', () => draw(input.value.trim().toLowerCase()));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const first = menu.querySelector('[data-i]:not([disabled])');
+        if (first) first.click();
+      }
+    });
+  }
+}
+function closeMenu() {
+  $('menu').hidden = true;
+  $('scrim').hidden = true;
+  $('menu').onclick = null;
+}
+
+function agentMenu(anchor) {
+  const items = [];
+  for (const a of state.agents) {
+    if (items.length) items.push({ sep: true });
+    const p = pick(a);
+    if (a.models.length < 2) {
+      items.push({
+        label: a.label,
+        hint: a.available ? '' : 'not installed',
+        on: a.id === prefs.agentId,
+        disabled: !a.available,
+        run: () => chooseAgent(a.id)
+      });
+      continue;
+    }
+    for (const m of a.models) {
+      items.push({
+        label: `${a.label} · ${m.label}`,
+        hint: a.available ? '' : 'not installed',
+        on: a.id === prefs.agentId && p.model === m.id,
+        disabled: !a.available,
+        run: () => {
+          pick(a).model = m.id;
+          chooseAgent(a.id);
+        }
+      });
+    }
+  }
+  openMenu(anchor, { title: 'Agent and model', items });
+}
+
+function modeMenu(anchor) {
+  const a = agent(prefs.agentId);
+  if (!a) return;
+  const p = pick(a);
+  openMenu(anchor, {
+    title: 'Mode',
+    items: a.modes.map((m) => ({
+      label: m.label,
+      hint: isContinuationMode(a, m.id) ? 'Reopens the latest CLI conversation once' : '',
+      on: m.id === p.mode,
+      run: () => {
+        p.mode = m.id;
+        savePrefs();
+        renderHome();
+        renderOnboardingConfig();
+      }
+    }))
+  });
+}
+
+function effortMenu(anchor, forAgent?) {
+  const a = forAgent || agent(prefs.agentId);
+  const efforts = (a && a.efforts) || [];
+  if (!a || efforts.length < 2) return;
+  const p = pick(a);
+  openMenu(anchor, {
+    title: `${a.label} · Effort`,
+    items: efforts.map((effort) => ({
+      label: effort.label,
+      on: effort.id === p.effort,
+      run: () => {
+        p.effort = effort.id;
+        savePrefs();
+        renderHome();
+        renderOnboardingConfig();
+      }
+    }))
+  });
+}
+
+/** Model picker for the currently selected agent. Lives on its own on the
+ *  home screen (next to the agent pill) so changing model takes one click,
+ *  not a submenu dive. */
+export async function modelMenu(anchor, forAgent?) {
+  const a = forAgent || agent(prefs.agentId);
+  if (!a) return;
+  if (a.dynamic_models && !state.catalogs[a.id] && (a.available || a.catalogAvailableWithoutCommand)) await fetchCatalog(a);
+  const p = pick(a);
+  const choose = (id) => {
+    p.model = id;
+    savePrefs();
+    renderHome();
+    renderOnboardingConfig();
+  };
+  const items: MenuItem[] = allModels(a).map((m) => ({
+    label: m.label,
+    hint: m.provider || '',
+    badge: modelPrice(a, m.id),
+    on: m.id === p.model,
+    run: () => choose(m.id)
+  }));
+  if (a.id === 'ollama-cloud') {
+    items.unshift(
+      { label: 'Models that run on a free Ollama account', hint: 'Sign in once with "ollama signin"', disabled: true },
+      { sep: true }
+    );
+  }
+  const pricing = a.modelPricing;
+  if (pricing && pricing.note && items.length) {
+    items.push({ sep: true }, { label: pricing.note, disabled: true });
+  }
+  const emptyText = a.id === 'ollama-cloud'
+    ? 'No cloud models were returned. Check your connection and refresh.'
+    : a.id === 'ollama'
+      ? 'No local models downloaded yet. Run "ollama pull <model>" in a terminal, then refresh. Cloud models are under Ollama Cloud.'
+      : a.id === 'gguf'
+        ? 'No model files (.gguf) found yet. Open Models in the sidebar to scan deeper or add a folder.'
+      : a.id === 'lmstudio'
+        ? 'No LM Studio models found. Download one in LM Studio, make sure the "lms" command works in a terminal (run "lms bootstrap" once), then refresh.'
+        : 'No models were returned. Refresh after the CLI is ready.';
+  if (!allModels(a).length) items.unshift({ label: emptyText, disabled: true });
+  if (a.dynamic_models) {
+    items.push({ sep: true });
+    items.push({
+      label: 'Refresh model list',
+      hint: state.catalogs[a.id] ? `${state.catalogs[a.id].length} available` : '',
+      run: async () => {
+        await fetchCatalog(a);
+        modelMenu(anchor, a);
+      }
+    });
+  }
+  openMenu(anchor, {
+    title: `${a.label} · Model`,
+    search: items.length > 8 ? 'Search models' : '',
+    empty: emptyText,
+    items
+  });
+}
+
+/** Agent-only picker. Models get their own menu (modelMenu) now. */
+export function agentOnlyMenu(anchor) {
+  openMenu(anchor, {
+    title: 'Agent',
+    items: state.agents.map((a) => ({
+      label: a.label,
+      hint: a.available ? '' : 'not installed',
+      on: a.id === prefs.agentId,
+      disabled: !a.available,
+      run: () => chooseAgent(a.id)
+    }))
+  });
+}
+
+export function chooseAgent(id) {
+  prefs.agentId = id;
+  savePrefs();
+  renderHome();
+  renderOnboardingConfig();
+}
+
+/** Switch a session to a different installed CLI. A running CLI must be
+ * relaunched because processes cannot change their executable in place. */
+async function switchSessionAgent(s, id) {
+  const next = agent(id);
+  if (!s || !next || !next.available || next.id === s.agentId) return;
+  // A required live model must be selected before we even ask the user to
+  // replace their current process. If there is no valid choice, leave this
+  // session exactly as it is and open the destination's model menu instead.
+  const nextPick = pick(next);
+  const nextModel = await resolveRequiredModel(next, nextPick.model, { quiet: true });
+  if (next.requiresModelSelection && !nextModel) {
+    toast(`Choose a live ${next.label} model, then switch this session again.`, 'error');
+    await modelMenu($('headModel'), next);
+    return;
+  }
+  const running = s.status === 'running' || s.status === 'starting';
+  if (running) {
+    const ok = await confirmDialog(
+      `Switch to ${next.label}?`,
+      'The current CLI process will stop and this session will relaunch with the selected backend.',
+      'Switch and relaunch'
+    );
+    if (!ok) return;
+  }
+
+  invalidateLaunch(s);
+  if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  const droppedImageRefs = Array.isArray(s.imageRefs) ? s.imageRefs.length : 0;
+  const nextMode = freshModeId(next, nextPick.mode);
+  s.agentId = next.id;
+  s.modelId = nextModel || nextPick.model;
+  s.modeId = nextMode;
+  s.effortId = nextPick.effort;
+  if (nextPick.mode !== nextMode) {
+    nextPick.mode = nextMode;
+    savePrefs();
+  }
+  // A path reference was selected for the previous agent's declared route.
+  // Never carry it into a different backend by accident.
+  s.imageRefs = [];
+  s.command = '';
+  s.working = false;
+  if (s.id === state.activeId) {
+    renderContext();
+    renderView();
+  }
+  if (droppedImageRefs) toast('Removed attachments after switching agents; attach them again for this one.');
+  if (s.status === 'parked') {
+    renderAll();
+    snapshotParked();
+    return;
+  }
+
+  s.term.writeln(`\r\n\x1b[38;2;106;106;112m── switching to ${next.label} ──\x1b[0m\r\n`);
+  await launch(s);
+}
+
+/**
+ * A CLI model is a launch-time option. Changing it must create a new process,
+ * and a resume/continue mode must not pull the old provider conversation into
+ * that fresh-model launch. Keep terminal scrollback as a local record, but
+ * insert an unmistakable boundary before the new process starts.
+ */
+async function switchSessionModel(s, modelId) {
+  const a = s && agent(s.agentId);
+  if (!s || !a || !modelId || modelId === s.modelId) return false;
+  const plan = modelSwitchPlan(a, s.modeId, modelId);
+  const nextMode = plan.modeId;
+  const running = s.status === 'running' || s.status === 'starting';
+  const name = modelLabel(a, modelId);
+
+  if (running) {
+    const ok = await confirmDialog(
+      `Switch to ${name}?`,
+      `This ends the current ${a.label} conversation and starts a fresh ${name} session. Existing terminal history remains visible above the new-session marker.`,
+      'Switch and start fresh'
+    );
+    if (!ok) return false;
+  }
+
+  invalidateLaunch(s);
+  s.modelId = plan.modelId;
+  s.modeId = nextMode;
+  const p = pick(a);
+  p.model = plan.modelId;
+  if (isContinuationMode(a, p.mode)) p.mode = freshModeId(a, p.mode);
+  savePrefs();
+
+  if (s.status === 'parked') {
+    renderAll();
+    snapshotParked();
+    return true;
+  }
+
+  if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  s.command = '';
+  s.working = false;
+  s.wantPcControl = false;
+  s.connectorsOff = false;
+  s.term.writeln(`\r\n\x1b[38;2;124;255;63m── new ${name} session (previous CLI conversation ended) ──\x1b[0m\r\n`);
+  const started = await launch(s);
+  if (started) toast(`Started a fresh ${name} session.`);
+  return started;
+}
+
+function projectMenu(anchor) {
+  openMenu(anchor, {
+    title: 'Space',
+    items: [
+      ...prefs.spaces.map((sp) => ({ label: sp.name, hint: ellipsisLeft(sp.path, 34), on: sp.id === prefs.activeSpace, run: () => selectSpace(sp.id) })),
+      { sep: true },
+      { label: 'Open folder…', run: chooseFolder }
+    ]
+  });
+}
+
+/* ----------------------------------------------------------- toasts, dialogs */
+
+export function toast(msg, kind = '', onClick?, actionLabel?) {
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  const text = document.createElement('span');
+  text.textContent = msg;
+  el.appendChild(text);
+  if (actionLabel) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'toast-action';
+    b.textContent = actionLabel;
+    el.appendChild(b);
+  }
+  el.addEventListener('click', () => {
+    el.remove();
+    onClick && onClick();
+  });
+  $('toasts').appendChild(el);
+  // A toast with an action stays long enough to be used.
+  setTimeout(() => el.remove(), actionLabel ? 7000 : kind === 'error' ? 7000 : 3500);
+}
+
+/** ezCLI drives command line tools. A provider's desktop app does not put
+ * that command on PATH, which is the usual reason an agent shows as missing. */
+function notInstalledToast(a) {
+  const cmd = a.command ? `"${a.command}"` : 'its command';
+  if (a.install) {
+    toast(`${a.label} CLI not found (${cmd}). A desktop app is not the CLI. Install it with: ${a.install}, then Reload agents in Settings. Click to copy.`, 'error', () => copy(a.install));
+  } else {
+    toast(`${a.label} CLI not found (${cmd}). Install the CLI so ${cmd} runs in a terminal, then Reload agents in Settings.`, 'error');
+  }
+}
+
+const tabCount = (n) => (n === 0 ? 'No tabs' : n === 1 ? '1 tab' : `${n} tabs`);
+
+function renderUsage() {
+  const rows = state.agents.map((a) => {
+    const live = state.sessions.filter((s) => s.agentId === a.id && s.status === 'running').length;
+    const u = prefs.usage[a.id] || { sessions: 0, seconds: 0, lastAt: 0 };
+    return { agent: a, live, past: u.sessions, seconds: u.seconds, lastAt: u.lastAt };
+  });
+  const fmtHMS = (s) => {
+    if (!s) return '-';
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  };
+  $('usageTable').innerHTML = `
+    <div class="usage-row usage-head">
+      <span>Agent</span><span>Live</span><span>Past</span><span>Active time</span><span>Last used</span>
+    </div>
+    ${rows
+      .map(
+        (r) => `<div class="usage-row">
+          <span class="usage-agent">${ICONS[r.agent.icon] || ICONS.term}${esc(r.agent.label)}</span>
+          <span>${r.live || '-'}</span>
+          <span>${r.past || '-'}</span>
+          <span>${fmtHMS(r.seconds)}</span>
+          <span>${r.lastAt ? fmtAgo(r.lastAt) : '-'}</span>
+        </div>`
+      )
+      .join('')}`;
+}
+
+/* ------------------------------------------------- sessions and history
+ * The sheet that lists saved and imported chats lives in features/sessions.js. */
+function showImportSheet() {
+  late.Sessions.open();
+}
+
+export function systemProfileSummary(profile = state.systemProfile) {
+  if (!profile) return 'Hardware profile unavailable';
+  const cores = Number(profile.logicalCpuCores);
+  const memory = Number(profile.totalMemoryGib);
+  const gpu = profile.gpuName;
+  const vram = Number(profile.gpuVramMib);
+  const parts = [];
+  if (Number.isFinite(cores) && cores > 0) parts.push(`${cores} CPU threads`);
+  if (Number.isFinite(memory) && memory > 0) parts.push(`${memory} GiB RAM`);
+  if (gpu) {
+    const vramText = Number.isFinite(vram) && vram > 0 ? `, ${(Math.round(vram / 102.4) / 10).toFixed(1)} GiB VRAM` : '';
+    parts.push(`${gpu}${vramText}`);
+  }
+  return parts.length ? parts.join(' · ') : 'Hardware profile unavailable';
+}
+
+function ollamaRouteAdvice(a) {
+  if (!a || !['ollama', 'ollama-cloud'].includes(a.id)) return '';
+  const profile = systemProfileSummary();
+  if (a.id === 'ollama-cloud') {
+    return `Ollama Cloud runs remotely. Detected: ${profile}. Your PC does not limit the cloud catalog; install Ollama and complete “ollama signin” before starting. ezCLI will not install, sign in, or download a model for you.`;
+  }
+  return `Ollama Local uses this PC: ${profile}. Choose Cloud for models that do not fit locally. ezCLI lists only downloaded local models and never pulls one automatically.`;
+}
+
+function backendFacts(report) {
+  if (!report) return ['Could not check your installed backends. You can choose one from the home screen.'];
+  const facts = [];
+  if (report.claudeCli) facts.push(report.claudeSignin || report.anthropicKey ? 'Claude Code found and signed in' : 'Claude Code found, but no sign-in. It needs a Claude Pro or Max plan, or an API key.');
+  if (report.codexCli) facts.push(report.codexSignin || report.openaiKey ? 'Codex found and signed in' : 'Codex found, not signed in yet');
+  if (report.chatgptCli) facts.push('ChatGPT CLI found on PATH');
+  for (const id of report.freeReady || []) {
+    const a = agent(id);
+    if (a) facts.push(`${a.label} found (free)`);
+  }
+  if (report.ollama) facts.push('Ollama found, so OpenCode can also use local models');
+  if (state.systemProfile) facts.push(`PC profile: ${systemProfileSummary()}`);
+  if (report.anthropicKey && !report.claudeCli) facts.push('Anthropic API key configured');
+  if (report.openaiKey && !report.codexCli) facts.push('OpenAI API key configured');
+  return facts.length ? facts : ['No supported CLI or configured sign-in was detected yet.'];
+}
+
+/** Free agents the user doesn't have yet, with the exact install command. */
+function renderFreeInstalls(report) {
+  const box = $('freeInstalls');
+  if (!box) return;
+  const missing = ((report && report.freeMissing) || []).map(agent).filter((a) => a && a.install);
+  box.hidden = !missing.length;
+  box.innerHTML = missing.length
+    ? `<p class="note">Free agents you can add, right from here, or copy the command for your own terminal:</p>${missing
+        .map(
+          (a) => `<div class="install-row"><span class="install-name">${esc(a.label)}</span>
+          <code>${esc(a.install)}</code>
+          <button class="btn quiet" data-copy-install="${esc(a.install)}">Copy</button>
+          <button class="btn primary" data-install-agent="${esc(a.id)}">Install</button></div>`
+        )
+        .join('')}`
+    : '';
+}
+
+/** Keep the optional first-run sheet explicit about the agent, model and
+ * reasoning effort that will be used when the user starts their first tab. */
+function renderOnboardingConfig() {
+  const box = $('onboardingConfig');
+  const geminiNotice = $('onboardingGeminiNotice');
+  const ollamaNotice = $('onboardingOllamaNotice');
+  const a = agent(prefs.agentId);
+  if (!a || !a.available) {
+    box.hidden = true;
+    if (geminiNotice) geminiNotice.hidden = true;
+    if (ollamaNotice) ollamaNotice.hidden = true;
+    return;
+  }
+  const p = pick(a);
+  box.hidden = false;
+  $('onboardingAgentLabel').textContent = a.label;
+  $('onboardingModelValue').textContent = modelLabel(a, p.model);
+  const effort = $('onboardingEffort');
+  effort.hidden = (a.efforts || []).length < 2;
+  $('onboardingEffortValue').textContent = effortLabel(a, p.effort);
+  if (geminiNotice) geminiNotice.hidden = a.id !== 'gemini';
+  if (ollamaNotice) {
+    const advice = ollamaRouteAdvice(a);
+    ollamaNotice.hidden = !advice;
+    ollamaNotice.textContent = advice;
+  }
+}
+
+export function renderOnboarding() {
+  const report = state.backends;
+  const recommended = report && agent(report.recommended);
+  $('onboardingSummary').textContent = recommended && recommended.available
+    ? `${recommended.label} is the recommended start. ${report.reason || ''}`.trim()
+    : (report && report.reason) || 'Choose a local CLI when you are ready. You can change it for each session.';
+  const facts = backendFacts(report);
+  $('backendFacts').innerHTML = facts.map((fact) => `<li>${esc(fact)}</li>`).join('');
+  $('backendFoundSummary').textContent = `What ezCLI found (${facts.length})`;
+  renderFreeInstalls(report);
+  // Installed agents first; the ones you would have to install come last.
+  const ordered = [...state.agents].sort((x, y) => Number(y.available) - Number(x.available));
+  $('backendChoices').innerHTML = ordered
+    .map((a) => {
+      const selected = a.id === prefs.agentId;
+      const recommendedClass = recommended && a.id === recommended.id ? ' recommended' : '';
+      return `<button class="backend-choice${selected ? ' selected' : ''}${recommendedClass}" data-onboarding-agent="${esc(a.id)}"
+        role="radio" aria-checked="${selected}" ${a.available ? '' : 'disabled'}>
+        <span class="backend-choice-main">${ICONS[a.icon] || ICONS.term}<span>${esc(a.label)}</span>${a.free ? '<span class="free-badge">Free</span>' : ''}</span>
+        <span class="backend-choice-status">${a.available ? (recommended && a.id === recommended.id ? 'Recommended' : 'Installed') : 'Not installed'}</span>
+      </button>`;
+    })
+    .join('');
+  renderOnboardingConfig();
+}
+
+function finishOnboarding() {
+  prefs.onboarded = true;
+  savePrefs();
+  if ($('onboardingSheet').open) $('onboardingSheet').close();
+}
+
+function showOnboarding() {
+  if (prefs.onboarded) return;
+  renderOnboarding();
+  // It is a modeless dialog by design: users can start working immediately
+  // instead of being forced through setup before they reach a real terminal.
+  ($('onboardingSheet') as HTMLDialogElement).show();
+}
+
+export function confirmDialog(title, body, okLabel = 'Confirm') {
+  const d = $('confirmSheet') as HTMLDialogElement;
+  $('confirmTitle').textContent = title;
+  $('confirmBody').textContent = body;
+  $('confirmOk').textContent = okLabel;
+  d.returnValue = '';
+  d.showModal();
+  return new Promise((resolve) => d.addEventListener('close', () => resolve(d.returnValue === 'ok'), { once: true }));
+}
+
+export async function copy(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Copied');
+  } catch {
+    toast('Could not copy to the clipboard.', 'error');
+  }
+}
+
+/** Open a URL in the user's real browser via the Tauri opener plugin. */
+export function openUrl(url) {
+  if (!/^https?:\/\//i.test(url)) return;
+  try {
+    (T.opener && T.opener.openUrl ? T.opener.openUrl(url) : invoke('plugin:opener|open_url', { url })).catch(() =>
+      toast('Could not open the link.', 'error')
+    );
+  } catch {
+    window.open(url, '_blank', 'noopener');
+  }
+}
+
+/* ---------------------------------------------------------- zoom and fonts */
+
+function applyZoom() {
+  try {
+    T.webview.getCurrentWebview().setZoom(prefs.zoom);
+  } catch {
+    /* older runtime without webview zoom */
+  }
+  setTimeout(fitActive, 60);
+}
+function zoomBy(d) {
+  prefs.zoom = d === 0 ? 1 : Math.min(2, Math.max(0.6, Math.round((prefs.zoom + d) * 10) / 10));
+  savePrefs();
+  applyZoom();
+  toast(`Zoom ${Math.round(prefs.zoom * 100)}%`);
+}
+function setFontSize(n) {
+  prefs.fontSize = Math.min(24, Math.max(9, n));
+  savePrefs();
+  $('fontSizeLabel').textContent = `${prefs.fontSize} px`;
+  for (const s of state.sessions) {
+    s.term.options.fontSize = prefs.fontSize;
+  }
+  requestAnimationFrame(() => state.sessions.forEach(fitSession));
+}
+
+/* ----------------------------------------------------------------- window */
+
+let closing = false;
+export let quitting = false;
+async function guardClose(event) {
+  if (closing) return;
+  // Close to tray: keep every session running and just hide the window.
+  if (IS_MAIN_WINDOW && prefs.closeToTray && !quitting) {
+    event.preventDefault();
+    T.window.getCurrentWindow().hide();
+    return;
+  }
+  // Each window owns its own tabs, so count only this window's processes.
+  const live = state.sessions.filter((s) => s.status === 'running' || s.status === 'starting').length;
+  if (live > 0) {
+    const ok = await confirmDialog(
+      'Quit ezCLI?',
+      `${live} session${live > 1 ? 's are' : ' is'} still running. Quitting stops ${live > 1 ? 'them' : 'it'}.`,
+      'Quit'
+    );
+    if (!ok) {
+      event.preventDefault();
+      return;
+    }
+  }
+  // Closing the window ends every process; write the sessions down first so
+  // they are there, with their conversation ids, the next time ezCLI opens.
+  if (typeof late.flushMemory === 'function') {
+    late.flushMemory();
+    await sleep(300); // let the save commands reach the backend before it exits
+  }
+  closing = true;
+  for (const s of state.sessions) {
+    invalidateLaunch(s);
+    if (s.ptyId) await invoke('kill_session', { id: s.ptyId }).catch(() => {});
+  }
+}
+
+async function syncMaxIcon() {
+  try {
+    const max = await T.window.getCurrentWindow().isMaximized();
+    $('winMax').innerHTML = max
+      ? '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2.5" y="4" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 4V3a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5H8" stroke="currentColor" stroke-width="1.2"/></svg>'
+      : '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2.5" y="2.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>';
+    $('winMax').setAttribute('aria-label', max ? 'Restore window' : 'Maximize window');
+  } catch {
+    /* window API unavailable */
+  }
+}
+
+/* --------------------------------------------------------------- shortcuts */
+
+/** Keys the terminal must not swallow, plus the clipboard behaviour people expect
+ *  from a Windows terminal: Ctrl+C copies when text is selected (and still sends
+ *  an interrupt when nothing is), Ctrl+Shift+C always copies, and a right-click
+ *  copies a selection or pastes the clipboard. */
+function wireTerminalInput(term, host) {
+  term.attachCustomKeyEventHandler((e) => {
+    if (isAppShortcut(e)) return false;
+    if (e.type !== 'keydown') return true;
+    if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'Tab') return false;
+    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === 'KeyF') return false;
+    if (e.ctrlKey && !e.altKey && !e.metaKey && e.code === 'KeyC' && term.hasSelection()) {
+      copy(term.getSelection());
+      term.clearSelection();
+      return false;
+    }
+    return true;
+  });
+  // Ctrl + mouse wheel resizes the terminal text, like an editor.
+  host.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setFontSize(prefs.fontSize + (e.deltaY < 0 ? 1 : -1));
+    toast(`Text size ${prefs.fontSize} px`);
+  }, { passive: false });
+  host.addEventListener('contextmenu', async (e) => {
+    e.preventDefault();
+    if (term.hasSelection()) {
+      copy(term.getSelection());
+      term.clearSelection();
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) term.paste(text);
+    } catch {
+      toast('Couldn’t read the clipboard. Use Ctrl+V to paste.', 'error');
+    }
+  });
+}
+
+function isAppShortcut(e) {
+  if (e.type !== 'keydown' || !(e.ctrlKey && e.altKey) || e.metaKey) return false;
+  // AltGr reports as Ctrl+Alt on Windows; it types characters, never shortcuts.
+  if (e.getModifierState && e.getModifierState('AltGraph')) return false;
+  return /^(Key[NWBKTPLFEDMHG]|Digit[1-9]|ArrowLeft|ArrowRight|Slash|Equal|Minus|Digit0|NumpadAdd|NumpadSubtract|Numpad0)$/.test(e.code);
+}
+
+function onShortcut(e) {
+  if (!isAppShortcut(e)) return;
+  const code = e.code;
+  const list = spaceSessions();
+  const idx = list.findIndex((s) => s.id === state.activeId);
+  let handled = true;
+  if (code === 'KeyT' && e.shiftKey) {
+    if (prefs.closed[0]) reopenClosed(prefs.closed[0]);
+  } else if (e.shiftKey) handled = false;
+  else if (code === 'KeyN') newSession();
+  else if (code === 'KeyW') state.activeId && closeSession(state.activeId);
+  else if (code === 'KeyB') setExplorerOpen(!prefs.explorerOpen);
+  else if (code === 'KeyK') active() && active().term.clear();
+  else if (code === 'Slash') (active() ? $('ptyInput') : $('homeInput')).focus();
+  else if (code === 'Equal' || code === 'NumpadAdd') zoomBy(0.1);
+  else if (code === 'Minus' || code === 'NumpadSubtract') zoomBy(-0.1);
+  else if (code === 'Digit0' || code === 'Numpad0') zoomBy(0);
+  else if (code === 'ArrowLeft' && list.length) selectSession(list[(idx - 1 + list.length) % list.length].id);
+  else if (code === 'ArrowRight' && list.length) selectSession(list[(idx + 1) % list.length].id);
+  else if (/^Digit[1-9]$/.test(code)) {
+    const s = list[Number(code.slice(5)) - 1];
+    if (s) selectSession(s.id);
+  } else handled = hooks.shortcut.some((fn) => {
+    try {
+      return fn(code, e) === true;
+    } catch {
+      return false;
+    }
+  });
+  if (handled) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}
+
+export function newSession() {
+  // A new tab always opens on the home screen of the current space, so the
+  // agent, model and first message can be picked before anything launches.
+  selectSession(null);
+  $('homeInput').focus();
+}
+
+export async function startFromHome() {
+  const prompt = $('homeInput').value.trim();
+  const a = agent(prefs.agentId);
+  const p = a && pick(a);
+  const chosenMode = p ? p.mode : undefined;
+  const resumesLatest = Boolean(a && isContinuationMode(a, chosenMode));
+  const created = await createSession(prefs.agentId, {
+    prompt,
+    modeId: chosenMode,
+    allowContinuation: resumesLatest
+  });
+  // A required-model chooser can decline a launch. Keep the draft intact so
+  // the user can select a model without having to rewrite their request.
+  if (!created) return;
+  // Resume/Continue is deliberately a one-tab action. The next New Chat will
+  // start fresh unless the person explicitly selects it again.
+  if (resumesLatest && a && resetContinuationPick(a)) {
+    renderHome();
+    renderOnboardingConfig();
+    toast('This tab resumed the latest CLI conversation. New chats will start fresh.');
+  }
+  if (prompt) pushHistory(prompt);
+  $('homeInput').value = '';
+  prefs.homeDraft = '';
+  savePrefs();
+  autoGrow($('homeInput'));
+}
+
+/* ----------------------------------------------------------------- helpers */
+
+export function safe(fn) {
+  try {
+    fn();
+  } catch {
+    /* ignore */
+  }
+}
+export function fmtSize(n) {
+  if (n == null) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+export function fmtAgo(t) {
+  const s = Math.floor((Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+function ellipsisLeft(s, max) {
+  s = String(s);
+  return s.length > max ? '…' + s.slice(-(max - 1)) : s;
+}
+export function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+/* ------------------------------------------------------------------ wiring */
+
+function wire() {
+  window.addEventListener('keydown', onShortcut, true);
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey || e.code !== 'Tab') return;
+      const list = spaceSessions();
+      if (list.length < 2) return;
+      e.preventDefault();
+      const idx = list.findIndex((x) => x.id === state.activeId);
+      const step = e.shiftKey ? -1 : 1;
+      selectSession(list[(idx + step + list.length) % list.length].id);
+    },
+    true
+  );
+  $('scrim').addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('menu').hidden) closeMenu();
+  });
+
+  // window chrome
+  const win = T.window.getCurrentWindow();
+  $('winMin').addEventListener('click', () => win.minimize());
+  $('winMax').addEventListener('click', () => win.toggleMaximize());
+  $('winClose').addEventListener('click', () => win.close());
+  win.onCloseRequested(guardClose);
+  win.onResized(() => {
+    syncMaxIcon();
+    fitActive();
+  });
+  syncMaxIcon();
+
+  // titlebar
+  $('brandBtn').addEventListener('click', newSession);
+  $('tabNew').addEventListener('click', newSession);
+  $('closedTabsBtn').addEventListener('click', (e) => closedTabsMenu(e.currentTarget));
+  $('explorerToggle').addEventListener('click', () => setExplorerOpen(!prefs.explorerOpen));
+
+  const tabs = $('tabs');
+  tabs.addEventListener('click', (e) => {
+    const close = e.target.closest('[data-close]');
+    if (close) return closeSession(close.dataset.close);
+    const t = e.target.closest('[data-tab]');
+    if (t) selectSession(t.dataset.tab);
+  });
+  tabs.addEventListener('auxclick', (e) => {
+    const t = e.target.closest('[data-tab]');
+    if (t && e.button === 1) closeSession(t.dataset.tab);
+  });
+  tabs.addEventListener('dblclick', (e) => {
+    const t = e.target.closest('[data-tab]');
+    const s = t && state.sessions.find((x) => x.id === t.dataset.tab);
+    if (s) renameTab(s);
+  });
+  tabs.addEventListener('contextmenu', (e) => {
+    const t = e.target.closest('[data-tab]');
+    const s = t && state.sessions.find((x) => x.id === t.dataset.tab);
+    if (!s) return;
+    e.preventDefault();
+    tabMenu(t, s, e.clientX, e.clientY);
+  });
+  // drag to reorder
+  let dragId = null;
+  tabs.addEventListener('dragstart', (e) => {
+    const t = e.target.closest('[data-tab]');
+    if (!t) return;
+    dragId = t.dataset.tab;
+    t.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  tabs.addEventListener('dragover', (e) => {
+    if (!dragId) return;
+    e.preventDefault();
+    tabs.querySelectorAll('.drop-before').forEach((x) => x.classList.remove('drop-before'));
+    const t = e.target.closest('[data-tab]');
+    if (t && t.dataset.tab !== dragId) t.classList.add('drop-before');
+  });
+  tabs.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const t = e.target.closest('[data-tab]');
+    if (dragId && t && t.dataset.tab !== dragId) {
+      const list = state.sessions.slice();
+      const from = list.findIndex((s) => s.id === dragId);
+      const [moved] = list.splice(from, 1);
+      const to = list.findIndex((s) => s.id === t.dataset.tab);
+      list.splice(to, 0, moved);
+      state.sessions = list;
+    }
+  });
+  tabs.addEventListener('dragend', () => {
+    dragId = null;
+    renderTabs();
+  });
+
+  // rail
+  $('spaces').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-space]');
+    if (b) selectSpace(b.dataset.space);
+  });
+  $('spaces').addEventListener('contextmenu', (e) => {
+    const b = e.target.closest('[data-space]');
+    if (!b) return;
+    e.preventDefault();
+    spaceMenu(b, space(b.dataset.space));
+  });
+  $('spaceAdd').addEventListener('click', chooseFolder);
+  $('settingsBtn').addEventListener('click', () => {
+    $('fontSizeLabel').textContent = `${prefs.fontSize} px`;
+    $('agentsPath').textContent = state.configPath || '~/.ezcli/agents.json';
+    applyTheme();
+    $('settingsSheet').showModal();
+  });
+  $('helpBtn').addEventListener('click', () => $('helpSheet').showModal());
+
+  // First-run setup is deliberately optional. Closing with Escape counts as
+  // a dismissal so we never interrupt a returning user with the same dialog.
+  $('onboardingSheet').addEventListener('close', () => {
+    if (!prefs.onboarded) {
+      prefs.onboarded = true;
+      savePrefs();
+    }
+  });
+  $('onboardingSkip').addEventListener('click', finishOnboarding);
+  $('onboardingModel').addEventListener('click', (e) => modelMenu(e.currentTarget));
+  $('onboardingEffort').addEventListener('click', (e) => effortMenu(e.currentTarget));
+  $('freeInstalls').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-copy-install]');
+    if (b) copy(b.dataset.copyInstall);
+  });
+  $('onboardingContinue').addEventListener('click', finishOnboarding);
+  $('backendChoices').addEventListener('click', (e) => {
+    const choice = e.target.closest('[data-onboarding-agent]');
+    if (!choice || choice.disabled) return;
+    chooseAgent(choice.dataset.onboardingAgent);
+    renderOnboarding();
+  });
+  $('backendChoices').addEventListener('keydown', (e) => {
+    if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.key)) return;
+    const choices = [...$('backendChoices').querySelectorAll('[data-onboarding-agent]:not(:disabled)')];
+    const current = choices.indexOf(e.target.closest('[data-onboarding-agent]'));
+    if (current < 0 || !choices.length) return;
+    e.preventDefault();
+    const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1;
+    const next = choices[(current + step + choices.length) % choices.length];
+    next.focus();
+    next.click();
+  });
+
+  // settings
+  document.querySelectorAll('[data-theme-opt]').forEach((b) =>
+    b.addEventListener('click', () => {
+      prefs.theme = b.dataset.themeOpt;
+      savePrefs();
+      applyTheme();
+    })
+  );
+  systemDark.addEventListener('change', () => prefs.theme === 'system' && applyTheme());
+  $('fontDown').addEventListener('click', () => setFontSize(prefs.fontSize - 1));
+  $('fontUp').addEventListener('click', () => setFontSize(prefs.fontSize + 1));
+  $('reloadAgents').addEventListener('click', reloadAgents);
+  $('openConfig').addEventListener('click', () => {
+    const dir = state.configPath.replace(/[\\/][^\\/]+$/, '');
+    openIn('files', dir);
+  });
+  $('openUsage').addEventListener('click', () => {
+    $('settingsSheet').close();
+    renderUsage();
+    $('usageSheet').showModal();
+  });
+  $('openAnthropic').addEventListener('click', () => openUrl('https://console.anthropic.com/settings/usage'));
+  $('openOpenai').addEventListener('click', () => openUrl('https://platform.openai.com/usage'));
+  $('resetUsage').addEventListener('click', async () => {
+    const ok = await confirmDialog('Reset local usage counters?', 'The provider dashboards keep the real totals.', 'Reset');
+    if (!ok) return;
+    prefs.usage = {};
+    savePrefs();
+    renderUsage();
+  });
+  $('openImports').addEventListener('click', showImportSheet);
+
+  // home
+  $('homeProject').addEventListener('click', (e) => projectMenu(e.currentTarget));
+  $('homeSearch') && $('homeSearch').addEventListener('click', () => (late.TranscriptSearch ? late.TranscriptSearch.open() : $('openSearch') && $('openSearch').click()));
+  $('homeHistory') && $('homeHistory').addEventListener('click', () => (late.Sessions ? late.Sessions.open() : $('openImports') && $('openImports').click()));
+  $('homeAllSessions') && $('homeAllSessions').addEventListener('click', () => (late.Sessions ? late.Sessions.open() : $('openImports') && $('openImports').click()));
+  $('homeAgent').addEventListener('click', (e) => agentOnlyMenu(e.currentTarget));
+  $('homeModel').addEventListener('click', (e) => modelMenu(e.currentTarget));
+  $('homeEffort').addEventListener('click', (e) => effortMenu(e.currentTarget));
+  $('homeMode').addEventListener('click', (e) => modeMenu(e.currentTarget));
+  $('homeSend').addEventListener('click', startFromHome);
+  // An unsent first message survives a restart.
+  $('homeInput').value = prefs.homeDraft || '';
+  autoGrow($('homeInput'));
+  $('homeInput').addEventListener('input', (e) => {
+    autoGrow(e.target);
+    prefs.homeDraft = e.target.value;
+    savePrefs();
+  });
+  $('homeInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      startFromHome();
+    }
+  });
+  $('agentStrip').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-agent]');
+    if (!b || b.disabled) return;
+    if (b.classList.contains('missing')) {
+      if (typeof late.Installer !== 'undefined') late.Installer.open(b.dataset.agent);
+      return;
+    }
+    chooseAgent(b.dataset.agent);
+  });
+
+  // session head
+  $('actStop').addEventListener('click', () => {
+    stopSession(active());
+  });
+  $('actRestart').addEventListener('click', () => active() && restartSession(active()));
+  $('actResume').addEventListener('click', () => {
+    const s = active();
+    if (s) launch(s);
+  });
+  $('headModel').addEventListener('click', async (e) => {
+    const anchor = e.currentTarget;
+    const s = active();
+    if (!s) return;
+    const a = agent(s.agentId);
+    if (!a) return;
+    if (a.dynamic_models && !state.catalogs[a.id] && (a.available || a.catalogAvailableWithoutCommand)) await fetchCatalog(a);
+    const models = allModels(a);
+    openMenu(anchor, {
+      title: `${a.label} · Model`,
+      search: models.length > 8 ? 'Search models' : '',
+      items: models.map((m) => ({
+        label: m.label,
+        hint: m.provider || '',
+        on: m.id === s.modelId,
+        run: () => switchSessionModel(s, m.id)
+      }))
+    });
+  });
+  $('headControl').addEventListener('click', async () => {
+    const s = active();
+    if (!s || !s.ptyId || s.status !== 'running') return;
+    const a = agent(s.agentId);
+    if (!a || !a.pc_control) return;
+    const enabling = !s.pcControl;
+    // The CLI only learns about tools at launch, so turning PC control on or
+    // off restarts the process. Say so before the user loses their place.
+    const ok = enabling
+      ? await confirmDialog(
+          'Turn on PC control?',
+          `${a.label} restarts with ezCLI's PC-control tools attached: it can see your primary screen and move the mouse, click, scroll and type on it when it decides to. Its current conversation in this tab ends. Permission lasts only for this process and ends when it exits or you turn it off.`,
+          'Restart with PC control'
+        )
+      : await confirmDialog(
+          'Turn off PC control?',
+          `${a.label} restarts without ezCLI's tools. Its current conversation in this tab ends.`,
+          'Restart without it'
+        );
+    if (!ok) return;
+    // Revoke the current process immediately, before the restart completes.
+    await invoke('set_pc_control', { sessionId: s.ptyId, enabled: false }).catch(() => {});
+    s.wantPcControl = enabling;
+    await restartSession(s, { keepPcControl: true });
+    toast(enabling ? 'PC control is on for this session.' : 'PC control is off.');
+  });
+  $('headConnectors').addEventListener('click', async () => {
+    const s = active();
+    if (!s || !s.ptyId || s.status !== 'running') return;
+    const a = agent(s.agentId);
+    const enabledConnectors = (prefs.connectors || []).filter((c) => c.enabled && c.url);
+    if (!a || !a.pc_control || !enabledConnectors.length) return;
+    // Connectors are on by default for every compatible session once
+    // configured in Settings; this chip is an opt-OUT for just this one
+    // tab, not an opt-in. s.connectorsOff carries the opt-out through a
+    // restart.
+    const names = enabledConnectors.map((c) => c.name || 'Connector').join(', ');
+    const enabling = !(s.connectorsActive || []).length;
+    const ok = enabling
+      ? await confirmDialog('Turn connectors back on for this tab?', `${a.label} restarts with ${names} attached again. Its current conversation in this tab ends.`, 'Restart with connectors')
+      : await confirmDialog(
+          'Turn off connectors for this tab?',
+          `${a.label} restarts without ${names}, just in this tab. Turn them off for every session instead by disabling or removing them in Settings. Its current conversation in this tab ends.`,
+          'Restart without them'
+        );
+    if (!ok) return;
+    s.connectorsOff = !enabling;
+    await restartSession(s, { keepConnectorsOff: true, keepPcControl: Boolean(s.wantPcControl) });
+    toast(enabling ? 'Connectors are on for this session.' : 'Connectors are off for this tab.');
+  });
+  $('headAgent').addEventListener('click', (e) => {
+    const s = active();
+    if (!s) return;
+    openMenu(e.currentTarget, {
+      title: 'Backend',
+      items: state.agents.map((a) => ({
+        label: a.label,
+        hint: a.available ? (a.id === s.agentId ? 'Current' : 'Switch and relaunch') : 'not installed',
+        on: a.id === s.agentId,
+        disabled: !a.available,
+        run: () => switchSessionAgent(s, a.id)
+      }))
+    });
+  });
+  $('openInPrimary').addEventListener('click', () => {
+    const t = preferredTarget();
+    if (t) openIn(t.id, active() ? active().cwd : space().path);
+  });
+  $('openInMenu').addEventListener('click', (e) => openInMenu(e.currentTarget, active() ? active().cwd : space().path));
+  $('scrollBottom').addEventListener('click', () => {
+    const s = active();
+    if (!s) return;
+    s.term.scrollToBottom();
+    updateScrollButton(s);
+    s.term.focus();
+  });
+
+  // composer
+  const pty = $('ptyInput');
+  pty.addEventListener('input', () => {
+    autoGrow(pty);
+    histPos = -1;
+    if (active()) active().draft = pty.value;
+  });
+  pty.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      queueNext = e.ctrlKey || e.metaKey;
+      sendComposer();
+    } else if (e.key === 'ArrowUp' && (pty.value === '' || histPos > -1) && !pty.value.slice(0, pty.selectionStart).includes('\n')) {
+      if (walkHistory(pty, 1)) e.preventDefault();
+    } else if (e.key === 'ArrowDown' && histPos > -1) {
+      if (walkHistory(pty, -1)) e.preventDefault();
+    } else if (e.key === 'Escape') {
+      active() && active().term.focus();
+    }
+  });
+  $('btnSend').addEventListener('click', sendComposer);
+  $('btnAttachImage').addEventListener('click', chooseImageReferences);
+  $('ptyInput').addEventListener('paste', pasteImages);
+  wireFileDrop();
+  $('btnHistory').addEventListener('click', (e) => historyMenu(e.currentTarget));
+  $('btnInterrupt').addEventListener('click', () => {
+    const s = active();
+    if (s && s.ptyId) invoke('send_input', { id: s.ptyId, data: '\x03' }).catch(() => {});
+  });
+  $('btnEsc').addEventListener('click', () => {
+    const s = active();
+    if (s && s.ptyId) invoke('send_input', { id: s.ptyId, data: '\x1b' }).catch(() => {});
+  });
+
+  // explorer
+  $('explorerClose').addEventListener('click', () => setExplorerOpen(false));
+  $('explorerRefresh').addEventListener('click', () => {
+    state.explorer.cache = new Map();
+    renderExplorer(true);
+    refreshGit();
+  });
+  $('explorerResize').addEventListener('pointerdown', startExplorerResize);
+  document.querySelectorAll('[data-xtab]').forEach((t) =>
+    t.addEventListener('click', () => {
+      prefs.explorerTab = t.dataset.xtab;
+      savePrefs();
+      state.explorer.view = 'list';
+      renderExplorer();
+    })
+  );
+  $('explorerContent').addEventListener('click', (e) => {
+    const row = e.target.closest('.file-row');
+    if (!row) return;
+    if (row.dataset.path) {
+      if (row.dataset.dir === '1') return toggleDir(row.dataset.path);
+      state.explorer.view = 'file';
+      state.explorer.file = row.dataset.path;
+      renderExplorer();
+    } else if (row.dataset.file) {
+      state.explorer.view = 'diff';
+      state.explorer.diff = { file: row.dataset.file, untracked: row.dataset.untracked === '1' };
+      renderExplorer();
+    }
+  });
+  $('explorerContent').addEventListener('contextmenu', (e) => {
+    const row = e.target.closest('.file-row');
+    if (!row) return;
+    e.preventDefault();
+    const g = state.git[space().path];
+    const abs = row.dataset.path || (g && g.root ? `${g.root}/${row.dataset.file}` : row.dataset.file);
+    openMenu(row, {
+      at: { x: e.clientX, y: e.clientY },
+      items: [
+        { label: 'Add to chat', disabled: !active(), run: () => addToChat(abs) },
+        { label: 'Copy path', run: () => copy(abs) },
+        { label: 'Copy relative path', run: () => copy(relativeTo(abs, explorerRoot())) }
+      ]
+    });
+  });
+
+  window.addEventListener('resize', fitActive);
+  // The composer grows with attachment pills and multi-line drafts, which
+  // shrinks the terminal without any window resize. Refit when that happens.
+  let termRaf = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(termRaf);
+    termRaf = requestAnimationFrame(fitActive);
+  }).observe($('termHosts'));
+  window.addEventListener('focus', () => {
+    const s = active();
+    if (s && s.unseen) {
+      s.unseen = false;
+      updateTabMeta(s);
+      renderSpaces();
+    }
+  });
+}
+
+export async function reloadAgents() {
+  try {
+    state.agents = await invoke('reload_agents');
+    if (!agent(prefs.agentId)) {
+      const first = state.agents.find((a) => a.available) || state.agents[0];
+      prefs.agentId = first ? first.id : null;
+    }
+    renderHome();
+    toast('Agents reloaded from agents.json.', 'ok');
+  } catch (err) {
+    toast(String(err), 'error');
+  }
+}
+
+boot();
+
+/** Lets a feature module wrap or replace `quitting` (ES imports are read-only). */
+export function __set_quitting(value) {
+  quitting = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `selectSpace` (ES imports are read-only). */
+export function __set_selectSpace(value) {
+  // @ts-expect-error A function declaration can be reassigned at run time; this is how a feature wraps a core function.
+  selectSpace = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `applyTheme` (ES imports are read-only). */
+export function __set_applyTheme(value) {
+  // @ts-expect-error A function declaration can be reassigned at run time; this is how a feature wraps a core function.
+  applyTheme = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `queueNext` (ES imports are read-only). */
+export function __set_queueNext(value) {
+  queueNext = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `renderChanges` (ES imports are read-only). */
+export function __set_renderChanges(value) {
+  // @ts-expect-error A function declaration can be reassigned at run time; this is how a feature wraps a core function.
+  renderChanges = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `sendComposer` (ES imports are read-only). */
+export function __set_sendComposer(value) {
+  // @ts-expect-error A function declaration can be reassigned at run time; this is how a feature wraps a core function.
+  sendComposer = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `fitActive` (ES imports are read-only). */
+export function __set_fitActive(value) {
+  // @ts-expect-error A function declaration can be reassigned at run time; this is how a feature wraps a core function.
+  fitActive = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `renderHome` (ES imports are read-only). */
+export function __set_renderHome(value) {
+  // @ts-expect-error A function declaration can be reassigned at run time; this is how a feature wraps a core function.
+  renderHome = value;
+  return value;
+}
+
+/** Lets a feature module wrap or replace `renderLiveUsage` (ES imports are read-only). */
+export function __set_renderLiveUsage(value) {
+  // @ts-expect-error A function declaration can be reassigned at run time; this is how a feature wraps a core function.
+  renderLiveUsage = value;
+  return value;
+}

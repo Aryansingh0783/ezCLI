@@ -4,7 +4,10 @@
   "version": "5.12.14",
   "identifier": "com.aryansingh.ezcli",
   "build": {
-    "frontendDist": "../public"
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": { "script": "npm run dev", "cwd": ".." },
+    "beforeBuildCommand": { "script": "npm run build", "cwd": ".." }
   },
   "app": {
     "withGlobalTauri": true,

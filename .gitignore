@@ -20,3 +20,7 @@ PRODUCT.md
 
 # Graphify output (regenerate with the Build graph button)
 graphify-out/
+
+# node (build and test only)
+node_modules/
+dist/
