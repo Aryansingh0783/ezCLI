@@ -1885,3 +1885,7 @@ select.select {
   height: 16px;
   stroke-width: 1.5;
 }
+
+.statusbar #stVram.warn {
+  color: var(--c-warn);
+}

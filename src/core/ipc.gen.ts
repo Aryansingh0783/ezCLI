@@ -194,6 +194,12 @@ export type GitStatus =
   | RepoStatus
   | { repo: boolean; reason: string };
 
+/** `system_profile::GpuMemory` in src-tauri/src/system_profile.rs */
+export interface GpuMemory {
+  usedMib: number;
+  totalMib: number;
+}
+
 /** `graphify::GraphifyStatus` in src-tauri/src/graphify.rs */
 export interface GraphifyStatus {
   installed: boolean;
@@ -544,6 +550,8 @@ export interface Commands {
   git_status: { args: { path: string }; result: GitStatus };
   /** features.rs */
   git_unstage: { args: { path: string; file: string }; result: void };
+  /** GPU memory in use right now (NVIDIA only). Asks `nvidia-smi`, so it runs off the UI thread. (lib.rs) */
+  gpu_memory: { args: Record<string, never>; result: GpuMemory | null };
   /** Reload the graph window in place if it is open, so a fresh build shows without stealing focus. Returns whether a window was there to reload. (graphify.rs) */
   graph_reload_open: { args: Record<string, never>; result: boolean };
   /** Build or refresh one project's graph in the background. Only runs when Graphify is already installed, never on a home folder or drive root, and keeps `graphify-out/` out of the project's git status locally (via `.git/info/exclude`, which is never committed). (graphify.rs) */
@@ -720,6 +728,7 @@ export const COMMAND_NAMES = [
   'git_stage',
   'git_status',
   'git_unstage',
+  'gpu_memory',
   'graph_reload_open',
   'graphify_auto',
   'graphify_open',

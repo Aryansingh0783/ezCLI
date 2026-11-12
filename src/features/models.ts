@@ -84,7 +84,10 @@ export const Models = {
     const ram = Number(p.totalMemoryGib) || 0;
     const vram = (Number(p.gpuVramMib) || 0) / 1024;
     const need = this.gib(bytes) * 1.15;
-    if (vram && need <= vram) return { cls: 'good', text: 'Fits your GPU' };
+    // A file that takes most of the card leaves nothing for the desktop and other programs; whatever does
+    // not fit then runs from system memory, several times slower. Say so instead of calling it a fit.
+    if (vram && this.gib(bytes) + 1 <= vram * 0.7) return { cls: 'good', text: 'Fits your GPU' };
+    if (vram && need <= vram) return { cls: 'ok', text: 'Fits, with little GPU memory to spare' };
     if (ram && need <= ram * 0.7) return { cls: vram ? 'ok' : 'good', text: vram ? 'Fits in RAM (slower)' : 'Fits your RAM' };
     return { cls: 'bad', text: 'Too big for this PC' };
   },
@@ -153,7 +156,11 @@ export const Models = {
   pick(files, b) {
     const ok = files.filter((f) => this.quantRank(f.quant) > 0);
     const need = (f) => (f.size / 1073741824) * 1.15;
-    const gpu = ok.filter((f) => b.gpuGib && need(f) <= b.gpuGib).sort((x, y) => this.quantRank(y.quant) - this.quantRank(x.quant) || y.size - x.size)[0];
+    const byQuality = (x, y) => this.quantRank(y.quant) - this.quantRank(x.quant) || y.size - x.size;
+    // First choice: the best quality that still leaves about a third of the card free (the desktop, a browser
+    // and the context all need GPU memory too). Only when nothing does: the best that fits at all.
+    const roomy = ok.filter((f) => b.gpuGib && b.where === 'GPU' && f.size / 1073741824 + 1 <= b.gpuGib * 0.7).sort(byQuality)[0];
+    const gpu = roomy || ok.filter((f) => b.gpuGib && need(f) <= b.gpuGib).sort(byQuality)[0];
     if (gpu) return { file: gpu, tier: b.where === 'CPU' ? 'cpu' : 'gpu' };
     const ram = ok.filter((f) => this.quantRank(f.quant) === 1 && need(f) <= b.ramGib).sort((x, y) => x.size - y.size)[0];
     return ram ? { file: ram, tier: 'slow' } : null;
@@ -549,7 +556,7 @@ export const Models = {
       );
     });
     return [
-      this.sec('Best for your PC', 'Only models that run on this machine, in the best quality that fits. One click downloads, checks and installs.'),
+      this.sec('Best for your PC', 'Only models that run on this machine, in the best quality that still leaves GPU memory for everything else. One click downloads, checks and installs.'),
       this.rec.note && this.el('p', { class: 'merror', text: this.rec.note }),
       this.el('div', { class: 'mlist' }, cards.length ? cards : this.el('p', { class: 'mmuted', text: this.rec.loading || !this.rec.done ? 'Checking which models fit your PC…' : '' }))
     ];

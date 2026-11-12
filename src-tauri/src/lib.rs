@@ -733,6 +733,12 @@ fn detect_system_profile() -> system_profile::SystemProfile {
     system_profile::detect()
 }
 
+/// GPU memory in use right now (NVIDIA only). Asks `nvidia-smi`, so it runs off the UI thread.
+#[tauri::command]
+async fn gpu_memory() -> Option<system_profile::GpuMemory> {
+    tauri::async_runtime::spawn_blocking(system_profile::gpu_memory).await.ok().flatten()
+}
+
 /// Scan local transcript stores off the command thread, then hold recognized
 /// conversations in memory under opaque ids for the picker.
 #[tauri::command]
@@ -1166,6 +1172,7 @@ pub fn run() {
             git_diff,
             detect_backends,
             detect_system_profile,
+            gpu_memory,
             agent_models,
             list_imports,
             read_imported_chat,

@@ -39,4 +39,5 @@ import './features/team';
 import './features/usage';
 import './features/claude';
 import './features/shell';
+import './features/gpu';
 import './debug';
