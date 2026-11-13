@@ -84,12 +84,7 @@ export const RailSessions = {
       const m = document.createElement('span');
       m.className = 'rail-session-meta' + (dot === 'unseen' ? ' attn' : '');
       m.textContent = word;
-      // the last thing the agent was asked, so a row says what the session is about
-      const asked = Array.isArray(s.prompts) && s.prompts.length ? String(s.prompts[s.prompts.length - 1] || '') : '';
-      const l = document.createElement('span');
-      l.className = 'rail-session-last';
-      l.textContent = asked.replace(/\s+/g, ' ').trim().slice(0, 140);
-      row.append(d, t, m, x, l);
+      row.append(d, t, m, x);
       this.box.append(row);
     }
     if (earlier.length) {
@@ -165,8 +160,6 @@ hooks.boot.push(() => {
 });
 hooks.tabs.push(() => RailSessions.render());
 hooks.view.push(() => RailSessions.render());
-// a reply has finished: the row's state word and last line may have changed
-hooks.idle.push(() => RailSessions.render());
 
 /* Right-click a sidebar session for the same menu the tabs have (rename, duplicate, close...). */
 hooks.boot.push(() => {

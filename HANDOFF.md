@@ -18,9 +18,9 @@ Last updated: 2026-11-13 by Claude (v5.14.0; see the block directly below)
 - **VoiceStudio:** `src-tauri/src/voicestudio.rs` finds a running VoiceStudio (discovery document on port
   3900); Settings offers to connect it, which adds its MCP address to `prefs.connectors`. ezCLI does not
   install or start VoiceStudio.
-- **Interface:** softer pass over `src/styles/ui.css` (rules at the top of that file): teal accent, filled
-  rounded surfaces instead of outlines, no status bar (reply speed and GPU memory sit in the title bar),
-  session rows show the last thing asked, the files panel opens beside the chat by default.
+- **Interface:** 5.14.0 shipped a softer, rounder layout; the owner asked for the layout back and the
+  colours kept, so after 5.14.0 the layout is 5.13's (status bar, one-line session rows, files panel closed
+  by default) with the teal theme. Rules are at the top of `src/styles/ui.css`.
 - **Not yet run on a real machine:** this interface, the automatic continue against a real usage limit, and
   VoiceStudio driven by an agent launched from ezCLI. Do that before building on any of them.
 
