@@ -153,6 +153,26 @@ pub fn safe_path(p: &str) -> bool {
     !p.is_empty() && p.len() <= 1024 && !p.starts_with('-') && !p.chars().any(|c| c.is_control() || c == '"') && Path::new(p).is_absolute()
 }
 
+/// Why a file with the right name cannot be a model llama.cpp will load, read from its first 8 bytes:
+/// the "GGUF" magic and a plausible little-endian format version (3 today; a later one is let through). A download that
+/// was only pre-allocated, a renamed GGML file or an HTML error page saved as `.gguf` all fail here,
+/// and each of them otherwise ends as a crash or a bare error inside llama.cpp.
+pub fn header_problem(path: &Path) -> Option<&'static str> {
+    use std::io::Read;
+    let mut head = [0u8; 8];
+    let Ok(mut f) = std::fs::File::open(path) else { return Some("the file cannot be opened") };
+    if f.read_exact(&mut head).is_err() {
+        return Some("the file is too short to be a model");
+    }
+    if &head[..4] != b"GGUF" {
+        return Some("the file does not start with a GGUF header");
+    }
+    match u32::from_le_bytes([head[4], head[5], head[6], head[7]]) {
+        1..=0xFFFF => None,
+        _ => Some("the GGUF version field is not valid (a big-endian or damaged file)"),
+    }
+}
+
 fn skip_dir(name: &str) -> bool {
     let l = name.to_lowercase();
     SKIP_DIRS.iter().any(|s| *s == l)
@@ -185,7 +205,8 @@ fn walk(dir: &Path, depth: u32, started: &Instant, budget: Duration, seen_dirs: 
                 continue;
             }
             let p = path.to_string_lossy().to_string();
-            if safe_path(&p) {
+            // a damaged or foreign file is left out: it could only be offered and then fail to load
+            if safe_path(&p) && header_problem(&path).is_none() {
                 out.push(Found { name: name.trim_end_matches(".gguf").trim_end_matches(".GGUF").to_string(), quant: quant_of(&name), source: source_of(&path), path: p, bytes: meta.len() });
             }
         }
@@ -256,12 +277,20 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ezcli-scan-{}", std::process::id()));
         let sub = dir.join("deep").join("er");
         std::fs::create_dir_all(&sub).unwrap();
-        let big = |p: &Path| {
-            let f = std::fs::File::create(p).unwrap();
+        // sparse files: the size is real to the file system, only the header is written
+        let big = |p: &Path, head: &[u8]| {
+            use std::io::Write;
+            let mut f = std::fs::File::create(p).unwrap();
+            f.write_all(head).unwrap();
             f.set_len(MIN_BYTES + 1).unwrap();
         };
-        big(&sub.join("good-Q4_K_M.gguf"));
-        big(&sub.join("part-00002-of-00003.gguf"));
+        let v3 = b"GGUF\x03\x00\x00\x00";
+        big(&sub.join("good-Q4_K_M.gguf"), v3);
+        big(&sub.join("part-00002-of-00003.gguf"), v3);
+        big(&sub.join("preallocated-Q4_K_M.gguf"), b"");
+        big(&sub.join("old-ggml-Q4_K_M.gguf"), b"ggjt\x03\x00\x00\x00");
+        big(&sub.join("error-page-Q4_K_M.gguf"), b"<!DOCTYPE html>");
+        big(&sub.join("big-endian-Q4_K_M.gguf"), b"GGUF\x00\x00\x00\x03");
         std::fs::write(sub.join("tiny.gguf"), b"x").unwrap();
         let mut out = Vec::new();
         walk(&dir, 6, &Instant::now(), Duration::from_secs(5), &mut HashSet::new(), &mut out);
@@ -269,5 +298,27 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].name, "good-Q4_K_M");
         assert_eq!(out[0].quant, "Q4_K_M");
+    }
+
+    #[test]
+    fn a_header_is_judged_by_its_magic_and_version_and_never_panics_on_junk() {
+        let dir = std::env::temp_dir().join(format!("ezcli-head-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let check = |name: &str, bytes: &[u8]| {
+            let p = dir.join(name);
+            std::fs::write(&p, bytes).unwrap();
+            header_problem(&p)
+        };
+        assert_eq!(check("v1", b"GGUF\x01\x00\x00\x00"), None);
+        assert_eq!(check("v3", b"GGUF\x03\x00\x00\x00rest of the file"), None);
+        assert_eq!(check("later", b"GGUF\x04\x00\x00\x00"), None, "a newer format version must not hide the model");
+        assert!(check("empty", b"").unwrap().contains("too short"));
+        assert!(check("cut", b"GGUF\x03").unwrap().contains("too short"));
+        assert!(check("zeros", &[0u8; 64]).unwrap().contains("GGUF header"));
+        assert!(check("big-endian", b"GGUF\x00\x00\x00\x03").unwrap().contains("version"));
+        assert!(check("v0", b"GGUF\x00\x00\x00\x00").unwrap().contains("version"));
+        assert!(header_problem(&dir.join("missing")).unwrap().contains("cannot be opened"));
+        assert!(header_problem(&dir).is_some(), "a folder is not a model");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

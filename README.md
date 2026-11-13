@@ -1040,6 +1040,7 @@ Then:
 ```bash
 git clone https://github.com/Aryansingh0783/ezCLI.git
 cd ezCLI
+npm ci                 # once: build and test tooling (Vite, TypeScript, Vitest); the app ships no Node
 cargo tauri dev        # live window, Rust hot-reload on save
 cargo tauri build      # produces src-tauri/target/release/bundle/msi/ezCLI_<version>_x64_en-US.msi
 ```
@@ -1288,13 +1289,18 @@ there is no Node server or WebSocket relay.
 
 ## Design source
 
-The base tokens (radii, type scale, spacing, the lime accent) come from the Freebuff
-dark shell and sit at the top of `public/styles.css`. The liquid glass style in
-`public/features/glass.css` layers translucent surfaces, a backdrop blur, and an SVG
-displacement filter over those tokens, so every accent colour and both themes apply to
-it. The spotlight cards and the glowing border on the home box are vanilla
-re-implementations of ideas from React Bits and 21st.dev; no React or bundler is added.
-The frontend passes the Impeccable design detector with no findings.
+The interface is drawn in `src/styles/ui.css`, which starts with the rules of the design:
+
+- One type family: IBM Plex Sans for the interface, IBM Plex Mono only for code, paths and keys. Sentence case.
+- Colour means state and nothing else: green is running, amber is waiting on you, red is an error.
+  The primary button is the text colour on the page colour. There is no accent colour.
+- A sidebar lists the project's sessions; one title bar names where you are and carries the session's controls.
+- Reading content sits in a 720px column. Nothing animates on its own.
+- Dark and light themes share those rules (Settings, Appearance, Theme; "Match the system" by default).
+
+`src/styles/legacy.css` holds the styles from before the redesign for screens that have not been redrawn.
+It sits in a CSS cascade layer, so any rule in `ui.css` wins over it, and its colour and font variables
+point at the new palette. The mockups the design was built from are in the pull request that introduced it.
 
 ## License
 

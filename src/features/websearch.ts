@@ -1,0 +1,660 @@
+import { active, agent, confirmDialog, effortLabel, hooks, invoke, openMenu, pick, prefs, restartSession, savePrefs, sendText, sleep, toast } from '../app';
+import { late } from '../late';
+import { setKV } from '../core/html';
+/* Tools for offline models (Ollama). A local model has no web, no skills and no terminal of its own, so
+ * the app gives it a tiny text protocol. The model replies with exactly one line, and the app acts:
+ *
+ *   SEARCH: <query>   search the web, read the top pages, give the model the text
+ *   SKILL: <name>     give the model one of your skills (~/.claude/skills)
+ *   RUN: <command>    run one PowerShell command on your PC, but only after you click Run on it
+ *   KNOW: <query>     search the files you added to Knowledge (features/knowledge.js)
+ *
+ * The "Web" button picks auto (search when the model does not know), always, or off. The "Terminal"
+ * button is off until you turn it on; even then every command waits for your click. */
+
+export const WebSearch = {
+  AGENTS: new Set(['ollama', 'ollama-cloud', 'lmstudio', 'gguf']),
+  MODES: ['auto', 'always', 'off'],
+  MAX_STEPS: 4,
+  /** Things a frozen model cannot know, so there is no point asking it first. */
+  FRESH: /\b(latest|newest|current(ly)?|today|tonight|yesterday|this (week|month|year)|right now|news|recent(ly)?|just (released|announced)|release date|price of|stock|score|weather|who won|202[5-9]|2030)\b/i,
+  TOOLS: ['SEARCH', 'BROWSE', 'SKILL', 'RUN', 'KNOW'],
+
+  /** The tool a reply asks for, or null. A request is a reply that is nothing but the one line
+   *  ("SEARCH: weather in Delhi"), allowing for the dressing small models add: bold, backticks, a bullet,
+   *  a short lead-in line. A long answer that merely mentions "SEARCH:" is an answer, not a request, so
+   *  the app does not go off and search for half a sentence of it. */
+  request(text) {
+    const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!lines.length || lines.length > 3 || lines.join(' ').length > 600) return null;
+    for (const raw of lines) {
+      const line = raw.replace(/^(?:[-*>•]|\d+[.)])\s+/, '').replace(/[*_`]+/g, '').trim();
+      const m = /^(SEARCH|BROWSE|SKILL|RUN|KNOW)\s*:\s*(.+)$/i.exec(line);
+      if (!m) continue;
+      const arg = m[2].replace(/^["“”'<\[(]+|["“”'>\])]+$/g, '').trim().slice(0, 400);
+      if (!arg || /^<?(query|name|https address|one powershell command)>?$/i.test(arg)) return null;
+      return { kind: m[1].toUpperCase(), arg };
+    }
+    return null;
+  },
+
+  /** A web address from what the model wrote after BROWSE:, or '' when it is not one. */
+  browseUrl(arg) {
+    let url = String(arg || '').trim().split(/\s+/)[0].replace(/[.,;)\]>]+$/, '');
+    if (/^www\./i.test(url) || (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(url) && !/^https?:/i.test(url))) url = `https://${url}`;
+    return /^https?:\/\/[^\s/]+\.[^\s/]+/i.test(url) ? url : '';
+  },
+  /** Greetings and thanks need no web. */
+  /** The message itself says not to use the web. That wins over the Web button, for this message only. */
+  NO_WEB: /\b(do\s*n[o']t|don't|dont|never|without|no need to|please don't)\s+(\w+\s+){0,2}?(search(ing)?|brows(e|ing)|look(ing)?\s+(it\s+)?up|googl(e|ing)|us(e|ing)\s+(the\s+)?(web|internet|browser))\b|\b(no|without)\s+(web|internet)(\s+(search|access|browsing))?\b|\boffline\s+only\b/i,
+  noWeb(question) {
+    return this.NO_WEB.test(String(question || ''));
+  },
+
+  SMALLTALK: /^\s*(hi|hello|hey|yo|thanks?|thank you|ok(ay)?|cool|nice|great|good (morning|evening|night)|bye)\b[\s!.?]*$/i,
+  skills: null,
+
+  applies(s) {
+    return Boolean(s && this.AGENTS.has(s.agentId));
+  },
+
+  mode() {
+    return this.MODES.includes(prefs.webMode) ? prefs.webMode : 'auto';
+  },
+
+  /** Ollama-only helpers (`/set`, `ollama ps`, `ollama show`) must not be sent to other local runners. */
+  isOllama(s) {
+    return Boolean(s && (s.agentId === 'ollama' || s.agentId === 'ollama-cloud'));
+  },
+
+  terminalOn() {
+    return prefs.termMode === 'ask';
+  },
+
+  STOP: new Set('a an the is are was were be been am do does did can could should would will shall may might must i me my we our you your he she it its they them their this that these those of in on at to for from with by about as and or but if so than then there here what which who whom whose when where why how not no yes please tell give show find check search look up latest new current also just more most very really some any all each other into over after before again still even only own same such too s t don now get got has have had one two like want need know think say said ask asked'.split(' ')),
+
+  words(text) {
+    return String(text).replace(/[^\p{L}\p{N}.+#-]+/gu, ' ').split(' ').filter((x) => (x.length > 1 || /\d/.test(x)) && !this.STOP.has(x.toLowerCase()));
+  },
+
+  /** A question that only makes sense with what came before it ("is it better than you?"). */
+  FOLLOW_UP: /\b(it|its|that|this|they|them|their|those|these|he|she|him|her)\b/i,
+
+  /** What to search for: your question as you wrote it. Only a follow-up that cannot stand alone (short,
+   *  or pointing back with "it" / "that") borrows the names and numbers of your previous message; words
+   *  from older messages are never mixed in, because they turn the search into something you did not ask. */
+  queryFor(s, question) {
+    const q = String(question).replace(/\s+/g, ' ').trim();
+    const own = this.words(q);
+    const standsAlone = own.length > 2 && !(own.length < 7 && this.FOLLOW_UP.test(q));
+    if (standsAlone) return q.slice(0, 250);
+    const before = (s.chat && s.chat.turns ? s.chat.turns : []).filter((t) => !t.auto).map((t) => String(t.text || '').replace(/\s+/g, ' ').trim());
+    if (before.length && before[before.length - 1] === q) before.pop();
+    const prev = before[before.length - 1] || '';
+    const have = new Set(own.map((x) => x.toLowerCase()));
+    const subject = [];
+    for (const x of this.words(prev)) {
+      if (!(/^[A-Z0-9]/.test(x) || /\d/.test(x)) || have.has(x.toLowerCase())) continue;
+      have.add(x.toLowerCase());
+      subject.push(x);
+    }
+    return [...subject.slice(0, 4), q].join(' ').slice(0, 250);
+  },
+
+  /** Watch the model work: show a page in the in-app browser window (never takes focus from the chat). */
+  follow(url) {
+    if (prefs.browserFollow === false || !/^https?:\/\//i.test(url || '')) return;
+    invoke('agent_browser_follow', { url }).catch(() => {});
+  },
+
+  /** The sources listed in a web block, as "title - url" lines. */
+  sources(block) {
+    const out = [];
+    const re = /\((\d)\) (.{1,140}?) - (https?:\/\/\S+) - /g;
+    let m;
+    while ((m = re.exec(block || '')) && out.length < 6) out.push({ title: m[2], url: m[3] });
+    return out;
+  },
+
+  sourceNote(block) {
+    return this.sources(block).map((x, i) => `${i + 1}. ${x.title} ${x.url}`).join('\n');
+  },
+
+  async fetchBlock(query) {
+    this.busy(true);
+    try {
+      const block = await invoke('web_context', { query: String(query).slice(0, 250), today: new Date().toISOString().slice(0, 10) });
+      const top = this.sources(block)[0];
+      if (top) this.follow(top.url);
+      return block;
+    } catch {
+      return null;
+    } finally {
+      this.busy(false);
+    }
+  },
+
+  async loadSkills() {
+    if (this.skills) return this.skills;
+    try {
+      this.skills = (await invoke('local_skills')) || [];
+    } catch {
+      this.skills = [];
+    }
+    return this.skills;
+  },
+
+  /** The note that goes with a message: who the model is, the rules against guessing, and which one-line
+   *  requests it may make. Full the first time (and after a compaction), short after. */
+  async hint(s) {
+    const web = this.mode() !== 'off';
+    const skills = web || this.terminalOn() ? await this.loadSkills() : [];
+    const parts = [];
+    if (web) parts.push('SEARCH: <query> (look something up on the web when you do not know it or it may be out of date)', 'BROWSE: <https address> (open one web page in the in-app browser and read it)');
+    if (skills.length) parts.push(`SKILL: <name> (load one of the user's skills: ${skills.slice(0, 60).map((x) => x.name).join(', ')})`);
+    if (typeof late.Knowledge !== 'undefined' && late.Knowledge.usable()) parts.push('KNOW: <query> (search the files the user added to Knowledge; use it when the question may be about their own documents or code)');
+    if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)');
+    const tools = parts.map((p) => p.split(':')[0]);
+    if (s.toolsIntro) {
+      return { text: ` [Reminder: you are ${s.modelId || 'a local model'}, not Claude. Do not guess.${tools.length ? ` Tools as before (real, run by the app; you do have web access through them): ${tools.join(', ')}; reply with only that one line when you use one.` : ''}]`, tools: tools.length };
+    }
+    s.toolsIntro = true;
+    const who = `You are ${s.modelId || 'a local model'}, running on this PC. You are not Claude, ChatGPT or any other model, even if web results or the conversation mention them.`;
+    const rules =
+      'Accuracy rules. Work out the answer step by step and check it before you reply. Do not guess: if you are not sure of a fact, say so or look it up. A name, paper, product, person or number you do not recognise may not exist; do not describe it as if it does. Never invent facts, numbers, quotes, links, file names or sources. When you use web results, say which source each fact came from; if they do not answer the question, say that. Keep answers short and direct.';
+    const use = tools.length ? ` Tools: these are real. The app runs them for you, so you do have web access through them; do not say you cannot browse. Web results the app already fetched appear in square brackets after the user's message; use them. When you need a tool, reply with only one line and nothing else: ${parts.join(' | ')}. Otherwise just answer.` : '';
+    return { text: ` [${who} ${rules}${use}]`, tools: tools.length };
+  },
+
+  /** What to send for this message: the question, with web text after it when the mode and the
+   *  question call for it, plus the note that lets the model ask for a tool. */
+  async augment(s, text) {
+    if (!this.applies(s)) return text;
+    const question = String(text).replace(/@\S+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (question.length < 4 || question.startsWith('/')) return text;
+    const flat = text.replace(/\s*\n\s*/g, ' ');
+    s.webSteps = 0;
+    await this.compactIfNeeded(s);
+    const mode = this.mode();
+    let block = '';
+    // "do not search the web" in the message is obeyed whatever the Web button says, and the model's own
+    // SEARCH and BROWSE requests are refused until the next message
+    s.noWebTurn = this.noWeb(question);
+    if (mode !== 'off' && !s.noWebTurn && !this.SMALLTALK.test(question) && (mode === 'always' || this.FRESH.test(question))) {
+      block = await this.fetchBlock(this.queryFor(s, question));
+      if (!block) toast('Could not reach the web, so the model answers from memory.');
+      else {
+        this.remember(s, block);
+        const src = this.sources(block);
+        if (src.length) toast(`Searched the web: ${src.length} sources, top one is ${src[0].url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}. Opened in the browser.`);
+      }
+    }
+    // passages from the user's own files (Knowledge), when there are any and the question is more than small talk
+    const kb = typeof late.Knowledge !== 'undefined' && !this.SMALLTALK.test(question) ? await late.Knowledge.block(question) : '';
+    await this.applyTuning(s);
+    await this.applyEffort(s);
+    const hint = await this.hint(s);
+    if (hint.tools) s.webAsked = (s.chat ? s.chat.turns.length : 0) + 1;
+    const out = `${flat}${hint.text}${block ? ` ${block}` : ''}${kb ? ` ${kb}` : ''}`;
+    s.ctxExtra = (s.ctxExtra || 0) + out.length - flat.length;
+    return out;
+  },
+
+  /** Keep the text of what the web returned, to check the model's links against it later. */
+  remember(s, block) {
+    s.webText = `${s.webText || ''} ${block}`.slice(-80000);
+    s.ctxExtra = s.ctxExtra || 0;
+  },
+
+  /* ----------------------------------------------------------- context compaction */
+
+  /** The context size the model really runs with, from `ollama ps` (the model must be loaded). */
+  async contextTokens(s) {
+    try {
+      const r = await invoke('run_approved_command', { command: 'ollama ps', cwd: '' });
+      const lines = String(r.output || '').split('\n');
+      const col = (lines[0] || '').indexOf('CONTEXT');
+      const row = lines.find((l, i) => i > 0 && s.modelId && l.startsWith(String(s.modelId).split(':')[0]));
+      const n = col >= 0 && row ? parseInt(row.slice(col), 10) : 0;
+      if (n > 0) return n;
+    } catch {
+      /* use the default below */
+    }
+    return 8192;
+  },
+
+  /** Roughly how much of the model's context this conversation uses, in characters. */
+  usedChars(s) {
+    const items = late.ChatView.model(s);
+    let n = s.ctxExtra || 0;
+    for (const it of items) if (it.k === 'user' || it.k === 'assistant') n += (it.text || '').length;
+    return n;
+  },
+
+  async waitForAnswer(s, turn, ms) {
+    const until = Date.now() + ms;
+    while (Date.now() < until) {
+      await sleep(1500);
+      if (s.status !== 'running') return null;
+      if (s.working || (s.chat ? s.chat.turns.length : 0) !== turn) continue;
+      const items = late.ChatView.model(s);
+      const last = items[items.length - 1];
+      if (last && last.k === 'assistant') return last.text;
+    }
+    return null;
+  },
+
+  /** When the conversation nears the model's context size, the model summarises it, the session is
+   *  cleared, and the summary becomes the start of the fresh context. Nothing is lost from the chat. */
+  async compactIfNeeded(s) {
+    if (s.compacting || prefs.compact === false || !s.ptyId || !this.isOllama(s)) return;
+    const turns0 = s.chat ? s.chat.turns.length : 0;
+    if (turns0 < 2) return;
+    if (!s.ctxTokens || Date.now() - (s.ctxAt || 0) > 120000) {
+      s.ctxTokens = await this.contextTokens(s);
+      s.ctxAt = Date.now();
+    }
+    if (this.usedChars(s) < s.ctxTokens * 3.2 * 0.6) return;
+    s.compacting = true;
+    try {
+      toast('Compacting this conversation to keep the model within its memory.');
+      s.webAsked = 0;
+      await this.reply(s, 'Summarize our conversation so far in under 200 words. Keep the names, numbers, decisions and what I asked for. Output only the summary.', 'Compacting the conversation');
+      const summary = await this.waitForAnswer(s, s.chat.turns.length, 240000);
+      if (!summary) return;
+      await invoke('send_input', { id: s.ptyId, data: '/clear\r' }).catch(() => {});
+      await sleep(1500);
+      s.toolsIntro = false;
+      s.ctxExtra = 0;
+      s.webText = '';
+      s.webAsked = 0;
+      await this.reply(s, `Background from earlier in this chat. Do not answer it, reply only "ok". Summary: ${summary.replace(/\s*\n\s*/g, ' ')}`, 'Conversation compacted');
+      s.webAsked = 0;
+      await this.waitForAnswer(s, s.chat.turns.length, 120000);
+      s.ctxExtra = summary.length;
+    } finally {
+      s.compacting = false;
+    }
+  },
+
+  /* ----------------------------------------------------------- checking the answer */
+
+  /** After an answer: links the model wrote that never appeared in anything it was given. */
+  ground(s) {
+    if (!this.applies(s) || s.working) return;
+    const items = late.ChatView.model(s);
+    const last = items[items.length - 1];
+    if (!last || last.k !== 'assistant') return;
+    const known = `${s.webText || ''} ${items.filter((x) => x.k === 'user').map((x) => x.text).join(' ')}`;
+    const urls = (last.text.match(/https?:\/\/[^\s)\]>"'`]+/g) || []).map((u) => u.replace(/[.,;:!?]+$/, ''));
+    const bad = urls.filter((u) => !known.includes(u));
+    const key = bad.length ? `${last.key}|${bad.length}` : '';
+    if ((s.unverifiedKey || '') === key) return;
+    s.unverifiedKey = key;
+    s.unverified = bad.slice(0, 4);
+    s.unverifiedFor = last.key;
+    late.ChatView.apply(true);
+  },
+
+  /** After the model goes quiet: did it ask for a tool? Then do it and let the model carry on. */
+  async check(s) {
+    if (!this.applies(s) || !s.webAsked || s.webBusy || s.runAsk) return;
+    const turns = s.chat ? s.chat.turns.length : 0;
+    if (turns !== s.webAsked || s.working) return;
+    const items = late.ChatView.model(s);
+    const last = items[items.length - 1];
+    const m = last && last.k === 'hidden' ? this.request(last.text) : null;
+    if (!m) return;
+    s.webBusy = true;
+    s.webAsked = 0;
+    const kind = m.kind;
+    const arg = m.arg;
+    try {
+      s.webSteps = (s.webSteps || 0) + 1;
+      if (s.webSteps > this.MAX_STEPS) return;
+      if (kind === 'BROWSE') {
+        const url = this.browseUrl(arg);
+        if (!url) {
+          await this.reply(s, `"${arg}" is not a web address, so no page was opened. Use SEARCH: <query> to look something up, or BROWSE: with a full https address.`, 'Not a web address');
+          return;
+        }
+        if (this.mode() === 'off' || s.noWebTurn) {
+          await this.reply(s, 'Web access is turned off, so the page was not opened. Answer from what you know and say that you could not check.', 'Web is off');
+          return;
+        }
+        this.follow(url);
+        this.busy(true);
+        let page;
+        try {
+          page = await invoke('web_read', { url });
+        } catch (e) {
+          page = `Could not open that page: ${e}`;
+        } finally {
+          this.busy(false);
+        }
+        if (/^\[Page text/.test(page)) this.remember(s, page);
+        await this.reply(s, `${page.replace(/\s*\n\s*/g, ' ')} Now answer my earlier question using this page. Name the source.`, `Opened ${url} in the browser`, page.slice(0, 1200));
+      } else if (kind === 'SEARCH') {
+        if (this.mode() === 'off' || s.noWebTurn) {
+          await this.reply(s, 'Web access is turned off, so nothing was searched. Answer from what you know and say that you could not check.', 'Web is off');
+          return;
+        }
+        const block = await this.fetchBlock(arg);
+        if (block) this.remember(s, block);
+        const msg = block
+          ? `Here are web results for "${arg}". ${block} Now answer my earlier question using only what these results say. Name the source for each fact. If they conflict, say so. If they do not contain the answer, say you could not find it instead of guessing.`
+          : 'The web search found nothing. Answer my earlier question as well as you can, and say that you could not check.';
+        await this.reply(s, msg, `Searched the web for “${arg}”`, this.sourceNote(block));
+      } else if (kind === 'KNOW') {
+        const got = typeof late.Knowledge !== 'undefined' && late.Knowledge.usable() ? await late.Knowledge.lookup(arg) : null;
+        if (got) await this.reply(s, got.msg.replace(/\s*\n\s*/g, ' '), got.note, got.detail);
+        else await this.reply(s, 'Knowledge is off or empty, so there are no files to search. Answer as well as you can.', 'Knowledge is off');
+      } else if (kind === 'SKILL') {
+        const got = await invoke('local_skill_text', { name: arg }).catch(() => null);
+        const msg = got
+          ? `Skill "${got[0]}": ${got[1].replace(/\s*\n\s*/g, ' ')} Follow this skill for my request.`
+          : `There is no skill called "${arg}". Carry on without it.`;
+        await this.reply(s, msg, got ? `Loaded the skill “${got[0]}”` : `No skill called “${arg}”`);
+      } else if (kind === 'RUN') {
+        if (!this.terminalOn()) {
+          await this.reply(s, 'The terminal is turned off, so you cannot run commands. Tell me what you would have run and that I can turn the Terminal button on.', 'Terminal is off');
+        } else {
+          s.runAsk = { cmd: arg };
+          late.ChatView.apply(true);
+        }
+      }
+    } finally {
+      s.webBusy = false;
+    }
+  },
+
+  /** Send the model a message of the app's own making, shown in the chat as a short note. */
+  async reply(s, msg, note, detail) {
+    s.webAsked = (s.chat ? s.chat.turns.length : 0) + 1;
+    s.ctxExtra = (s.ctxExtra || 0) + msg.length;
+    await sendText(s, msg, note, { auto: true, echo: msg, detail: detail || '' });
+  },
+
+  /** You clicked Run or Skip on the command the model proposed. */
+  async decide(s, ok) {
+    const ask = s && s.runAsk;
+    if (!ask) return;
+    s.runAsk = null;
+    late.ChatView.apply(true);
+    if (!ok) {
+      await this.reply(s, 'The user chose not to run that command. Do not run it. Ask what they would like instead.', 'Skipped the command');
+      return;
+    }
+    s.webBusy = true;
+    try {
+      const r = await invoke('run_approved_command', { command: ask.cmd, cwd: s.cwd || '' });
+      const out = r.output || '(no output)';
+      const status = r.timedOut ? 'it was stopped after 60 seconds' : `exit code ${r.exit ?? '?'}`;
+      await this.reply(s, `The command ran (${status}). Output: ${out.replace(/\s*\n\s*/g, ' | ')} Now continue with my request.`, `Ran: ${ask.cmd}`, out);
+    } catch (e) {
+      await this.reply(s, `The command could not run: ${e}`, `Could not run: ${ask.cmd}`);
+    } finally {
+      s.webBusy = false;
+    }
+  },
+
+  /* ----------------------------------------------------------- effort (how long the model thinks) */
+
+  /** The thinking levels this model offers, from `ollama show`: [] when it cannot think at all. */
+  async levels(s) {
+    if (!s.modelId || !this.isOllama(s)) return [];
+    this.levelCache = this.levelCache || {};
+    if (this.levelCache[s.modelId]) return this.levelCache[s.modelId];
+    let list = [];
+    try {
+      const r = await invoke('run_approved_command', { command: `ollama show ${String(s.modelId).replace(/[^\w.:/-]/g, '')}`, cwd: '' });
+      const text = String(r.output || '');
+      const m = /^\s*levels\s+(.+)$/im.exec(text);
+      if (m) list = m[1].split(',').map((x) => x.trim()).filter(Boolean);
+      else if (/^\s*thinking\s*$/im.test(text)) list = ['false', 'true'];
+    } catch {
+      list = [];
+    }
+    this.levelCache[s.modelId] = list;
+    return list;
+  },
+
+  /* ----------------------------------------------------------- accuracy tuning */
+
+  /** Settings that make a model steadier and less inclined to invent: low randomness, a tight pool of
+   *  likely words, a mild penalty against rambling. Sent to the running session once. */
+  TUNING: [
+    '/set parameter temperature 0.3',
+    '/set parameter top_p 0.85',
+    '/set parameter top_k 30',
+    '/set parameter repeat_penalty 1.05'
+  ],
+
+  accurate() {
+    return prefs.accurate !== false;
+  },
+
+  async applyTuning(s) {
+    if (!this.isOllama(s) || !this.accurate() || s.tuned || !s.ptyId || s.working) return;
+    s.tuned = true;
+    for (const c of this.TUNING) {
+      await invoke('send_input', { id: s.ptyId, data: `${c}\r` }).catch(() => {});
+      await sleep(450);
+    }
+  },
+
+  effortOf(s) {
+    return (prefs.effort && prefs.effort[s.modelId]) || 'auto';
+  },
+
+  /** The Ollama command for a level: "false" turns thinking off, "true" on, others set the depth. */
+  effortCommand(level) {
+    if (level === 'false') return '/set nothink';
+    if (level === 'true') return '/set think';
+    return `/set think ${level}`;
+  },
+
+  /** Tell the running Ollama session the level, once per level (it keeps it for the session). */
+  async applyEffort(s) {
+    const level = this.effortOf(s);
+    if (!this.isOllama(s) || level === 'auto' || !s.ptyId || s.effortSent === level || s.working) return;
+    s.effortSent = level;
+    await invoke('send_input', { id: s.ptyId, data: `${this.effortCommand(level)}\r` }).catch(() => {});
+    await sleep(700);
+  },
+
+  /** Agents whose thinking level is a launch option in agents.json (llama.cpp), not a live command. */
+  launchEfforts(s) {
+    const a = s && !this.isOllama(s) ? agent(s.agentId) : null;
+    const list = (a && a.efforts) || [];
+    return list.length > 1 ? list : [];
+  },
+
+  /** llama.cpp reads its thinking budget when it starts, so a new level means starting the model again. */
+  /** The levels as a menu, so a level is chosen instead of stepped to. */
+  effortMenu(anchor) {
+    const s = active();
+    if (!this.applies(s)) return;
+    const list = this.launchEfforts(s);
+    if (!list.length) return this.cycleEffort();
+    openMenu(anchor, {
+      title: 'Thinking',
+      items: list.map((e) => ({ label: e.label.replace(/^Thinking: /, ''), on: e.id === s.effortId, run: () => this.setLaunchEffort(s, e) }))
+    });
+  },
+
+  async cycleLaunchEffort(s) {
+    const list = this.launchEfforts(s);
+    if (!list.length) return;
+    const at = list.findIndex((e) => e.id === s.effortId);
+    return this.setLaunchEffort(s, list[(at + 1) % list.length]);
+  },
+
+  async setLaunchEffort(s, next) {
+    if (next.id === s.effortId) return;
+    const a = agent(s.agentId);
+    pick(a).effort = next.id;
+    savePrefs();
+    const live = s.status === 'running' || s.status === 'starting';
+    if (!live) {
+      s.effortId = next.id;
+      this.sync();
+      toast(`${next.label}. Used when this session starts.`);
+      return;
+    }
+    const ok = await confirmDialog(`${next.label}?`, 'The model reads this when it starts, so it has to be loaded again. The chat stays on screen, but the model will not remember it.', 'Restart the model');
+    if (!ok) {
+      this.sync();
+      toast(`${next.label} is saved for new sessions. This one keeps ${effortLabel(a, s.effortId)}.`);
+      return;
+    }
+    s.effortId = next.id;
+    s.toolsIntro = false;
+    this.sync();
+    await restartSession(s);
+  },
+
+  async cycleEffort() {
+    const s = active();
+    if (!this.applies(s)) return;
+    if (this.launchEfforts(s).length) return this.cycleLaunchEffort(s);
+    const levels = await this.levels(s);
+    if (!levels.length) return;
+    const order = ['auto', ...levels];
+    const next = order[(order.indexOf(this.effortOf(s)) + 1) % order.length];
+    prefs.effort = { ...(prefs.effort || {}), [s.modelId]: next };
+    savePrefs();
+    s.effortSent = '';
+    this.sync();
+    if (next !== 'auto' && s.status === 'running' && !s.working) await this.applyEffort(s);
+    toast(next === 'auto' ? 'Effort: the model decides how long to think.' : next === 'false' ? 'Effort: off. The model answers without thinking first.' : `Effort: ${next}.`);
+  },
+
+  effortLabel(level) {
+    return level === 'auto' ? 'Effort: auto' : level === 'false' ? 'Effort: off' : level === 'true' ? 'Effort: on' : `Effort: ${level}`;
+  },
+
+  busy(on) {
+    const b = document.getElementById('btnWeb');
+    if (b) b.classList.toggle('busy', on);
+  },
+
+  sync() {
+    const s = active();
+    const web = document.getElementById('btnWeb');
+    const term = document.getElementById('btnTerm');
+    if (!this.applies(s)) {
+      if (web) web.hidden = true;
+      if (term) term.hidden = true;
+      const eff = document.getElementById('btnEffort');
+      if (eff) eff.hidden = true;
+      const accb = document.getElementById('btnAcc');
+      if (accb) accb.hidden = true;
+      return;
+    }
+    const grow = document.querySelector('#ptyComposer .composer-row .grow');
+    if (!grow) return;
+    let b = web;
+    if (!b) {
+      b = document.createElement('button');
+      b.type = 'button';
+      b.id = 'btnWeb';
+      b.className = 'web-btn';
+      b.addEventListener('click', () => {
+        const next = this.MODES[(this.MODES.indexOf(this.mode()) + 1) % this.MODES.length];
+        prefs.webMode = next;
+        savePrefs();
+        this.sync();
+        toast(
+          {
+            auto: 'Web: auto. The model answers from what it knows and searches the web when it does not know.',
+            always: 'Web: always. Every question is searched on the web first.',
+            off: 'Web: off. The model answers only from what it was trained on.'
+          }[next]
+        );
+      });
+      grow.before(b);
+    }
+    const mode = this.mode();
+    b.hidden = false;
+    b.dataset.mode = mode;
+    setKV(b, { auto: 'Web: auto', always: 'Web: always', off: 'Web: off' }[mode]);
+    b.title = 'Click to change: auto (search only when the model does not know), always, or off.';
+    let t = term;
+    if (!t) {
+      t = document.createElement('button');
+      t.type = 'button';
+      t.id = 'btnTerm';
+      t.className = 'web-btn';
+      t.addEventListener('click', () => {
+        prefs.termMode = this.terminalOn() ? 'off' : 'ask';
+        savePrefs();
+        this.sync();
+        toast(this.terminalOn() ? 'Terminal: ask. The model may propose a command; nothing runs until you click Run on it.' : 'Terminal: off. The model cannot run commands.');
+      });
+      grow.before(t);
+    }
+    t.hidden = false;
+    t.dataset.mode = this.terminalOn() ? 'auto' : 'off';
+    setKV(t, this.terminalOn() ? 'Terminal: ask' : 'Terminal: off');
+    t.title = 'When on, the model can propose a PowerShell command. You see it and click Run, or Skip.';
+    let e = document.getElementById('btnEffort');
+    if (!e) {
+      e = document.createElement('button');
+      e.type = 'button';
+      e.id = 'btnEffort';
+      e.className = 'web-btn';
+      e.hidden = true;
+      e.addEventListener('click', () => this.effortMenu(e));
+      grow.before(e);
+    }
+    let acc = document.getElementById('btnAcc');
+    if (!acc) {
+      acc = document.createElement('button');
+      acc.type = 'button';
+      acc.id = 'btnAcc';
+      acc.className = 'web-btn';
+      acc.addEventListener('click', () => {
+        prefs.accurate = !this.accurate();
+        savePrefs();
+        this.sync();
+        toast(this.accurate() ? 'Accurate: on. Steadier answers with less invention. Applies from your next message.' : 'Accurate: off. The model uses its own default settings. Applies to new sessions.');
+        const cur = active();
+        if (cur) cur.tuned = false;
+      });
+      grow.before(acc);
+    }
+    acc.hidden = !this.isOllama(s);
+    acc.dataset.mode = this.accurate() ? 'auto' : 'off';
+    setKV(acc, this.accurate() ? 'Accurate: on' : 'Accurate: off');
+    acc.title = 'On: lower randomness and a tight word pool, so the model guesses and invents less.';
+    const launch = this.launchEfforts(s);
+    if (launch.length) {
+      const cur = launch.find((x) => x.id === s.effortId) || launch[0];
+      e.hidden = false;
+      e.dataset.mode = cur.id === launch[0].id ? 'off' : 'auto';
+      setKV(e, cur.label);
+      e.title = `How long the model thinks before it answers. Click to change: ${launch.map((x) => x.label.replace(/^Thinking: /, '')).join(', ')}. The model restarts to apply it.`;
+      return;
+    }
+    // Ollama: shown only for a model that can think; the levels come from the model itself
+    this.levels(s).then((levels) => {
+      const cur = active();
+      e.hidden = !(cur && cur.id === s.id && levels.length);
+      const level = this.effortOf(s);
+      e.dataset.mode = level === 'auto' ? 'off' : 'auto';
+      setKV(e, this.effortLabel(level));
+      e.title = `How long the model thinks before it answers. Click to change: auto, ${levels.map((l) => (l === 'false' ? 'off' : l)).join(', ')}.`;
+    });
+  }
+};
+
+hooks.tabs.push(() => WebSearch.sync());
+hooks.view.push(() => WebSearch.sync());
+hooks.boot.push(() => WebSearch.sync());
+hooks.idle.push((s) => {
+  WebSearch.check(s);
+  WebSearch.ground(s);
+});
+
+Object.assign(late, { WebSearch });

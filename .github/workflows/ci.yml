@@ -39,6 +39,14 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: ci-${{ matrix.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+      # Tauri embeds dist/ at compile time, so the front end is built before any cargo step.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the front end
+        run: |
+          npm ci
+          npm run build
       # --locked: the committed Cargo.lock must already match Cargo.toml
       - name: Lint (warnings are errors)
         working-directory: src-tauri
@@ -54,10 +62,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Scripts parse
+          node-version: 22
+      - run: npm ci
+      - name: Types (the whole front end, and the strict core)
         run: |
-          for f in public/*.js public/features/*.js scripts/*.js; do node --check "$f" || exit 1; done
+          npm run typecheck
+          npx tsc --noEmit -p tsconfig.test.json
+      - name: IPC types match the Rust commands
+        run: npm run ipc:check
+      - name: Unit tests (Vitest)
+        run: npm test
+      - name: Build
+        run: npx vite build
       - name: Config files are valid JSON
         run: |
           node -e "for (const f of ['agents.json','src-tauri/tauri.conf.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
@@ -70,6 +86,5 @@ jobs:
           [ "$conf" = "$cargo" ] && [ "$conf" = "$lock" ] || { echo "::error::Version mismatch between tauri.conf.json, Cargo.toml and Cargo.lock"; exit 1; }
       - name: UI smoke test (headless browser)
         run: |
-          npm install --no-save playwright@1.49.1
           npx playwright install --with-deps chromium
-          node scripts/ui-smoke.js
+          npm run test:smoke

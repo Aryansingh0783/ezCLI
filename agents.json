@@ -880,6 +880,46 @@
           "args": []
         }
       ],
+      "_efforts_note": "How long a reasoning model may think, set with llama.cpp's --reasoning-budget when the model starts (0 ends thinking at once, -1 is unlimited). The numbered budgets need a llama.cpp build from March 2026 or later; older builds accept only 0 and -1. A model that does not reason ignores the option.",
+      "efforts": [
+        {
+          "id": "default",
+          "label": "Thinking: model default",
+          "args": []
+        },
+        {
+          "id": "off",
+          "label": "Thinking: off",
+          "args": [
+            "--reasoning-budget",
+            "0"
+          ]
+        },
+        {
+          "id": "low",
+          "label": "Thinking: short",
+          "args": [
+            "--reasoning-budget",
+            "1024"
+          ]
+        },
+        {
+          "id": "medium",
+          "label": "Thinking: medium",
+          "args": [
+            "--reasoning-budget",
+            "4096"
+          ]
+        },
+        {
+          "id": "high",
+          "label": "Thinking: unlimited",
+          "args": [
+            "--reasoning-budget",
+            "-1"
+          ]
+        }
+      ],
       "_modelsFrom_note": "The Model pill lists .gguf files found on this PC (see the Models panel to scan deeper or add folders); the chosen file launches as `llama-cli -m <file>`.",
       "modelsFrom": {
         "args": [],

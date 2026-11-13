@@ -15,8 +15,11 @@ use std::thread;
 use tauri::{AppHandle, Emitter};
 
 pub struct Session {
-    master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    /// Both ends ezCLI holds on the terminal. `None` once the child has exited
+    /// and its last output has been read: keeping them would hold a ConPTY (or a
+    /// pts) and a blocked reader thread for every finished tab that stays open.
+    master: Option<Box<dyn MasterPty + Send>>,
+    writer: Option<Box<dyn Write + Send>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     /// Cleared by the wait thread once the child exits.
     alive: Arc<AtomicBool>,
@@ -69,6 +72,11 @@ pub struct SpawnArgs {
 }
 
 const MAX_SESSIONS: usize = 24;
+
+/// How long the reader gets to collect a finished child's last output before the
+/// terminal is closed under it. On Windows the reader only sees the end of the
+/// stream once the ConPTY is closed, so without this it would wait for ever.
+const DRAIN_AFTER_EXIT: std::time::Duration = std::time::Duration::from_millis(400);
 
 /// Build the command exactly as an interactive agent session receives it.
 /// Keeping this separate makes the PATH contract testable without a Tauri
@@ -126,15 +134,39 @@ impl SessionStore {
     }
 
     pub fn spawn(&self, app: AppHandle, args: SpawnArgs) -> Result<u32> {
-        if self.sessions.len() >= MAX_SESSIONS {
+        let (data_event, exit_event) = (format!("pty-data:{}", args.id), format!("pty-exit:{}", args.id));
+        let (app_d, app_x) = (app.clone(), app);
+        self.spawn_with(
+            args,
+            crate::agents::effective_path(),
+            move |chunk| app_d.emit(&data_event, chunk).is_ok(),
+            move |code| {
+                let _ = app_x.emit(&exit_event, code);
+            },
+        )
+    }
+
+    /// `spawn` without the Tauri handle: output and the exit code go to the two
+    /// callbacks, so the whole life of a session can be tested.
+    fn spawn_with(
+        &self,
+        args: SpawnArgs,
+        child_path: OsString,
+        on_data: impl Fn(String) -> bool + Send + 'static,
+        on_exit: impl FnOnce(u32) + Send + 'static,
+    ) -> Result<u32> {
+        // A finished session that is still open in a tab holds no process, so it does not use a slot.
+        if self.live_count() >= MAX_SESSIONS {
             return Err(anyhow!(
                 "session limit reached ({}). Close a tab and try again.",
                 MAX_SESSIONS
             ));
         }
-        if self.sessions.contains_key(&args.id) {
+        if self.is_live(&args.id) {
             return Err(anyhow!("session id already in use"));
         }
+        // The same id again after its process ended: let go of the old record first.
+        self.sessions.remove(&args.id);
 
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
@@ -144,7 +176,7 @@ impl SessionStore {
             pixel_height: 0,
         })?;
 
-        let cmd = session_command(&args, crate::agents::effective_path());
+        let cmd = session_command(&args, child_path);
 
         let mut child = pair.slave.spawn_command(cmd)?;
         let killer = child.clone_killer();
@@ -160,8 +192,6 @@ impl SessionStore {
         // Reader thread: pump raw bytes to the frontend as UTF-8 chunks.
         // from_utf8_lossy preserves ANSI escapes verbatim (they are 7-bit)
         // and only touches bytes that would be invalid UTF-8 anyway.
-        let id_r = args.id.clone();
-        let app_r = app.clone();
         let tail = Arc::new(Mutex::new(Tail::default()));
         let tail_r = tail.clone();
         thread::spawn(move || {
@@ -174,7 +204,7 @@ impl SessionStore {
                             t.push(&buf[..n]);
                         }
                         let s = String::from_utf8_lossy(&buf[..n]).into_owned();
-                        if app_r.emit(&format!("pty-data:{}", id_r), s).is_err() {
+                        if !on_data(s) {
                             break;
                         }
                     }
@@ -186,24 +216,31 @@ impl SessionStore {
         // Wait thread: fire a single exit event once the child dies.
         let alive = Arc::new(AtomicBool::new(true));
         let alive_w = alive.clone();
-        let id_w = args.id.clone();
-        let app_w = app.clone();
+        let session = Arc::new(Mutex::new(Session {
+            master: Some(pair.master),
+            writer: Some(writer),
+            killer,
+            alive,
+            tail,
+        }));
+        let weak = Arc::downgrade(&session);
         thread::spawn(move || {
             let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
             alive_w.store(false, Ordering::SeqCst);
-            let _ = app_w.emit(&format!("pty-exit:{}", id_w), code);
+            on_exit(code);
+            // Let the reader take what the child printed last, then close our side
+            // of the terminal. The record stays (its tail is still readable) until
+            // the tab is closed; only the handles go.
+            thread::sleep(DRAIN_AFTER_EXIT);
+            if let Some(s) = weak.upgrade() {
+                if let Ok(mut s) = s.lock() {
+                    s.writer = None;
+                    s.master = None;
+                }
+            }
         });
 
-        self.sessions.insert(
-            args.id,
-            Arc::new(Mutex::new(Session {
-                master: pair.master,
-                writer,
-                killer,
-                alive,
-                tail,
-            })),
-        );
+        self.sessions.insert(args.id, session);
         Ok(pid)
     }
 
@@ -242,8 +279,9 @@ impl SessionStore {
             .get(id)
             .ok_or_else(|| anyhow!("unknown session"))?;
         let mut sess = entry.lock().map_err(|_| anyhow!("session lock poisoned"))?;
-        sess.writer.write_all(data)?;
-        sess.writer.flush()?;
+        let writer = sess.writer.as_mut().ok_or_else(|| anyhow!("session has exited"))?;
+        writer.write_all(data)?;
+        writer.flush()?;
         Ok(())
     }
 
@@ -253,7 +291,8 @@ impl SessionStore {
             .get(id)
             .ok_or_else(|| anyhow!("unknown session"))?;
         let sess = entry.lock().map_err(|_| anyhow!("session lock poisoned"))?;
-        sess.master.resize(PtySize {
+        let master = sess.master.as_ref().ok_or_else(|| anyhow!("session has exited"))?;
+        master.resize(PtySize {
             rows: rows.max(2),
             cols: cols.max(2),
             pixel_width: 0,
@@ -264,8 +303,14 @@ impl SessionStore {
 
     pub fn kill(&self, id: &str) -> Result<()> {
         if let Some((_, s)) = self.sessions.remove(id) {
-            let mut sess = s.lock().map_err(|_| anyhow!("session lock poisoned"))?;
-            let _ = sess.killer.kill();
+            // A poisoned lock must not leave the process running: take the session anyway.
+            let mut sess = s.lock().unwrap_or_else(|e| e.into_inner());
+            if sess.alive.load(Ordering::SeqCst) {
+                let _ = sess.killer.kill();
+            }
+            // Closing our side now ends the reader thread instead of leaving it to the wait thread.
+            sess.writer = None;
+            sess.master = None;
             Ok(())
         } else {
             Err(anyhow!("unknown session"))
@@ -291,6 +336,119 @@ mod tail_tests {
         let (seq2, all) = t.since(0);
         assert_eq!(seq2, 11 + TAIL_BYTES as u64 + 10);
         assert_eq!(all.len(), TAIL_BYTES);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod lifecycle_tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    fn args(id: &str, script: &str) -> SpawnArgs {
+        SpawnArgs { id: id.into(), cmd: "/bin/sh".into(), args: vec!["-c".into(), script.into()], cwd: None, env: vec![], cols: 80, rows: 24 }
+    }
+
+    fn path() -> OsString {
+        std::env::var_os("PATH").unwrap_or_default()
+    }
+
+    /// Start `script`; returns the channel its exit code arrives on and the output collected so far.
+    fn start(store: &SessionStore, id: &str, script: &str) -> (mpsc::Receiver<u32>, Arc<Mutex<String>>) {
+        let (tx, rx) = mpsc::channel();
+        let out = Arc::new(Mutex::new(String::new()));
+        let sink = out.clone();
+        store
+            .spawn_with(
+                args(id, script),
+                path(),
+                move |chunk| {
+                    sink.lock().unwrap().push_str(&chunk);
+                    true
+                },
+                move |code| {
+                    let _ = tx.send(code);
+                },
+            )
+            .expect("spawn");
+        (rx, out)
+    }
+
+    fn handles_released(store: &SessionStore, id: &str) -> bool {
+        let entry = store.sessions.get(id).expect("the record stays until the tab closes");
+        let s = entry.lock().unwrap();
+        s.master.is_none() && s.writer.is_none()
+    }
+
+    fn wait_until(what: &str, mut ok: impl FnMut() -> bool) {
+        for _ in 0..200 {
+            if ok() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        panic!("timed out waiting until {what}");
+    }
+
+    #[test]
+    fn a_finished_session_reports_its_code_keeps_its_output_and_lets_go_of_the_terminal() {
+        let store = SessionStore::new();
+        let (exit, out) = start(&store, "a", "printf 'last words'; exit 7");
+        assert_eq!(exit.recv_timeout(Duration::from_secs(10)).unwrap(), 7);
+        wait_until("the terminal handles are released", || handles_released(&store, "a"));
+        assert!(out.lock().unwrap().contains("last words"), "output printed just before exit must not be lost");
+        assert!(store.tail("a", 0).unwrap().1.contains("last words"), "the tail stays readable after exit");
+        assert!(!store.is_live("a"));
+        assert_eq!(store.live_count(), 0);
+        assert!(store.write("a", b"x").unwrap_err().to_string().contains("exited"));
+        assert!(store.resize("a", 100, 30).is_err());
+        store.kill("a").expect("closing a finished session is not an error");
+        assert!(store.kill("a").is_err(), "and it is gone afterwards");
+    }
+
+    #[test]
+    fn killing_a_running_session_ends_the_process_and_removes_the_record() {
+        let store = SessionStore::new();
+        let (exit, _) = start(&store, "k", "sleep 60");
+        assert!(store.is_live("k"));
+        store.kill("k").unwrap();
+        exit.recv_timeout(Duration::from_secs(10)).expect("the child must die when its session is killed");
+        assert!(store.sessions.is_empty());
+    }
+
+    #[test]
+    fn finished_sessions_free_their_slot_and_their_id() {
+        let store = SessionStore::new();
+        let mut exits = Vec::new();
+        for i in 0..MAX_SESSIONS {
+            exits.push(start(&store, &format!("s{i}"), "exit 0").0);
+        }
+        for e in &exits {
+            e.recv_timeout(Duration::from_secs(20)).unwrap();
+        }
+        // every slot is taken by a finished session that was never closed; a new one must still start
+        let (exit, _) = start(&store, "fresh", "exit 3");
+        assert_eq!(exit.recv_timeout(Duration::from_secs(10)).unwrap(), 3);
+        // and an id whose process ended can be used again (a restart keeps its id)
+        let (again, _) = start(&store, "s0", "exit 4");
+        assert_eq!(again.recv_timeout(Duration::from_secs(10)).unwrap(), 4);
+    }
+
+    #[test]
+    fn a_running_id_cannot_be_started_twice_and_live_sessions_are_capped() {
+        let store = SessionStore::new();
+        start(&store, "l0", "sleep 60");
+        let dup = store.spawn_with(args("l0", "exit 0"), path(), |_| true, |_| {});
+        assert!(dup.unwrap_err().to_string().contains("already in use"));
+        for i in 1..MAX_SESSIONS {
+            start(&store, &format!("l{i}"), "sleep 60");
+        }
+        let over = store.spawn_with(args("extra", "exit 0"), path(), |_| true, |_| {});
+        assert!(over.unwrap_err().to_string().contains("session limit"));
+        for i in 0..MAX_SESSIONS {
+            store.kill(&format!("l{i}")).unwrap();
+        }
+        assert_eq!(store.live_count(), 0);
     }
 }
 

@@ -227,6 +227,62 @@ fn windows_profile() -> (Option<u64>, Option<String>, Option<u64>) {
     }
 }
 
+/// How much of the graphics card's own memory is in use right now, by every program together.
+/// A model that needs more than what is left still loads, but part of it lands in system memory and
+/// it then runs several times slower; this is what lets the app say so.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuMemory {
+    pub used_mib: u64,
+    pub total_mib: u64,
+}
+
+/// `nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits`: one line per card.
+/// The card with the most memory is the one models run on.
+#[cfg_attr(not(any(windows, target_os = "linux", test)), allow(dead_code))]
+fn parse_gpu_memory(text: &str) -> Option<GpuMemory> {
+    let mut best: Option<GpuMemory> = None;
+    for line in text.lines() {
+        let Some((used, total)) = line.split_once(',') else { continue };
+        let (Ok(used_mib), Ok(total_mib)) = (used.trim().parse::<u64>(), total.trim().parse::<u64>()) else { continue };
+        if total_mib > 0 && best.as_ref().map_or(true, |b| total_mib > b.total_mib) {
+            best = Some(GpuMemory { used_mib: used_mib.min(total_mib), total_mib });
+        }
+    }
+    best
+}
+
+/// Current GPU memory use. NVIDIA only (it asks `nvidia-smi`, which the driver installs); `None` for
+/// other cards, when the tool is missing, or when it does not answer within three seconds.
+#[cfg(any(windows, target_os = "linux"))]
+pub fn gpu_memory() -> Option<GpuMemory> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+    let exe = crate::agents::resolve_command("nvidia-smi").map(std::path::PathBuf::from).or_else(|| {
+        // the driver puts it in System32, which a GUI app's PATH can lack
+        let p = std::path::PathBuf::from(std::env::var_os("SystemRoot")?).join("System32").join("nvidia-smi.exe");
+        p.is_file().then_some(p)
+    })?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = Command::new(exe);
+        cmd.args(["--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"]).stdin(Stdio::null()).stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // no console window
+        }
+        let _ = tx.send(cmd.output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned()));
+    });
+    parse_gpu_memory(&rx.recv_timeout(Duration::from_secs(3)).ok()??)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+pub fn gpu_memory() -> Option<GpuMemory> {
+    None
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,5 +320,25 @@ mod tests {
     fn this_linux_machine_reports_its_memory() {
         let p = detect();
         assert!(p.total_memory_gib.is_some_and(|g| g >= 1), "RAM was not read from /proc/meminfo: {p:?}");
+    }
+}
+
+#[cfg(test)]
+mod gpu_memory_tests {
+    use super::*;
+
+    #[test]
+    fn used_and_total_are_read_and_the_largest_card_wins() {
+        assert_eq!(parse_gpu_memory("10874, 12227\n"), Some(GpuMemory { used_mib: 10874, total_mib: 12227 }));
+        assert_eq!(parse_gpu_memory("300, 4096\n9000, 24564\n"), Some(GpuMemory { used_mib: 9000, total_mib: 24564 }));
+    }
+
+    #[test]
+    fn junk_an_empty_answer_and_impossible_numbers_are_handled() {
+        assert_eq!(parse_gpu_memory(""), None);
+        assert_eq!(parse_gpu_memory("No devices were found\n"), None);
+        assert_eq!(parse_gpu_memory("[N/A], [N/A]\n"), None);
+        assert_eq!(parse_gpu_memory("0, 0\n"), None);
+        assert_eq!(parse_gpu_memory("99999, 8192\n").unwrap().used_mib, 8192, "use never reads as more than the card has");
     }
 }

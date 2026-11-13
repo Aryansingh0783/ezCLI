@@ -4,10 +4,49 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-11-04 by Claude (llama-cli crash investigation)
+Last updated: 2026-11-12 by Claude (front end moved to Vite + TypeScript; see the block directly below)
 
 > **Staleness notice:** sections 0-6 below describe v1.2.1 and are historical. Use the block below
 > for the current state, and `git log` for history between v2.2 and v5.12.
+
+## v5.13.0 (2026-11-13): front end layout since the modernization PR
+
+Paths such as `public/app.js` and `public/features/*.js` in the notes below are now `src/app.ts` and
+`src/features/*.ts`. What changed:
+
+- **Build:** Vite + TypeScript. `npm ci`, then `npm run build` writes `dist/`, which Tauri embeds
+  (`frontendDist: ../dist`; `cargo tauri build` and `cargo tauri dev` run the npm scripts themselves).
+  Node is needed to build and test only. `public/` now holds static files only (xterm, fonts, icons).
+  Any `cargo` command needs `dist/` to exist first, because the Tauri macro embeds it.
+- **Modules:** every old script is an ES module under `src/`; `src/main.ts` imports them in the old
+  load order. `src/late.ts` is the one place modules reach each other when an import would be circular.
+- **IPC:** `scripts/gen-ipc.mjs` reads the `#[tauri::command]` functions and writes `src/core/ipc.gen.ts`
+  (`npm run ipc`; CI runs `npm run ipc:check`). Call the backend through `invoke` from `src/core/ipc.ts`.
+- **State:** `src/stores/app.ts` (signals from `@preact/signals-core`) holds sessions, agents and prefs.
+- **Chat drawing:** `src/core/markdown.ts` splits a reply into blocks and `src/core/stream-view.ts` draws
+  them: a finished block is never touched again, the block being typed is appended to. `src/core/thinking.ts`
+  splits reasoning from the answer.
+- **Local-model crash:** `src/core/crash.ts`. The first llama.cpp crash (0xC0000005, 139, 134) in a GPU mode
+  restarts the same model in CPU mode once and says so; a crash on the CPU gets advice, not a restart.
+  **Not verified on Windows hardware.** The cause of the qwen4exp crash is still unknown.
+- **PTY:** `pty_mgr.rs` closes its side of the terminal 400 ms after the child exits (before, a finished
+  tab kept its ConPTY and reader thread until it was closed) and finished sessions no longer use one of
+  the 24 slots. Tested on Linux only; the ConPTY path was not run.
+- **Models list:** `local_models.rs` leaves out `.gguf` files whose first bytes are not a GGUF header.
+- **Look:** `src/styles/ui.css` is the interface (its header lists the design rules); `src/styles/legacy.css`
+  is the old CSS inside `@layer legacy`, kept for screens not redrawn yet. Sidebar + single title bar
+  (`src/features/shell.ts` moves the session's controls into it; the tab strip is in the DOM but not shown).
+  Dark and light themes, `prefs.look` = system | dark | light. Fonts: IBM Plex Sans and Mono, bundled.
+- **Chat turn cutting:** `src/core/echo.ts` finds where each sent message was echoed; it prefers the prompt
+  line, so a short message is not matched to the model quoting it. llama.cpp's speed line is removed from answers.
+- **Local-model speed:** `gpu_memory` command (nvidia-smi) and `src/features/gpu.ts`: tokens/s and GPU memory in the
+  status bar, and a warning when a model starts without enough free GPU memory. Measured on the RTX 5070: Qwen3 8B Q8_0
+  ran at 18.1 t/s loaded beside other GPU programs and 46.5 t/s after a restart with them closed.
+- **Web:** a message that says not to search the web is obeyed for that message (`WebSearch.noWeb`).
+- **Not verified:** the redesigned interface has only run in headless Chrome; crash failover has never fired on real
+  hardware; the ConPTY handle release was compiled and unit-tested on Windows CI but not watched in the app.
+- **Tests:** `npm test` (Vitest, `src/**/*.test.ts`), `npm run test:smoke` (Playwright, needs `npm run build`
+  first; `PW_CHROME=/path/to/chrome` to use an installed browser), `cargo test --lib` in `src-tauri`.
 
 ## Current state (v5.12.13, 2026-11-03)
 
@@ -65,6 +104,13 @@ Last updated: 2026-11-04 by Claude (llama-cli crash investigation)
   - `public/features/websearch.js` is the text-tool protocol for local models (`SEARCH`, `BROWSE`, `SKILL`, `RUN`; `LIST`/`READ`
     on PR #40). `public/thinking.js` splits reasoning from answers; `public/features/chat.js` renders it.
   - Windows llama.cpp update script (PowerShell, worked on the user's PC) is the same logic as the in-app installer.
+- **Knowledge (RAG) for local models:** `rag.rs` indexes folders/files the user picks (text, code, md, csv, json; passages of ~900 chars)
+  into `~/.ezcli/knowledge/index.json` and searches them with BM25 (no embedding model, no download). `public/features/knowledge.js`
+  adds the "Knowledge" button/panel for the four local agents; matching passages are appended to each question, and the model may
+  also reply `KNOW: <query>` (handled in `websearch.js` like `SEARCH`). Verified: `rag.rs` unit tests + clippy `-D warnings` in a
+  scratch crate, `test/knowledge.test.cjs`, UI smoke. **Not verified:** the Tauri glue in `lib.rs` (`rag_*` commands) was not compiled
+  on this PC (no linker for Tauri); CI must check it. Never run end to end through a real model or the real window. Not built: embeddings,
+  PDF/docx, re-index on file change (add the folder again to refresh).
 - **Release process:** user says "merge pr N" / "release X.Y.Z". Merge (squash), bump the version in
   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `Cargo.lock`, run the "Tag and release" workflow, wait
   about 7-10 min, check assets, verify the `.deb` sha256, then bump the Arch PKGBUILD and `.SRCINFO`. Tag pushes via the
