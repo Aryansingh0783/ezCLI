@@ -17,6 +17,14 @@ function mountTitleBar() {
   crumb.className = 'crumb';
   crumb.innerHTML = '<span class="crumb-proj" id="crumbProj"></span><span class="crumb-sep" aria-hidden="true">/</span><span class="crumb-here" id="crumbHere">New session</span>';
   fill.before(crumb, head);
+  // reply speed and GPU memory sit beside the session they describe; there is no status bar
+  for (const id of ['stSpeed', 'stVram']) {
+    const el = $(id);
+    if (el) {
+      el.classList.add('head-stat');
+      fill.before(el);
+    }
+  }
 
   const more = document.createElement('button');
   more.type = 'button';
