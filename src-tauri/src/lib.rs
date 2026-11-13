@@ -37,6 +37,7 @@ mod remote;
 mod system_profile;
 mod transcripts;
 mod usage_live;
+mod comfy;
 mod voicestudio;
 mod tray;
 mod winstate;
@@ -745,6 +746,62 @@ async fn voicestudio_status(port: Option<u16>) -> VoiceStudioStatus {
     VoiceStudioStatus { running, port, mcp_url: voicestudio::mcp_url(port) }
 }
 
+/// One finished picture or video, copied out of ComfyUI.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ComfyFile {
+    /// Where the copy was saved on this computer.
+    path: String,
+    mime: String,
+    /// The file itself, for showing in the panel.
+    data_url: String,
+}
+
+fn comfy_port(port: Option<u16>) -> u16 {
+    port.filter(|p| comfy::valid_port(*p)).unwrap_or(comfy::DEFAULT_PORT)
+}
+
+/// Read from the ComfyUI running on this computer: `/system_stats`, `/queue`, `/models/<folder>` or
+/// `/history/<id>`. `None` when it is not running or the path is not one of those.
+#[tauri::command]
+async fn comfy_get(port: Option<u16>, path: String) -> Option<String> {
+    let port = comfy_port(port);
+    tauri::async_runtime::spawn_blocking(move || comfy::get(port, &path)).await.ok().flatten()
+}
+
+/// Queue a job on the local ComfyUI. `workflow` is the job in ComfyUI's API format. Returns ComfyUI's
+/// reply, which is either the job's id or the reason it was refused.
+#[tauri::command]
+async fn comfy_queue(port: Option<u16>, workflow: String) -> Result<String, String> {
+    let port = comfy_port(port);
+    let prompt: serde_json::Value = serde_json::from_str(&workflow).map_err(|e| e.to_string())?;
+    let body = serde_json::json!({ "prompt": prompt, "client_id": "ezcli" }).to_string();
+    tauri::async_runtime::spawn_blocking(move || comfy::post(port, "/prompt", &body)).await.map_err(|e| e.to_string())?
+}
+
+/// Stop the job the local ComfyUI is running.
+#[tauri::command]
+async fn comfy_interrupt(port: Option<u16>) -> Result<(), String> {
+    let port = comfy_port(port);
+    tauri::async_runtime::spawn_blocking(move || comfy::post(port, "/interrupt", "{}").map(|_| ())).await.map_err(|e| e.to_string())?
+}
+
+/// Copy a finished picture or video into the Pictures or Videos folder and return it.
+#[tauri::command]
+async fn comfy_fetch(port: Option<u16>, filename: String, subfolder: String) -> Result<ComfyFile, String> {
+    use base64::Engine;
+    let port = comfy_port(port);
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = comfy::fetch(port, &filename, &subfolder)?;
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let mime = comfy::mime(&filename).to_string();
+        let data_url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+        Ok(ComfyFile { path: path.to_string_lossy().into_owned(), mime, data_url })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn detect_system_profile() -> system_profile::SystemProfile {
     system_profile::detect()
@@ -1190,6 +1247,10 @@ pub fn run() {
             detect_backends,
             detect_system_profile,
             voicestudio_status,
+            comfy_get,
+            comfy_queue,
+            comfy_interrupt,
+            comfy_fetch,
             gpu_memory,
             agent_models,
             list_imports,

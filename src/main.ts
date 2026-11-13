@@ -41,4 +41,5 @@ import './features/claude';
 import './features/shell';
 import './features/gpu';
 import './features/voicestudio';
+import './features/create';
 import './debug';
