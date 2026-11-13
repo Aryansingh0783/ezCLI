@@ -41,8 +41,8 @@ const DEFAULT_PREFS = {
   zoom: 1,
   spaces: [],
   activeSpace: null,
-  explorerOpen: true,
-  explorerWidth: 340,
+  explorerOpen: false,
+  explorerWidth: 440,
   explorerTab: 'files',
   agentId: null,
   // First-run detection is informative, not a gate. We persist dismissal too
@@ -695,11 +695,11 @@ async function boot() {
   applyTheme();
   applyZoom();
   applyExplorerWidth();
-  // 5.14 puts files and changes beside the conversation; open it once for people upgrading, then it is theirs
-  if (!prefs.filesBeside) {
-    prefs.filesBeside = true;
-    prefs.explorerOpen = true;
-    prefs.explorerWidth = Math.min(prefs.explorerWidth || 340, 340);
+  // 5.14 opened the files panel for everyone once; put it back the way it was for those people, once
+  if (prefs.filesBeside) {
+    delete prefs.filesBeside;
+    prefs.explorerOpen = false;
+    prefs.explorerWidth = 440;
   }
   setExplorerOpen(prefs.explorerOpen, { quiet: true });
   renderAll();

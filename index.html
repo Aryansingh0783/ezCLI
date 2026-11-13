@@ -386,6 +386,46 @@
       <form method="dialog"><button class="btn primary">Done</button></form>
     </dialog>
 
+    <dialog class="sheet wide create-sheet" id="createSheet" aria-labelledby="createTitle">
+      <div class="create-head">
+        <h2 id="createTitle">Create</h2>
+        <div class="segmented" id="createKind" role="radiogroup" aria-label="What to make">
+          <button type="button" class="theme-option" data-kind="image" role="radio">Picture</button>
+          <button type="button" class="theme-option" data-kind="video" role="radio">Video</button>
+        </div>
+      </div>
+      <p class="note">Made on this computer by <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noopener">ComfyUI</a>, the open-source generator. No account, no key, nothing uploaded.</p>
+      <div class="create-setup" id="createSetup" hidden>
+        <p id="createSetupText"></p>
+        <ul class="create-needed" id="createNeeded"></ul>
+        <div class="row-actions" id="createSetupActions"></div>
+      </div>
+      <div class="create-form" id="createForm">
+        <textarea id="createPrompt" rows="3" placeholder="Describe what you want to see" aria-label="Description"></textarea>
+        <div class="create-row">
+          <label id="createModelWrap">Model <select id="createModel" class="select"></select></label>
+          <label>Shape
+            <select id="createShape" class="select">
+              <option value="wide">Wide</option>
+              <option value="square">Square</option>
+              <option value="tall">Tall</option>
+            </select></label>
+          <label id="createLengthWrap" hidden>Length
+            <select id="createLength" class="select">
+              <option value="3">3 seconds</option>
+              <option value="5">5 seconds</option>
+            </select></label>
+          <span class="grow"></span>
+          <button type="button" class="btn quiet" id="createStop" hidden>Stop</button>
+          <button type="button" class="btn primary" id="createGo">Make it</button>
+        </div>
+      </div>
+      <p class="create-status" id="createStatus" role="status"></p>
+      <div class="create-result" id="createResult"></div>
+      <div class="create-recent" id="createRecent"></div>
+      <form method="dialog" class="row-actions end"><button class="btn">Close</button></form>
+    </dialog>
+
     <dialog class="sheet wide" id="usageSheet">
       <h2>Session usage</h2>
       <p class="note">

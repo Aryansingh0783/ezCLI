@@ -32,7 +32,7 @@ const WIN_MODEL = 'M:\\AI\\models\\Qwen3.8-27B-Uncensored-Q4_K_M.gguf';
 const POSIX_MODEL = '/home/demo/models/Qwen3-8B-Q4_K_M.gguf';
 
 const SIZES = [[1280, 800], [900, 600], [760, 480]];
-const SCREENS = [['modelsBtn', 'Local models'], ['settingsBtn', 'Settings'], ['helpBtn', 'Keys'], ['brainBtn', 'Brain']];
+const SCREENS = [['modelsBtn', 'Local models'], ['settingsBtn', 'Settings'], ['helpBtn', 'Keys'], ['brainBtn', 'Brain'], ['createBtn', 'Create']];
 
 export function serve() {
   return new Promise((resolve) => {
@@ -81,6 +81,17 @@ export function mockScript(agentList) {
         await new Promise((r) => setTimeout(r, 150));
         // the backend only offers (and launches) model files it found by scanning
         if (n === 'agent_models') return a && a.agentId === 'gguf' ? ${JSON.stringify([WIN_MODEL, POSIX_MODEL])} : [];
+        // a ComfyUI that is open, has one checkpoint and finishes every job at once
+        if (n === 'comfy_get') {
+          if (window.__noComfy) return null;
+          if (a.path === '/system_stats') return '{"system":{"comfyui_version":"0.21.1"}}';
+          if (a.path === '/models/checkpoints') return '["sd_xl_base_1.0.safetensors"]';
+          if (a.path.startsWith('/models/')) return '[]';
+          if (a.path.startsWith('/history/')) return JSON.stringify({ job1: { outputs: { 7: { images: [{ filename: 'ezCLI_00001_.png', subfolder: '', type: 'output' }] } }, status: { status_str: 'success', completed: true } } });
+          return '{}';
+        }
+        if (n === 'comfy_queue') return '{"prompt_id":"job1","node_errors":{}}';
+        if (n === 'comfy_fetch') return { path: '/home/demo/Pictures/ezCLI/ezCLI_00001_.png', mime: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
         if (n === 'start_session') return { command: 'llama-cli', cwd: '/home/demo/project', pcControl: false, connectorsActive: [] };
         if (n in answers) return answers[n];
         if (/^(list|detect|sessions|spaces)/.test(n)) return [];
@@ -186,6 +197,34 @@ if (direct) (async () => {
           if (!buttons.afterOne.includes('Delete the file?')) problems.push(`${tag}: the first Uninstall click did not ask again`);
           if (buttons.deletedEarly) problems.push(`${tag}: a model file was deleted on the first click`);
           if (!buttons.deleted) problems.push(`${tag}: the second click did not delete the model file`);
+        }
+        if (btn === 'createBtn') {
+          // with ComfyUI open and a model installed: a description becomes a queued job and the picture is shown
+          await page.waitForTimeout(900);
+          await page.fill('#createPrompt', 'a red bicycle');
+          await page.click('#createGo');
+          await page.waitForSelector('#createResult img', { timeout: 8000 }).catch(() => problems.push(`${tag}: Create did not show the finished picture`));
+          const made = await page.evaluate(() => {
+            const q = (window.__calls || []).filter((c) => c[0] === 'comfy_queue').pop();
+            return { job: q ? q[1].workflow : '', saved: (document.querySelector('.create-saved') || {}).textContent || '' };
+          });
+          if (!/CheckpointLoaderSimple/.test(made.job) || !/a red bicycle/.test(made.job) || !/sd_xl_base_1\.0/.test(made.job)) problems.push(`${tag}: Create queued the wrong job: ${made.job.slice(0, 120)}`);
+          if (!/Pictures/.test(made.saved)) problems.push(`${tag}: Create did not say where the picture was saved`);
+          await overflow('Create/made');
+          // video without the Wan files: the three files are named, nothing is queued
+          await page.click('#createKind [data-kind="video"]');
+          await page.waitForTimeout(150);
+          const need = await page.$$eval('#createNeeded li', (l) => l.length);
+          if (need !== 3) problems.push(`${tag}: Create/video listed ${need} needed files, not 3`);
+          await overflow('Create/video');
+          // ComfyUI closed: says so and offers to get it
+          await page.evaluate(() => { window.__noComfy = true; });
+          await page.click('[data-create="check"]');
+          await page.waitForTimeout(1100);
+          if (!(await page.$('[data-create="get"]'))) problems.push(`${tag}: Create did not offer ComfyUI when it is not running`);
+          await overflow('Create/none');
+          await page.evaluate(() => { window.__noComfy = false; });
+          await page.click('#createKind [data-kind="image"]');
         }
         await page.keyboard.press('Escape');
         await page.waitForTimeout(120);
