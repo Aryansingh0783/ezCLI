@@ -4,10 +4,25 @@ This file lets work continue across assistants (Claude ⇄ Codex) and across
 sessions. **Whoever picks up work reads this top to bottom first, then updates
 the "Current status" and "Session log" sections before handing back.**
 
-Last updated: 2026-11-12 by Claude (front end moved to Vite + TypeScript; see the block directly below)
+Last updated: 2026-11-13 by Claude (v5.14.0; see the block directly below)
 
 > **Staleness notice:** sections 0-6 below describe v1.2.1 and are historical. Use the block below
 > for the current state, and `git log` for history between v2.2 and v5.12.
+
+## v5.14.0 (2026-11-13)
+
+- **Automatic continue:** `src/core/failover.ts` decides, `Router.auto` in `src/features/router.ts` acts. When
+  a free model runs out of usage the same chat continues on the next free model (same agent: restart with
+  the model swapped; another agent: a new session opened with the conversation as its first prompt). Never
+  picks anything paid, at most 4 switches per chat, off with Settings > "Continue on another free model".
+- **VoiceStudio:** `src-tauri/src/voicestudio.rs` finds a running VoiceStudio (discovery document on port
+  3900); Settings offers to connect it, which adds its MCP address to `prefs.connectors`. ezCLI does not
+  install or start VoiceStudio.
+- **Interface:** softer pass over `src/styles/ui.css` (rules at the top of that file): teal accent, filled
+  rounded surfaces instead of outlines, no status bar (reply speed and GPU memory sit in the title bar),
+  session rows show the last thing asked, the files panel opens beside the chat by default.
+- **Not yet run on a real machine:** this interface, the automatic continue against a real usage limit, and
+  VoiceStudio driven by an agent launched from ezCLI. Do that before building on any of them.
 
 ## v5.13.0 (2026-11-13): front end layout since the modernization PR
 

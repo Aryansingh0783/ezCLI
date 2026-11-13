@@ -1,7 +1,7 @@
 {
   "name": "ezcli-frontend",
   "private": true,
-  "version": "5.13.0",
+  "version": "5.14.0",
   "type": "module",
   "description": "Build tooling for the ezCLI window. Node is needed to build and test only; the shipped app has no Node runtime.",
   "scripts": {

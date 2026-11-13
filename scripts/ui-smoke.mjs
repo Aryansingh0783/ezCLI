@@ -54,6 +54,7 @@ export function mockScript(agentList) {
   const answers = {
     list_agents: { agents: agentList, cwd: '/home/demo/project', sep: '/', config_path: '' },
     git_status: { repo: false, files: [] },
+    list_dir: { entries: [{ name: 'src', path: '/home/demo/project/src', dir: true, size: null }, { name: 'README.md', path: '/home/demo/project/README.md', dir: false, size: 1200 }, { name: 'package.json', path: '/home/demo/project/package.json', dir: false, size: 800 }] },
     open_targets: [{ id: 'files', label: 'File manager' }, { id: 'terminal', label: 'Terminal' }],
     graphify_status: { installed: true, installer: '', agents: ['claude'], version: '1' },
     brain_status: { projects: 0, built: false },

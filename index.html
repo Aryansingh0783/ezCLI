@@ -333,6 +333,7 @@
         <h3>General</h3>
         <label class="term-pref-row"><span>Your name (for the greeting)</span>
           <input id="prefName" class="select" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Optional" aria-label="Your name" /></label>
+        <label class="toggle-row"><input type="checkbox" id="prefLimitAuto" /> <span>When a free model runs out of usage, continue the chat automatically with the next free model or agent. Nothing paid is ever chosen for you.</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefChat" /> <span>Show sessions as a chat. The terminal is one click away in the header.</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefNotifications" /> <span>Notify me when a long task finishes in a tab I'm not looking at</span></label>
         <label class="toggle-row"><input type="checkbox" id="prefCloseToTray" /> <span>Keep running in the tray when I close the window</span></label>
@@ -367,6 +368,12 @@
         </div>
         <pre class="install-log" id="graphifyLog" hidden></pre>
         <label class="toggle-row"><input type="checkbox" id="graphAuto" /> <span>Keep each project’s graph up to date while agents work on it, and fold it into the second brain (needs Graphify installed)</span></label>
+      </div>
+      <div class="settings-section" id="voiceStudioSection">
+        <h3>VoiceStudio</h3>
+        <p class="note">Give your agents a voice. <a href="https://github.com/debpalash/voicestudio" target="_blank" rel="noopener">VoiceStudio</a> is a free app that runs on your computer and does speech, transcription and voice cloning. ezCLI connects to it while it is open; it does not install it or send it anything itself.</p>
+        <p class="vs-state" id="vsState" role="status"></p>
+        <div class="row-actions" id="vsActions"></div>
       </div>
       <div class="settings-section">
         <h3>Connectors</h3>

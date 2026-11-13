@@ -1,10 +1,15 @@
-import { $, ICONS, __set_sendComposer, active, agent, createSession, esc, hooks, prefs, renderSessionAgentNotice, selectSession, sendComposer, state, toast } from '../app';
+import { $, ICONS, __set_sendComposer, active, agent, allModels, createSession, esc, hooks, modelLabel, modelPrice, pick, prefs, renderSessionAgentNotice, restartSession, savePrefs, selectSession, sendComposer, state, toast } from '../app';
+import { failoverPlan, handoffText, modelKey } from '../core/failover';
 /* Usage-limit router.
  *
  * When an agent's latest output says it ran out of usage, a banner offers to
  * continue the task in another installed agent, free ones first. The new
  * tab gets a hand-off prompt built from your recent messages in the old tab.
- * Nothing switches automatically, and the banner can be dismissed. */
+ *
+ * With "continue automatically" on (Settings, on by default) the app does not wait for the click
+ * when something free is available: it moves to the next free model of the same agent, resuming the
+ * CLI's own conversation where it can, and otherwise to another free agent with the conversation so
+ * far. It never moves to anything paid by itself; see core/failover.ts. */
 
 const LIMIT_PATTERNS = [
   /\b(usage|rate|session|weekly|daily|monthly|5[- ]hour|hourly)\s+limits?\s+(reached|exceeded|hit)\b/i,
@@ -62,7 +67,55 @@ const Router = (() => {
     if (next) toast(`Continuing in ${agent(agentId).label}. It got a summary of your recent requests.`, 'ok');
   }
 
-  return { looksLimited, banner, route };
+  /** What was said in this tab: the chat view's turns when it has them, else what was typed. */
+  function turnsOf(s) {
+    const chat = s.chat && s.chat.turns ? s.chat.turns.filter((t) => !t.auto).map((t) => ({ text: t.text, reply: t.reply })) : [];
+    return chat.length ? chat : (s.prompts || []).map((text) => ({ text, reply: null }));
+  }
+
+  /** Switch without asking, when the plan finds something free. Returns whether it did. */
+  async function auto(s) {
+    const a = agent(s.agentId);
+    if (!a) return false;
+    const tried = s.limitTried || [];
+    const plan = failoverPlan({
+      agentId: a.id,
+      modelId: s.modelId || '',
+      models: allModels(a).map((m) => ({ id: m.id, free: modelPrice(a, m.id) === 'Free' })),
+      agents: state.agents.map((x) => ({
+        id: x.id,
+        free: Boolean(x.free),
+        available: Boolean(x.available),
+        sameService: x.command === a.command && x.vendor === a.vendor,
+        needsModel: Boolean(x.requiresModelSelection) && !pick(x).model
+      })),
+      tried,
+      canResume: Boolean(a.sessionResume && s.providerSessionId)
+    });
+    if (plan.kind === 'none') return false;
+    const from = `${a.label}${s.modelId ? ` (${modelLabel(a, s.modelId)})` : ''}`;
+    s.limitHit = false;
+    if (plan.kind === 'model') {
+      s.limitTried = [...tried, modelKey(a.id, s.modelId || '')];
+      s.modelId = plan.modelId;
+      // the CLI reopens its own conversation where it can; otherwise the new model is told what was said
+      s.resumeNext = plan.resume;
+      s.pendingPrompt = plan.resume ? 'The previous model ran out of usage. Continue from where it stopped.' : handoffText(from, turnsOf(s));
+      const ok = await restartSession(s);
+      if (ok === false) return false;
+      // a resumed CLI reprints the conversation, limit message included: give it a minute before that counts again
+      s.limitShownAt = Date.now() - 4 * 60 * 1000;
+      toast(`${from} ran out of usage. Continuing this chat with ${modelLabel(a, plan.modelId)}.`, 'ok');
+      return true;
+    }
+    const next = await createSession(plan.agentId, { prompt: handoffText(from, turnsOf(s)), cwd: s.cwd, spaceId: s.spaceId, title: s.title });
+    if (!next) return false;
+    next.limitTried = [...tried, modelKey(a.id, s.modelId || ''), a.id];
+    toast(`${from} ran out of usage. Continuing this chat in ${agent(plan.agentId).label}, which was given the conversation so far.`, 'ok');
+    return true;
+  }
+
+  return { looksLimited, banner, route, auto };
 })();
 
 hooks.output.push((s, chunk) => {
@@ -77,6 +130,16 @@ hooks.idle.push((s) => {
   if (!Router.looksLimited(text)) return;
   s.limitHit = true;
   s.limitShownAt = Date.now();
+  if (prefs.limitAuto !== false) {
+    Router.auto(s)
+      .then((switched) => {
+        if (switched) return;
+        if (s.id === state.activeId) Router.banner(s);
+        else toast(`${s.title} looks out of usage. Open it to continue in another agent.`, 'error', () => selectSession(s.id));
+      })
+      .catch(() => s.id === state.activeId && Router.banner(s));
+    return;
+  }
   if (s.id === state.activeId) Router.banner(s);
   else toast(`${s.title} looks out of usage. Open it to continue in another agent.`, 'error', () => selectSession(s.id));
 });
@@ -103,6 +166,14 @@ hooks.launched.push((s) => {
 });
 
 hooks.boot.push(() => {
+  const autoBox = $('prefLimitAuto') as HTMLInputElement | null;
+  if (autoBox) {
+    autoBox.checked = prefs.limitAuto !== false;
+    autoBox.addEventListener('change', () => {
+      prefs.limitAuto = autoBox.checked;
+      savePrefs();
+    });
+  }
   $('sessionAgentNotice').addEventListener('click', (e) => {
     const s = active();
     if (!s) return;
