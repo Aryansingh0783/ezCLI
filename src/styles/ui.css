@@ -1902,3 +1902,14 @@ select.select {
 .rail-session:hover .rail-session-meta {
   display: none;
 }
+
+.vs-state {
+  margin: 0 0 8px;
+  color: var(--c-2);
+}
+.vs-state[data-tone='ok'] {
+  color: var(--c-run);
+}
+.vs-state[data-tone='warn'] {
+  color: var(--c-warn);
+}

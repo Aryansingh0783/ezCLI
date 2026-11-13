@@ -492,6 +492,13 @@ export interface VideoFrames {
   frames: Frame[];
 }
 
+/** `lib::VoiceStudioStatus` in src-tauri/src/lib.rs */
+export interface VoiceStudioStatus {
+  running: boolean;
+  port: number;
+  mcpUrl: string;
+}
+
 /** Every command the window may call: its arguments (`args`) and what it resolves to (`result`). */
 export interface Commands {
   /** Show a page in the agent browser window without stealing focus (a local model's search or page read). (lib.rs) */
@@ -522,7 +529,7 @@ export interface Commands {
   delete_transcript: { args: { id: string }; result: void };
   /** lib.rs */
   detect_backends: { args: Record<string, never>; result: BackendReport };
-  /** Return coarse, read-only local hardware facts for recommendation UI. This never starts Ollama, scans files, or calls an external executable. (lib.rs) */
+  /** lib.rs */
   detect_system_profile: { args: Record<string, never>; result: SystemProfile };
   /** Open Windows voice typing (Win+H) for the focused text box. Windows does the speech recognition; ezCLI only presses the shortcut. (features.rs) */
   dictate: { args: Record<string, never>; result: void };
@@ -690,6 +697,8 @@ export interface Commands {
   team_load: { args: { id: string }; result: string };
   /** Save a team chat (the whole conversation as JSON) on this PC. (features.rs) */
   team_save: { args: { id: string; json: string }; result: void };
+  /** lib.rs */
+  voicestudio_status: { args: { port?: number | null }; result: VoiceStudioStatus };
   /** Whether the chat view can read this agent's conversation. Search the web and read the top pages for `query`, as one block of text for a model that has no web access. (lib.rs) */
   web_context: { args: { query: string; today: string }; result: string | null };
   /** One web page as plain text, for a local model that asked to open it. (lib.rs) */
@@ -798,6 +807,7 @@ export const COMMAND_NAMES = [
   'team_delete',
   'team_load',
   'team_save',
+  'voicestudio_status',
   'web_context',
   'web_read',
   'write_text_file'
