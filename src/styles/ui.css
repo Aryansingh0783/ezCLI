@@ -1974,10 +1974,13 @@ select.select {
   gap: 2px 12px;
   align-items: baseline;
 }
-.create-needed a {
-  font-family: var(--f-mono);
+.create-needed b {
+  font-weight: 500;
+}
+.create-progress {
+  align-self: center;
   font-size: 13px;
-  color: var(--c-acc);
+  color: var(--c-2);
 }
 .create-needed span {
   font-size: 13px;

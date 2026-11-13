@@ -45,7 +45,7 @@ pub struct Progress {
     pub note: String,
 }
 
-fn prog(key: &str, state: &'static str) -> Progress {
+pub(crate) fn prog(key: &str, state: &'static str) -> Progress {
     Progress { key: key.to_string(), state, bytes: 0, total: 0, path: String::new(), error: String::new(), note: String::new() }
 }
 
@@ -156,7 +156,7 @@ pub fn files(repo: &str) -> Result<Vec<RepoFile>, String> {
     Ok(parse_files(&json(&format!("https://huggingface.co/api/models/{repo}/tree/main?recursive=true"))?))
 }
 
-fn emit(app: &AppHandle, p: Progress) {
+pub(crate) fn emit(app: &AppHandle, p: Progress) {
     remember(&p);
     let _ = app.emit("model-download", p);
 }
@@ -269,7 +269,7 @@ pub fn fetch(sink: &dyn Fn(Progress), t: &Transfer, cancel: &AtomicBool, opts: &
             let _ = child.wait();
             let why = said(&mut reader);
             return Err(format!(
-                "No data arrived from Hugging Face for {} seconds, so the download was stopped{}. Check your internet connection, proxy, VPN or antivirus, then try again.",
+                "No data arrived for {} seconds, so the download was stopped{}. Check your internet connection, proxy, VPN or antivirus, then try again.",
                 opts.give_up_secs,
                 if why.is_empty() { String::new() } else { format!(" ({why})") }
             ));
@@ -320,11 +320,11 @@ pub fn already_there(dest: &Path, size: u64) -> Option<Result<String, String>> {
     })
 }
 
-type Job = Box<dyn FnOnce(&AppHandle, &str, &AtomicBool) -> Result<String, String> + Send + 'static>;
+pub(crate) type Job = Box<dyn FnOnce(&AppHandle, &str, &AtomicBool) -> Result<String, String> + Send + 'static>;
 
 /// Run `job` on its own thread. Whatever happens (success, failure, cancel, even a panic) the screen is told how
 /// it ended, so a download can never be left looking busy.
-fn start(app: AppHandle, key: String, job: Job) -> Result<(), String> {
+pub(crate) fn start(app: AppHandle, key: String, job: Job) -> Result<(), String> {
     let flag = Arc::new(AtomicBool::new(false));
     {
         let mut g = RUNNING.lock().unwrap();

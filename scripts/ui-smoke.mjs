@@ -81,17 +81,18 @@ export function mockScript(agentList) {
         await new Promise((r) => setTimeout(r, 150));
         // the backend only offers (and launches) model files it found by scanning
         if (n === 'agent_models') return a && a.agentId === 'gguf' ? ${JSON.stringify([WIN_MODEL, POSIX_MODEL])} : [];
-        // a ComfyUI that is open, has one checkpoint and finishes every job at once
-        if (n === 'comfy_get') {
-          if (window.__noComfy) return null;
-          if (a.path === '/system_stats') return '{"system":{"comfyui_version":"0.21.1"}}';
-          if (a.path === '/models/checkpoints') return '["sd_xl_base_1.0.safetensors"]';
-          if (a.path.startsWith('/models/')) return '[]';
-          if (a.path.startsWith('/history/')) return JSON.stringify({ job1: { outputs: { 7: { images: [{ filename: 'ezCLI_00001_.png', subfolder: '', type: 'output' }] } }, status: { status_str: 'success', completed: true } } });
-          return '{}';
+        // pictures and video: window.__studio picks the situation the Create panel is in
+        if (n === 'studio_info') {
+          const mode = window.__studio || 'ready';
+          const models = [['sdxl', 'image', 'Stable Diffusion XL', 6.9], ['wan-model', 'video', 'Wan 2.2 video model', 10], ['wan-text', 'video', 'Wan text encoder', 6.7], ['wan-vae', 'video', 'Wan 2.2 decoder', 1.4]]
+            .map(([id, kind, label, gib]) => ({ id, kind, label, name: id + '.safetensors', gib, present: mode === 'ready' && kind === 'image' }));
+          const running = mode !== 'fresh';
+          return { status: { supported: true, installed: running, running, port: running ? 8317 : 0, managed: running, models, folder: 'C:/Users/demo/.ezcli/studio' }, checkpoints: mode === 'ready' ? ['sd_xl_base_1.0.safetensors'] : [], videoReady: false };
         }
-        if (n === 'comfy_queue') return '{"prompt_id":"job1","node_errors":{}}';
-        if (n === 'comfy_fetch') return { path: '/home/demo/Pictures/ezCLI/ezCLI_00001_.png', mime: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+        if (n === 'media_make') return 'job1';
+        if (n === 'media_job') return { state: 'done', seconds: 3, path: 'C:/Users/demo/Pictures/ezCLI/ezCLI_00001_.png', why: '' };
+        if (n === 'media_read') return { path: a.path, mime: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+        if (n === 'studio_install' || n === 'studio_model') return 'studio';
         if (n === 'start_session') return { command: 'llama-cli', cwd: '/home/demo/project', pcControl: false, connectorsActive: [] };
         if (n in answers) return answers[n];
         if (/^(list|detect|sessions|spaces)/.test(n)) return [];
@@ -199,32 +200,41 @@ if (direct) (async () => {
           if (!buttons.deleted) problems.push(`${tag}: the second click did not delete the model file`);
         }
         if (btn === 'createBtn') {
-          // with ComfyUI open and a model installed: a description becomes a queued job and the picture is shown
-          await page.waitForTimeout(900);
+          // set up and a model installed: a description becomes a job and the finished picture is shown
+          await page.waitForTimeout(500);
           await page.fill('#createPrompt', 'a red bicycle');
           await page.click('#createGo');
           await page.waitForSelector('#createResult img', { timeout: 8000 }).catch(() => problems.push(`${tag}: Create did not show the finished picture`));
           const made = await page.evaluate(() => {
-            const q = (window.__calls || []).filter((c) => c[0] === 'comfy_queue').pop();
-            return { job: q ? q[1].workflow : '', saved: (document.querySelector('.create-saved') || {}).textContent || '' };
+            const q = (window.__calls || []).filter((c) => c[0] === 'media_make').pop();
+            return { asked: q ? q[1] : {}, saved: (document.querySelector('.create-saved') || {}).textContent || '' };
           });
-          if (!/CheckpointLoaderSimple/.test(made.job) || !/a red bicycle/.test(made.job) || !/sd_xl_base_1\.0/.test(made.job)) problems.push(`${tag}: Create queued the wrong job: ${made.job.slice(0, 120)}`);
+          if (made.asked.kind !== 'image' || made.asked.prompt !== 'a red bicycle' || made.asked.checkpoint !== 'sd_xl_base_1.0.safetensors') problems.push(`${tag}: Create asked for the wrong thing: ${JSON.stringify(made.asked)}`);
           if (!/Pictures/.test(made.saved)) problems.push(`${tag}: Create did not say where the picture was saved`);
           await overflow('Create/made');
-          // video without the Wan files: the three files are named, nothing is queued
+          // video without its model: the three files are listed with one Download button, and pressing it starts three downloads
           await page.click('#createKind [data-kind="video"]');
           await page.waitForTimeout(150);
           const need = await page.$$eval('#createNeeded li', (l) => l.length);
-          if (need !== 3) problems.push(`${tag}: Create/video listed ${need} needed files, not 3`);
+          if (need !== 3) problems.push(`${tag}: Create/video listed ${need} files to download, not 3`);
           await overflow('Create/video');
-          // ComfyUI closed: says so and offers to get it
-          await page.evaluate(() => { window.__noComfy = true; });
-          await page.click('[data-create="check"]');
-          await page.waitForTimeout(1100);
-          if (!(await page.$('[data-create="get"]'))) problems.push(`${tag}: Create did not offer ComfyUI when it is not running`);
-          await overflow('Create/none');
-          await page.evaluate(() => { window.__noComfy = false; });
+          await page.click('[data-create="models"]').catch(() => problems.push(`${tag}: Create/video has no Download button`));
+          await page.waitForTimeout(700);
+          const asked = await page.evaluate(() => (window.__calls || []).filter((c) => c[0] === 'studio_model').map((c) => c[1].id).join(','));
+          if (asked !== 'wan-model,wan-text,wan-vae') problems.push(`${tag}: Create/video downloaded "${asked}"`);
+          await page.evaluate(() => { for (const id of ['wan-model', 'wan-text', 'wan-vae']) window.__emit('model-download', { key: 'studio-model:' + id, state: 'done', bytes: 0, total: 0, path: '', error: '', note: '' }); });
+          // not set up at all: one Set up button, and a download that reports its progress
+          await page.evaluate(() => { window.__studio = 'fresh'; });
           await page.click('#createKind [data-kind="image"]');
+          await page.waitForTimeout(700);
+          await page.click('[data-create="setup"]').catch(() => problems.push(`${tag}: Create did not offer to set itself up`));
+          await page.evaluate(() => window.__emit('model-download', { key: 'studio', state: 'downloading', bytes: 734003200, total: 0, path: '', error: '', note: '' }));
+          await page.waitForTimeout(150);
+          const prog = await page.$eval('.create-progress', (e) => e.textContent).catch(() => '');
+          if (!/700 MB downloaded/.test(prog)) problems.push(`${tag}: Create set-up progress reads "${prog}"`);
+          await overflow('Create/setup');
+          await page.evaluate(() => { window.__studio = 'ready'; window.__emit('model-download', { key: 'studio', state: 'done', bytes: 0, total: 0, path: '', error: '', note: '' }); });
+          await page.waitForTimeout(500);
         }
         await page.keyboard.press('Escape');
         await page.waitForTimeout(120);

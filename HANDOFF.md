@@ -9,7 +9,7 @@ Last updated: 2026-11-13 by Claude (v5.14.0; see the block directly below)
 > **Staleness notice:** sections 0-6 below describe v1.2.1 and are historical. Use the block below
 > for the current state, and `git log` for history between v2.2 and v5.12.
 
-## v5.14.0 and v5.14.1 (2026-11-13)
+## v5.14.x and v5.15.0 (2026-11-13)
 
 - **Automatic continue:** `src/core/failover.ts` decides, `Router.auto` in `src/features/router.ts` acts. When
   a free model runs out of usage the same chat continues on the next free model (same agent: restart with
@@ -21,11 +21,18 @@ Last updated: 2026-11-13 by Claude (v5.14.0; see the block directly below)
 - **Interface:** 5.14.0 shipped a softer, rounder layout; the owner asked for the layout back and the
   colours kept, so after 5.14.0 the layout is 5.13's (status bar, one-line session rows, files panel closed
   by default) with the teal theme. Rules are at the top of `src/styles/ui.css`.
-- **Create (5.14.1):** pictures and video from a ComfyUI that is open on this computer.
-  `src/core/comfy.ts` builds the jobs (checkpoint picture; Wan 2.2 5B text to video) and reads ComfyUI's
-  replies, `src/features/create.ts` is the panel, `src-tauri/src/comfy.rs` carries requests to loopback
-  only. ezCLI does not install ComfyUI or download models. The jobs were checked against ComfyUI's
-  source, not run: nobody has generated a picture or a clip through this panel yet.
+- **Create (5.15.0):** pictures and video, made on this computer by ComfyUI, with nothing for the user to
+  install or open. `src-tauri/src/studio.rs` downloads ComfyUI's official Windows portable build into
+  `~/.ezcli/studio`, starts it hidden on port 8317 when something is asked for, stops it when ezCLI quits,
+  and downloads the offered model files (SDXL; the three Wan 2.2 5B files). `src-tauri/src/comfy.rs` is the
+  one place a job is built and run. Three things call it: the Create panel (`src/features/create.ts`), the
+  `create_image` / `create_video` / `create_status` tools on the built-in MCP server (so every agent that
+  takes MCP has them, free ones included), and `IMAGE:` / `VIDEO:` in local-model chats
+  (`src/features/websearch.ts`). On Linux and macOS there is no installer: the panel uses a ComfyUI the
+  user has open (ports 8188, 8000).
+  **Nothing here has run against a real ComfyUI.** The install (download, unpacking a .7z with Windows'
+  tar or 7-Zip, first start) and a real generation are untested; the job shapes were checked against
+  ComfyUI's source and the rest against a simulated engine.
 - **Not yet run on a real machine:** this interface, the automatic continue against a real usage limit, and
   VoiceStudio driven by an agent launched from ezCLI. Do that before building on any of them.
 

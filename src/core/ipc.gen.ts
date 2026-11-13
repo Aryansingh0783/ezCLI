@@ -114,13 +114,6 @@ export interface ChatPage {
   truncated: boolean;
 }
 
-/** `lib::ComfyFile` in src-tauri/src/lib.rs */
-export interface ComfyFile {
-  path: string;
-  mime: string;
-  dataUrl: string;
-}
-
 /** `local_tools::CommandResult` in src-tauri/src/local_tools.rs */
 export interface CommandResult {
   output: string;
@@ -313,6 +306,21 @@ export interface LlamaStatus {
   version: string;
 }
 
+/** `lib::MediaFile` in src-tauri/src/lib.rs */
+export interface MediaFile {
+  path: string;
+  mime: string;
+  dataUrl: string;
+}
+
+/** `lib::MediaJob` in src-tauri/src/lib.rs */
+export interface MediaJob {
+  state: string;
+  seconds: number;
+  path: string;
+  why: string;
+}
+
 /** `transcripts::Meta` in src-tauri/src/transcripts.rs */
 export interface Meta {
   id: string;
@@ -335,6 +343,16 @@ export interface ModelPricing {
   default?: string | null;
   free?: string[];
   note?: string | null;
+}
+
+/** `studio::ModelState` in src-tauri/src/studio.rs */
+export interface ModelState {
+  id: string;
+  kind: string;
+  label: string;
+  name: string;
+  gib: number;
+  present: boolean;
 }
 
 /** `open_in::OpenTarget` in src-tauri/src/open_in.rs */
@@ -418,6 +436,24 @@ export interface StartResult {
   command: string;
   pcControl: boolean;
   connectorsActive: string[];
+}
+
+/** `studio::Status` in src-tauri/src/studio.rs */
+export interface Status {
+  supported: boolean;
+  installed: boolean;
+  running: boolean;
+  port: number;
+  managed: boolean;
+  models: ModelState[];
+  folder: string;
+}
+
+/** `lib::StudioInfo` in src-tauri/src/lib.rs */
+export interface StudioInfo {
+  status: Status;
+  checkpoints: string[];
+  videoReady: boolean;
 }
 
 /** `agents::Submit` in src-tauri/src/agents.rs */
@@ -532,14 +568,6 @@ export interface Commands {
   check_update: { args: Record<string, never>; result: UpdateInfo };
   /** features.rs */
   clear_transcripts: { args: Record<string, never>; result: number };
-  /** Copy a finished picture or video into the Pictures or Videos folder and return it. (lib.rs) */
-  comfy_fetch: { args: { port?: number | null; filename: string; subfolder: string }; result: ComfyFile };
-  /** Read from the ComfyUI running on this computer: `/system_stats`, `/queue`, `/models/<folder>` or `/history/<id>`. `None` when it is not running or the path is not one of those. (lib.rs) */
-  comfy_get: { args: { port?: number | null; path: string }; result: string | null };
-  /** Stop the job the local ComfyUI is running. (lib.rs) */
-  comfy_interrupt: { args: { port?: number | null }; result: void };
-  /** Queue a job on the local ComfyUI. `workflow` is the job in ComfyUI's API format. Returns ComfyUI's reply, which is either the job's id or the reason it was refused. (lib.rs) */
-  comfy_queue: { args: { port?: number | null; workflow: string }; result: string };
   /** features.rs */
   delete_transcript: { args: { id: string }; result: void };
   /** lib.rs */
@@ -634,6 +662,14 @@ export interface Commands {
   local_skill_text: { args: { name: string }; result: [string, string] | null };
   /** The skills on this PC (name and one-line description), for local models. (lib.rs) */
   local_skills: { args: Record<string, never>; result: Skill[] };
+  /** lib.rs */
+  media_cancel: { args: { id: string }; result: void };
+  /** lib.rs */
+  media_job: { args: { id: string }; result: MediaJob };
+  /** Ask for a picture (`image`) or a clip (`video`). Returns a job id to ask `media_job` about. (lib.rs) */
+  media_make: { args: { kind: string; prompt: string; shape?: string | null; seconds?: number | null; checkpoint?: string | null }; result: string };
+  /** Read back a picture or clip ezCLI saved, to show it. (lib.rs) */
+  media_read: { args: { path: string }; result: MediaFile };
   /** Delete one model file from this PC. The Models panel calls this only after you confirm that exact file. (lib.rs) */
   model_delete: { args: { path: string }; result: string };
   /** Show a system notification. (features.rs) */
@@ -704,6 +740,14 @@ export interface Commands {
   start_session: { args: { id: string; agentId: string; modelId: string; modeId: string; effortId: string; cwd?: string | null; cols: number; rows: number; pcControl?: boolean | null; connectors?: ConnectorIn[] | null; providerSessionId?: string | null; resume?: boolean | null }; result: StartResult };
   /** features.rs */
   stash_handoff: { args: { json: string }; result: string };
+  /** Is picture and video making set up, is it running, and which models are there. (lib.rs) */
+  studio_info: { args: Record<string, never>; result: StudioInfo };
+  /** Download and unpack ezCLI's own ComfyUI (Windows). Progress: `model-download` events, key `studio`. (lib.rs) */
+  studio_install: { args: Record<string, never>; result: string };
+  /** Download one of the offered model files. Progress: `model-download` events, key `studio-model:<id>`. (lib.rs) */
+  studio_model: { args: { id: string }; result: string };
+  /** Start ezCLI's ComfyUI if nothing is answering yet. Returns the port. (lib.rs) */
+  studio_start: { args: Record<string, never>; result: number };
   /** features.rs */
   take_handoff: { args: { id: string }; result: string | null };
   /** features.rs */
@@ -736,10 +780,6 @@ export const COMMAND_NAMES = [
   'chat_feed_supported',
   'check_update',
   'clear_transcripts',
-  'comfy_fetch',
-  'comfy_get',
-  'comfy_interrupt',
-  'comfy_queue',
   'delete_transcript',
   'detect_backends',
   'detect_system_profile',
@@ -787,6 +827,10 @@ export const COMMAND_NAMES = [
   'local_models_scan',
   'local_skill_text',
   'local_skills',
+  'media_cancel',
+  'media_job',
+  'media_make',
+  'media_read',
   'model_delete',
   'notify',
   'open_agent_browser',
@@ -822,6 +866,10 @@ export const COMMAND_NAMES = [
   'stage_attachment',
   'start_session',
   'stash_handoff',
+  'studio_info',
+  'studio_install',
+  'studio_model',
+  'studio_start',
   'take_handoff',
   'team_delete',
   'team_load',

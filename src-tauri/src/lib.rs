@@ -38,6 +38,7 @@ mod system_profile;
 mod transcripts;
 mod usage_live;
 mod comfy;
+mod studio;
 mod voicestudio;
 mod tray;
 mod winstate;
@@ -746,57 +747,115 @@ async fn voicestudio_status(port: Option<u16>) -> VoiceStudioStatus {
     VoiceStudioStatus { running, port, mcp_url: voicestudio::mcp_url(port) }
 }
 
-/// One finished picture or video, copied out of ComfyUI.
+/// One finished picture or video.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ComfyFile {
-    /// Where the copy was saved on this computer.
+struct MediaFile {
+    /// Where it was saved on this computer.
     path: String,
     mime: String,
     /// The file itself, for showing in the panel.
     data_url: String,
 }
 
-fn comfy_port(port: Option<u16>) -> u16 {
-    port.filter(|p| comfy::valid_port(*p)).unwrap_or(comfy::DEFAULT_PORT)
+/// Where a request for a picture or clip stands.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MediaJob {
+    /// `working`, `done`, `failed` or `unknown`
+    state: String,
+    seconds: u64,
+    path: String,
+    why: String,
 }
 
-/// Read from the ComfyUI running on this computer: `/system_stats`, `/queue`, `/models/<folder>` or
-/// `/history/<id>`. `None` when it is not running or the path is not one of those.
-#[tauri::command]
-async fn comfy_get(port: Option<u16>, path: String) -> Option<String> {
-    let port = comfy_port(port);
-    tauri::async_runtime::spawn_blocking(move || comfy::get(port, &path)).await.ok().flatten()
+/// What the Create panel needs to draw itself.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StudioInfo {
+    status: studio::Status,
+    /// image models the answering ComfyUI has
+    checkpoints: Vec<String>,
+    /// the three video files are all there
+    video_ready: bool,
 }
 
-/// Queue a job on the local ComfyUI. `workflow` is the job in ComfyUI's API format. Returns ComfyUI's
-/// reply, which is either the job's id or the reason it was refused.
-#[tauri::command]
-async fn comfy_queue(port: Option<u16>, workflow: String) -> Result<String, String> {
-    let port = comfy_port(port);
-    let prompt: serde_json::Value = serde_json::from_str(&workflow).map_err(|e| e.to_string())?;
-    let body = serde_json::json!({ "prompt": prompt, "client_id": "ezcli" }).to_string();
-    tauri::async_runtime::spawn_blocking(move || comfy::post(port, "/prompt", &body)).await.map_err(|e| e.to_string())?
+fn media_job_of(state: Option<comfy::JobState>) -> MediaJob {
+    let blank = |state: &str| MediaJob { state: state.into(), seconds: 0, path: String::new(), why: String::new() };
+    match state {
+        None => blank("unknown"),
+        Some(comfy::JobState::Working { seconds }) => MediaJob { seconds, ..blank("working") },
+        Some(comfy::JobState::Done { path }) => MediaJob { path, ..blank("done") },
+        Some(comfy::JobState::Failed { why }) => MediaJob { why, ..blank("failed") },
+    }
 }
 
-/// Stop the job the local ComfyUI is running.
+/// Is picture and video making set up, is it running, and which models are there.
 #[tauri::command]
-async fn comfy_interrupt(port: Option<u16>) -> Result<(), String> {
-    let port = comfy_port(port);
-    tauri::async_runtime::spawn_blocking(move || comfy::post(port, "/interrupt", "{}").map(|_| ())).await.map_err(|e| e.to_string())?
+async fn studio_info() -> Result<StudioInfo, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let status = studio::status();
+        let inst = if status.running { comfy::installed(status.port) } else { comfy::Installed::default() };
+        StudioInfo { video_ready: comfy::video_model(&inst).is_some(), checkpoints: inst.checkpoints, status }
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
-/// Copy a finished picture or video into the Pictures or Videos folder and return it.
+/// Download and unpack ezCLI's own ComfyUI (Windows). Progress: `model-download` events, key `studio`.
 #[tauri::command]
-async fn comfy_fetch(port: Option<u16>, filename: String, subfolder: String) -> Result<ComfyFile, String> {
+fn studio_install(app: tauri::AppHandle) -> Result<String, String> {
+    studio::install(app)
+}
+
+/// Download one of the offered model files. Progress: `model-download` events, key `studio-model:<id>`.
+#[tauri::command]
+fn studio_model(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    studio::download_model(app, &id)
+}
+
+/// Start ezCLI's ComfyUI if nothing is answering yet. Returns the port.
+#[tauri::command]
+async fn studio_start() -> Result<u16, String> {
+    tauri::async_runtime::spawn_blocking(studio::ensure_running).await.map_err(|e| e.to_string())?
+}
+
+/// Ask for a picture (`image`) or a clip (`video`). Returns a job id to ask `media_job` about.
+#[tauri::command]
+fn media_make(kind: String, prompt: String, shape: Option<String>, seconds: Option<u32>, checkpoint: Option<String>) -> Result<String, String> {
+    let kind = match kind.as_str() {
+        "image" => comfy::Kind::Image,
+        "video" => comfy::Kind::Video,
+        _ => return Err("Ask for an image or a video.".into()),
+    };
+    if prompt.trim().is_empty() {
+        return Err("Describe what to make.".into());
+    }
+    Ok(comfy::start_job(comfy::Request { kind, prompt, shape: comfy::Shape::parse(shape.as_deref().unwrap_or("wide")), seconds: seconds.unwrap_or(3), checkpoint: checkpoint.unwrap_or_default() }))
+}
+
+#[tauri::command]
+fn media_job(id: String) -> MediaJob {
+    media_job_of(comfy::job_state(&id))
+}
+
+#[tauri::command]
+fn media_cancel(id: String) {
+    comfy::cancel_job(&id);
+}
+
+/// Read back a picture or clip ezCLI saved, to show it.
+#[tauri::command]
+async fn media_read(path: String) -> Result<MediaFile, String> {
     use base64::Engine;
-    let port = comfy_port(port);
     tauri::async_runtime::spawn_blocking(move || {
-        let path = comfy::fetch(port, &filename, &subfolder)?;
+        if !comfy::saved_file(&path) {
+            return Err("That is not a file ezCLI made.".to_string());
+        }
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-        let mime = comfy::mime(&filename).to_string();
+        let mime = comfy::mime(&path).to_string();
         let data_url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
-        Ok(ComfyFile { path: path.to_string_lossy().into_owned(), mime, data_url })
+        Ok(MediaFile { path, mime, data_url })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1194,6 +1253,13 @@ pub fn run() {
             std::thread::spawn(media::prune_old_attachments);
             std::thread::spawn(transcripts::prune);
             tray::install(app)?;
+            {
+                use tauri::Emitter;
+                let made = app.handle().clone();
+                comfy::on_made(Box::new(move |path, prompt| {
+                    let _ = made.emit("media-made", serde_json::json!({ "path": path, "prompt": prompt, "mime": comfy::mime(path) }));
+                }));
+            }
             let handle = app.handle().clone();
             let server = mcp_server::McpServer::start(mcp_server::Hooks {
                 allowed: Box::new(move |pty_id| pc_control_allowed(&handle.state::<AppState>(), pty_id)),
@@ -1247,10 +1313,14 @@ pub fn run() {
             detect_backends,
             detect_system_profile,
             voicestudio_status,
-            comfy_get,
-            comfy_queue,
-            comfy_interrupt,
-            comfy_fetch,
+            studio_info,
+            studio_install,
+            studio_model,
+            studio_start,
+            media_make,
+            media_job,
+            media_cancel,
+            media_read,
             gpu_memory,
             agent_models,
             list_imports,
@@ -1315,8 +1385,14 @@ pub fn run() {
             features::install_agent,
             features::cancel_install
         ])
-        .run(tauri::generate_context!())
-        .expect("ezCLI failed to launch");
+        .build(tauri::generate_context!())
+        .expect("ezCLI failed to launch")
+        .run(|_, event| {
+            // ezCLI's own ComfyUI must not outlive it
+            if let tauri::RunEvent::Exit = event {
+                studio::stop();
+            }
+        });
 }
 
 #[cfg(test)]
