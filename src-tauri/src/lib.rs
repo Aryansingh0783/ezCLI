@@ -1287,6 +1287,27 @@ mod tests {
         assert_eq!(slugify_connector_name("!!!", 4, &mut taken), "connector4");
     }
 
+    /// The VoiceStudio connector reaches each agent in the form VoiceStudio's own setup guide gives
+    /// (docs/mcp.md: Codex `url = "http://127.0.0.1:3900/mcp/"`, any Streamable HTTP client the same URL).
+    #[test]
+    fn the_voicestudio_connector_is_attached_in_the_form_voicestudio_documents() {
+        let url = voicestudio::mcp_url(voicestudio::DEFAULT_PORT);
+        assert!(validate_mcp_url(&url).is_ok());
+        let mut taken = std::collections::HashSet::new();
+        let slug = slugify_connector_name("VoiceStudio", 0, &mut taken);
+        assert_eq!(slug, "voicestudio");
+        let entries = vec![McpEntry { name: &slug, url: &url, shown_as: "VoiceStudio" }];
+
+        let (args, shown, _) = mcp_attach_args(agents::McpStyle::Codex, "vs1", &entries).unwrap();
+        assert_eq!(args, vec!["-c", "mcp_servers.voicestudio.url=http://127.0.0.1:3900/mcp/"]);
+        assert!(shown.iter().any(|s| s.contains("<VoiceStudio>")));
+
+        let (_, _, env) = mcp_attach_args(agents::McpStyle::OpenCode, "vs1", &entries).unwrap();
+        let cfg: serde_json::Value = serde_json::from_str(&env[0].1).unwrap();
+        assert_eq!(cfg["mcp"]["voicestudio"]["url"], "http://127.0.0.1:3900/mcp/");
+        assert_eq!(cfg["mcp"]["voicestudio"]["type"], "remote");
+    }
+
     #[test]
     fn mcp_attach_args_merges_several_entries_per_style() {
         let entries = vec![

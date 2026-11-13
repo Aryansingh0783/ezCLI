@@ -52,3 +52,15 @@ mod tests {
         assert!(!is_discovery(""));
     }
 }
+
+#[cfg(test)]
+mod live {
+    /// Against a VoiceStudio that is really running: `EZCLI_VOICESTUDIO_PORT=3900 cargo test --lib voicestudio::live -- --ignored`
+    #[test]
+    #[ignore = "needs VoiceStudio running on this computer"]
+    fn a_running_voicestudio_is_found_and_a_silent_port_is_not() {
+        let port: u16 = std::env::var("EZCLI_VOICESTUDIO_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(super::DEFAULT_PORT);
+        assert!(super::running(port), "VoiceStudio did not answer on {port}");
+        assert!(!super::running(port + 1), "nothing listens on the next port, so it must read as not running");
+    }
+}
