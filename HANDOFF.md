@@ -21,6 +21,11 @@ Last updated: 2026-11-13 by Claude (v5.14.0; see the block directly below)
 - **Interface:** softer pass over `src/styles/ui.css` (rules at the top of that file): teal accent, filled
   rounded surfaces instead of outlines, no status bar (reply speed and GPU memory sit in the title bar),
   session rows show the last thing asked, the files panel opens beside the chat by default.
+- **Create (after 5.14.0):** pictures and video from a ComfyUI that is open on this computer.
+  `src/core/comfy.ts` builds the jobs (checkpoint picture; Wan 2.2 5B text to video) and reads ComfyUI's
+  replies, `src/features/create.ts` is the panel, `src-tauri/src/comfy.rs` carries requests to loopback
+  only. ezCLI does not install ComfyUI or download models. The jobs were checked against ComfyUI's
+  source, not run: nobody has generated a picture or a clip through this panel yet.
 - **Not yet run on a real machine:** this interface, the automatic continue against a real usage limit, and
   VoiceStudio driven by an agent launched from ezCLI. Do that before building on any of them.
 

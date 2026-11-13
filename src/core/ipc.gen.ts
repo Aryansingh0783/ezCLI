@@ -114,6 +114,13 @@ export interface ChatPage {
   truncated: boolean;
 }
 
+/** `lib::ComfyFile` in src-tauri/src/lib.rs */
+export interface ComfyFile {
+  path: string;
+  mime: string;
+  dataUrl: string;
+}
+
 /** `local_tools::CommandResult` in src-tauri/src/local_tools.rs */
 export interface CommandResult {
   output: string;
@@ -525,6 +532,14 @@ export interface Commands {
   check_update: { args: Record<string, never>; result: UpdateInfo };
   /** features.rs */
   clear_transcripts: { args: Record<string, never>; result: number };
+  /** Copy a finished picture or video into the Pictures or Videos folder and return it. (lib.rs) */
+  comfy_fetch: { args: { port?: number | null; filename: string; subfolder: string }; result: ComfyFile };
+  /** Read from the ComfyUI running on this computer: `/system_stats`, `/queue`, `/models/<folder>` or `/history/<id>`. `None` when it is not running or the path is not one of those. (lib.rs) */
+  comfy_get: { args: { port?: number | null; path: string }; result: string | null };
+  /** Stop the job the local ComfyUI is running. (lib.rs) */
+  comfy_interrupt: { args: { port?: number | null }; result: void };
+  /** Queue a job on the local ComfyUI. `workflow` is the job in ComfyUI's API format. Returns ComfyUI's reply, which is either the job's id or the reason it was refused. (lib.rs) */
+  comfy_queue: { args: { port?: number | null; workflow: string }; result: string };
   /** features.rs */
   delete_transcript: { args: { id: string }; result: void };
   /** lib.rs */
@@ -721,6 +736,10 @@ export const COMMAND_NAMES = [
   'chat_feed_supported',
   'check_update',
   'clear_transcripts',
+  'comfy_fetch',
+  'comfy_get',
+  'comfy_interrupt',
+  'comfy_queue',
   'delete_transcript',
   'detect_backends',
   'detect_system_profile',
