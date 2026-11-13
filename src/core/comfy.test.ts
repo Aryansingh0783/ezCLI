@@ -102,7 +102,7 @@ describe('replies', () => {
 describe('what the panel says before it can make anything', () => {
   it('covers not running, no model, and ready', () => {
     expect(readiness(false, none, 'image')).toMatchObject({ ready: false, needed: [] });
-    expect(readiness(true, none, 'image').needed[0].folder).toBe('checkpoints');
+    expect(readiness(true, none, 'image').needed.map((n) => n.folder)).toEqual(['checkpoints']);
     expect(readiness(true, { ...none, checkpoints: ['a.safetensors'] }, 'image').ready).toBe(true);
     expect(readiness(true, none, 'video').needed).toHaveLength(3);
     expect(readiness(true, wan, 'video').ready).toBe(true);

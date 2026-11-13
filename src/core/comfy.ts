@@ -139,7 +139,8 @@ export interface VideoModel {
 export function videoModel(inst: Installed): { model: VideoModel | null; missing: Needed[] } {
   const found = VIDEO_FILES.map((f) => inst[f.from].find((n) => f.match.test(n)) || '');
   const missing = VIDEO_FILES.filter((_, i) => !found[i]).map(({ name, folder, size, url }) => ({ name, folder, size, url }));
-  return { model: missing.length ? null : { unet: found[0], clip: found[1], vae: found[2] }, missing };
+  const [unet = '', clip = '', vae = ''] = found;
+  return { model: missing.length ? null : { unet, clip, vae }, missing };
 }
 
 export const VIDEO_FPS = 24;
