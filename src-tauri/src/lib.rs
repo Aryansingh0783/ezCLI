@@ -426,7 +426,9 @@ fn start_session(
             };
             let (attach, attach_shown, env) = match attached {
                 Ok(v) => v,
-                Err(_) if only_the_bonus => {
+                Err(e) if only_the_bonus => {
+                    // Shown with the command line at the top of the session, so the user can see why.
+                    shown.push(format!("(started without ezCLI's tools: {e})"));
                     detach_pc_control(&state, &mcp, &id);
                     (Vec::new(), Vec::new(), Vec::new())
                 }

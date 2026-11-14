@@ -136,11 +136,14 @@ impl SessionStore {
     pub fn spawn(&self, app: AppHandle, args: SpawnArgs) -> Result<u32> {
         let (data_event, exit_event) = (format!("pty-data:{}", args.id), format!("pty-exit:{}", args.id));
         let (app_d, app_x) = (app.clone(), app);
+        let exited_id = args.id.clone();
         self.spawn_with(
             args,
             crate::agents::effective_path(),
             move |chunk| app_d.emit(&data_event, chunk).is_ok(),
             move |code| {
+                // An Antigravity session's entries leave its folder's config as soon as the process ends.
+                crate::agy_mcp::detach(&exited_id);
                 let _ = app_x.emit(&exit_event, code);
             },
         )

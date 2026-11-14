@@ -79,6 +79,13 @@ fn newest(folder: &Folder, name: &str) -> Option<String> {
     folder.sessions.iter().rev().find_map(|(_, s)| s.iter().find(|(n, _)| n == name).map(|(_, u)| u.clone()))
 }
 
+/// `http://127.0.0.1:<port>/mcp/<32 hex digits>`: the address ezCLI's own tool server hands out.
+pub fn looks_like_ezcli(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://127.0.0.1:") else { return false };
+    let Some((port, token)) = rest.split_once("/mcp/") else { return false };
+    !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) && token.len() == 32 && token.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// Check that ezCLI may write `servers` into `config`: `mcpServers` absent or an object, and no
 /// name taken by an entry that is not one of ezCLI's (`ours` tells whether a URL is ezCLI's).
 pub fn check(config: &Map<String, Value>, servers: &Servers, ours: impl Fn(&str, &str) -> bool) -> Result<(), String> {
@@ -127,7 +134,11 @@ pub fn attach(folder: &Path, pty_id: &str, servers: Servers) -> Result<(), Strin
     }
     let existing = read(&file)?;
     let known = state.folders.get(&file);
-    let ours = |name: &str, url: &str| known.is_some_and(|f| f.sessions.iter().any(|(_, s)| s.iter().any(|(n, u)| n == name && u == url)));
+    // ezCLI's own entry is recognised by its URL shape, including one left by an ezCLI that did not
+    // close normally (a crash), so a dead entry is replaced rather than blocking the tools forever.
+    let ours = |name: &str, url: &str| {
+        looks_like_ezcli(url) || known.is_some_and(|f| f.sessions.iter().any(|(_, s)| s.iter().any(|(n, u)| n == name && u == url)))
+    };
     let mut config = existing.clone().unwrap_or_default();
     check(&config, &servers, ours)?;
     let created_dir = !dir.exists();
@@ -260,6 +271,21 @@ mod tests {
         assert_eq!(load(&base)["mcpServers"]["ezcli"]["serverUrl"], "http://127.0.0.1:5/mcp/c", "an older session ending leaves the newer one's");
         detach("s3");
         assert!(!base.join(".agents").exists(), "the file and folder ezCLI made are gone");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn an_entry_left_by_a_crashed_ezcli_is_replaced() {
+        let base = temp("crash");
+        std::fs::create_dir_all(base.join(".agents")).unwrap();
+        let dead = format!("http://127.0.0.1:51234/mcp/{}", "ab".repeat(16));
+        std::fs::write(config_file(&base), json!({ "mcpServers": { "ezcli": { "serverUrl": dead } } }).to_string()).unwrap();
+        attach(&base, "c1", vec![pair("ezcli", "http://127.0.0.1:5/mcp/new")]).unwrap();
+        assert_eq!(load(&base)["mcpServers"]["ezcli"]["serverUrl"], "http://127.0.0.1:5/mcp/new");
+        detach("c1");
+        assert!(looks_like_ezcli(&dead));
+        assert!(!looks_like_ezcli("https://example.com/mcp/abababababababababababababababab"));
+        assert!(!looks_like_ezcli("http://127.0.0.1:80/mcp/short"));
         let _ = std::fs::remove_dir_all(&base);
     }
 
