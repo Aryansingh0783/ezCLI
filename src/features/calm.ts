@@ -163,17 +163,29 @@ hooks.tabs.push(() => RailSessions.render());
 hooks.view.push(() => RailSessions.render());
 /* Starting or finishing a reply only redraws the status bar, so the sidebar would keep saying
  * "working" after an agent finished. Redraw it whenever any session's dot changes. */
-let railDots = '';
-const railDotsNow = () => state.sessions.map((s) => `${s.id}:${sessionDot(s)}`).join('|');
-const railRefresh = () => {
-  const now = railDotsNow();
-  if (now === railDots) return;
-  railDots = now;
-  RailSessions.render();
+const railSeen = new Map();
+const railKey = (s) => `${sessionDot(s)}:${s.unseen ? 1 : 0}`;
+/** True when a session's dot or unread mark differs from what the sidebar last drew. */
+const railChanged = (s) => {
+  const k = railKey(s);
+  if (railSeen.get(s.id) === k) return false;
+  railSeen.set(s.id, k);
+  return true;
 };
-hooks.output.push(railRefresh);
-hooks.idle.push(railRefresh);
-hooks.boot.push(() => setInterval(railRefresh, 1000));
+// Output and idle concern one session: check only that one, so busy terminals cost a string compare.
+const railRefreshOne = (s) => {
+  if (s && railChanged(s)) RailSessions.render();
+};
+// Once a second, catch anything else (a session that went quiet, was closed or was added).
+const railRefreshAll = () => {
+  let changed = false;
+  for (const s of state.sessions) if (railChanged(s)) changed = true;
+  if (railSeen.size > state.sessions.length) for (const id of railSeen.keys()) if (!state.sessions.some((s) => s.id === id)) railSeen.delete(id);
+  if (changed) RailSessions.render();
+};
+hooks.output.push(railRefreshOne);
+hooks.idle.push(railRefreshOne);
+hooks.boot.push(() => setInterval(railRefreshAll, 1000));
 
 /* Right-click a sidebar session for the same menu the tabs have (rename, duplicate, close...). */
 hooks.boot.push(() => {

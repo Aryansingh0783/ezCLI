@@ -305,8 +305,6 @@ if (direct) (async () => {
       box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       await wait(1200);
       emit('Explain merging\r\n\r\n');
-      await wait(300);
-      const railBusy = Boolean(document.querySelector('#railSessions .rail-working'));
       const reply = '# Merging lists\r\n\r\nThere are **two** common ways to do it.\r\n\r\n1. Concatenate\r\n2. Interleave\r\n\r\n```python\r\nprint(a + b)\r\n```\r\n\r\n' + Array.from({ length: 12 }, (_, i) => `Paragraph ${i} keeps the stream going with ordinary words.\r\n\r\n`).join('');
       const col = document.getElementById('chatCol');
       const seen = new Map();
@@ -333,6 +331,14 @@ if (direct) (async () => {
         }
       }
       await wait(600);
+      // with nothing else happening: the sidebar stops saying "working" once the reply has ended,
+      // and says it again as soon as more of a reply arrives
+      await wait(2500);
+      const railIdle = !document.querySelector('#railSessions .rail-working');
+      emit('One more paragraph of the reply.\r\n\r\n');
+      await wait(150);
+      const railBusy = Boolean(document.querySelector('#railSessions .rail-working'));
+      await wait(2500);
       // the agent's tool made a picture: it is shown in this chat, after the reply, and the reply stays where it was
       const headTop = () => Math.round(col.querySelector('h1, h2, h3').getBoundingClientRect().top + col.parentElement.scrollTop);
       const before = col ? headTop() : 0;
@@ -345,9 +351,6 @@ if (direct) (async () => {
       window.__emit('media-made', { path: 'C:/Users/demo/Pictures/ezCLI/ezCLI_00003_.png', prompt: 'from the panel', mime: 'image/png', pty: '' });
       await wait(600);
       media.count = col ? col.querySelectorAll('.cm-media').length : 0;
-      // the reply finished a while ago: the sidebar must not still say the session is working
-      await wait(1500);
-      const railIdle = !document.querySelector('#railSessions .rail-working');
       return { railBusy, railIdle, hasCol: Boolean(col), checks, moved, replaced, paragraphs: col ? col.querySelectorAll('p').length : 0, media };
     });
     const m = result.media || {};
