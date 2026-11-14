@@ -160,20 +160,51 @@
   object-fit: cover;
 }
 
-/* The pickers under the home box say what they are set to in full; with four of them (a local model
- * has a GPU mode too) they wrap onto a second line instead of being cut to "Local model (lla…". */
+/* The home box's footer: the pickers sit in one group that may wrap onto a second line (a local model
+ * has four of them, and the box is narrow beside the files panel); the buttons and send stay on the
+ * right of the last line. Wrapped pickers line up on the right, under the agent, with the mode
+ * (GPU) on the left of the first line, as in a single-line footer. */
 :root:root[data-layout='calm'] .home .composer-row.runconfig {
-  flex-wrap: wrap;
-  row-gap: 6px;
+  flex-wrap: nowrap !important;
+  align-items: flex-end;
 }
 :root:root[data-layout='calm'] .home .pill-group {
+  display: flex;
+  order: 1;
+  flex: 1 1 auto;
   flex-wrap: wrap;
-  row-gap: 4px;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
 }
 :root:root[data-layout='calm'] .home .pill-pick {
-  flex: 0 0 auto;
-  max-width: 280px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+:root:root[data-layout='calm'] .home #homeMode {
+  margin-right: auto;
+}
+:root:root[data-layout='calm'] .home #homeAgent {
+  margin-left: 0 !important;
+}
+:root:root[data-layout='calm'] .home .composer-tools {
+  flex: none;
+  margin-left: 6px !important;
+}
+:root:root[data-layout='calm'] .home .plus-btn {
+  flex: none;
+}
+
+/* The terminal's box ends above the reply box instead of running into it, and the two share edges. */
+html[data-layout='calm'] .thread-bottom {
+  padding-top: 10px;
+}
+
+/* Create: while something is being made, Stop takes the place of "Make it" */
+#createStop:not([hidden]) + #createGo {
+  display: none;
 }
 
 /* A picture or clip an agent made, shown in its chat */
@@ -216,4 +247,50 @@
 .cm-media-open:hover {
   color: var(--text);
   text-decoration: underline;
+}
+
+/* Scroll bars: one thin, rounded style everywhere, with no arrow buttons. Chromium ignores the
+ * ::-webkit-scrollbar rules for any element that sets scrollbar-width or scrollbar-color and draws the
+ * Windows bar with arrows instead (settings, the terminal), so those two are reset here. Elements that
+ * hide their bar keep doing so through ::-webkit-scrollbar { display: none }. */
+* {
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+/* these were hidden with scrollbar-width: none, which the reset above undoes */
+.rail::-webkit-scrollbar,
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 22%, transparent) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text) 38%, transparent) padding-box;
+}
+
+/* The swatch on each theme preset has a ring, so a dark theme's swatch shows on a dark window */
+.theme-preset-chip {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 30%, transparent) !important;
+}
+
+/* llama.cpp installed and up to date: a plain row, not a warning */
+.msetup.msetup-ok {
+  border-color: var(--border) !important;
+  background: var(--surface-2) !important;
 }

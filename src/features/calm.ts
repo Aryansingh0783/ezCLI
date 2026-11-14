@@ -1,4 +1,4 @@
-import { $, __set_applyTheme, active, agent, applyTheme, closeSession, effortLabel, esc, hooks, invoke, label, modelLabel, newSession, openMenu, prefs, restartSession, selectSession, sessionDot, space, spaceSessions, state, tabMenu, toast } from '../app';
+import { $, __set_applyTheme, active, agent, applyTheme, closeSession, effortLabel, esc, hooks, invoke, label, modelLabel, newSession, openMenu, prefs, restartSession, selectSession, sessionDot, space, spaceSessions, state, tabMenu, toast, shownTitle } from '../app';
 import { late } from '../late';
 import { registerCommand } from './palette';
 /* Calm layout: the sidebar lists the active project's sessions, the way the
@@ -79,8 +79,9 @@ export const RailSessions = {
       x.dataset.railClose = s.id;
       x.setAttribute('aria-label', 'Close session');
       x.textContent = '×';
-      // what the session is doing, in a word, so the list can be read without opening each one
-      const word = { working: 'working', unseen: 'new reply', parked: 'parked', error: 'failed' }[dot] || (s.status === 'exited' ? 'ended' : '');
+      // what the session is doing, in a word, so the list can be read without opening each one (a parked
+      // session's hollow dot says it already, and the word would cost its title the room)
+      const word = { working: 'working', unseen: 'new reply', error: 'failed' }[dot] || (s.status === 'exited' ? 'ended' : '');
       const m = document.createElement('span');
       m.className = 'rail-session-meta' + (dot === 'unseen' ? ' attn' : '');
       m.textContent = word;
@@ -109,7 +110,7 @@ export const RailSessions = {
         star.textContent = pinned.has(m.id) ? '★' : '☆';
         const t = document.createElement('span');
         t.className = 'rail-session-title';
-        t.textContent = m.title;
+        t.textContent = shownTitle(m.title, m.agentLabel || m.agentId);
         row.append(star, t);
         this.box.append(row);
       }
