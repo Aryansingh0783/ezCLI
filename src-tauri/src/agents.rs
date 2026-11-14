@@ -260,6 +260,9 @@ pub enum McpStyle {
     /// Gemini CLI reads a per-process system settings file from
     /// `GEMINI_CLI_SYSTEM_SETTINGS_PATH`, so the user's own files are untouched.
     Gemini,
+    /// Antigravity CLI reads extra servers only from config files; ezCLI adds its own to the
+    /// session folder's `.agents/mcp_config.json` for the session's lifetime (see agy_mcp.rs).
+    Antigravity,
 }
 
 impl AgentDef {
@@ -276,6 +279,7 @@ impl AgentDef {
             Some("codex") => return Some(McpStyle::Codex),
             Some("opencode") => return Some(McpStyle::OpenCode),
             Some("gemini") => return Some(McpStyle::Gemini),
+            Some("antigravity" | "agy") => return Some(McpStyle::Antigravity),
             Some(_) => return None, // "none" or anything unrecognised
             None => Some(crate::pathutil::stem(&self.command).to_ascii_lowercase()),
         };
@@ -284,6 +288,7 @@ impl AgentDef {
             Some("codex") => Some(McpStyle::Codex),
             Some("opencode") => Some(McpStyle::OpenCode),
             Some("gemini") => Some(McpStyle::Gemini),
+            Some("agy" | "antigravity") => Some(McpStyle::Antigravity),
             _ => None,
         }
     }
@@ -427,10 +432,10 @@ pub(crate) fn merge_builtin(user: &mut Vec<AgentDef>) {
             if existing.id == "claude-chat" {
                 existing.mcp = Some("none".into());
             }
-            // Stock OpenCode (2.1.1) and Gemini (2.1.8) entries shipped with
-            // "none" before PC control was wired up for them.
+            // Stock OpenCode (2.1.1), Gemini (2.1.8) and Antigravity (until 5.15.6) entries
+            // shipped with "none" before ezCLI's tools were wired up for them.
             if existing.mcp.as_deref() == Some("none")
-                && matches!(builtin_agent.mcp.as_deref(), Some("opencode" | "gemini"))
+                && matches!(builtin_agent.mcp.as_deref(), Some("opencode" | "gemini" | "antigravity"))
                 && existing.command.eq_ignore_ascii_case(&builtin_agent.command)
             {
                 existing.mcp = builtin_agent.mcp.clone();
@@ -1727,6 +1732,7 @@ mod tests {
         assert!(antigravity.args.is_empty());
         assert_eq!(antigravity.tier.as_deref(), Some("free"));
         assert_eq!(antigravity.image_transport.as_deref(), Some("clipboard_only"));
+        assert_eq!(antigravity.mcp_style(), Some(McpStyle::Antigravity));
 
         let gemini = user.iter().find(|a| a.id == "gemini").unwrap();
         assert_eq!(gemini.tier, None);
@@ -1759,12 +1765,18 @@ mod tests {
     fn opencode_gets_pc_control_and_old_stock_configs_migrate() {
         assert_eq!(def("opencode", None).mcp_style(), Some(McpStyle::OpenCode));
         assert_eq!(def("opencode", Some("opencode")).mcp_style(), Some(McpStyle::OpenCode));
+        assert_eq!(def("agy", None).mcp_style(), Some(McpStyle::Antigravity));
         let builtin = serde_json::from_str::<AgentsFile>(BUILTIN).unwrap().agents;
         let mut old = builtin.into_iter().find(|a| a.id == "opencode").unwrap();
         old.mcp = Some("none".into());
         let mut user = vec![old];
         merge_builtin(&mut user);
         assert_eq!(user.iter().find(|a| a.id == "opencode").unwrap().mcp.as_deref(), Some("opencode"));
+        let mut old_agy = serde_json::from_str::<AgentsFile>(BUILTIN).unwrap().agents.into_iter().find(|a| a.id == "antigravity").unwrap();
+        old_agy.mcp = Some("none".into());
+        let mut user = vec![old_agy];
+        merge_builtin(&mut user);
+        assert_eq!(user[0].mcp_style(), Some(McpStyle::Antigravity));
     }
 
     #[test]
