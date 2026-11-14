@@ -161,6 +161,19 @@ hooks.boot.push(() => {
 });
 hooks.tabs.push(() => RailSessions.render());
 hooks.view.push(() => RailSessions.render());
+/* Starting or finishing a reply only redraws the status bar, so the sidebar would keep saying
+ * "working" after an agent finished. Redraw it whenever any session's dot changes. */
+let railDots = '';
+const railDotsNow = () => state.sessions.map((s) => `${s.id}:${sessionDot(s)}`).join('|');
+const railRefresh = () => {
+  const now = railDotsNow();
+  if (now === railDots) return;
+  railDots = now;
+  RailSessions.render();
+};
+hooks.output.push(railRefresh);
+hooks.idle.push(railRefresh);
+hooks.boot.push(() => setInterval(railRefresh, 1000));
 
 /* Right-click a sidebar session for the same menu the tabs have (rename, duplicate, close...). */
 hooks.boot.push(() => {

@@ -305,6 +305,8 @@ if (direct) (async () => {
       box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       await wait(1200);
       emit('Explain merging\r\n\r\n');
+      await wait(300);
+      const railBusy = Boolean(document.querySelector('#railSessions .rail-working'));
       const reply = '# Merging lists\r\n\r\nThere are **two** common ways to do it.\r\n\r\n1. Concatenate\r\n2. Interleave\r\n\r\n```python\r\nprint(a + b)\r\n```\r\n\r\n' + Array.from({ length: 12 }, (_, i) => `Paragraph ${i} keeps the stream going with ordinary words.\r\n\r\n`).join('');
       const col = document.getElementById('chatCol');
       const seen = new Map();
@@ -343,7 +345,10 @@ if (direct) (async () => {
       window.__emit('media-made', { path: 'C:/Users/demo/Pictures/ezCLI/ezCLI_00003_.png', prompt: 'from the panel', mime: 'image/png', pty: '' });
       await wait(600);
       media.count = col ? col.querySelectorAll('.cm-media').length : 0;
-      return { hasCol: Boolean(col), checks, moved, replaced, paragraphs: col ? col.querySelectorAll('p').length : 0, media };
+      // the reply finished a while ago: the sidebar must not still say the session is working
+      await wait(1500);
+      const railIdle = !document.querySelector('#railSessions .rail-working');
+      return { railBusy, railIdle, hasCol: Boolean(col), checks, moved, replaced, paragraphs: col ? col.querySelectorAll('p').length : 0, media };
     });
     const m = result.media || {};
     if (!m.shown) problems.push(`media: a picture an agent made was not shown in its chat: ${JSON.stringify(m)}`);
@@ -354,6 +359,8 @@ if (direct) (async () => {
       if (!m.stayed) problems.push('media: showing the picture moved the reply above it');
       if (m.count !== 1) problems.push(`media: ${m.count} pictures in the chat; one made from the Create panel should not be there`);
     }
+    if (!result.railBusy) problems.push('rail: the sidebar did not show the session working while a reply arrived');
+    if (!result.railIdle) problems.push('rail: the sidebar still said "working" after the reply finished');
     if (!result.hasCol || result.checks < 20) problems.push(`stream: the chat view never showed the streamed reply: ${JSON.stringify(result)}`);
     if (result.replaced) problems.push(`stream: ${result.replaced} finished blocks were replaced while text was arriving`);
     if (result.moved) problems.push(`stream: finished blocks moved ${result.moved} times while text was arriving`);
