@@ -175,3 +175,45 @@
   flex: 0 0 auto;
   max-width: 280px;
 }
+
+/* A picture or clip an agent made, shown in its chat */
+.cm-media {
+  margin: 0;
+  max-width: min(100%, 640px);
+}
+.cm-media img,
+.cm-media video {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.cm-media figcaption {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.cm-media figcaption span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cm-media-open {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.cm-media-open:hover {
+  color: var(--text);
+  text-decoration: underline;
+}

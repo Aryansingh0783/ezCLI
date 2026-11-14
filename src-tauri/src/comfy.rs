@@ -353,6 +353,8 @@ pub struct Request {
     pub seconds: u32,
     /// a checkpoint to use for a picture; the first installed one when empty or not installed
     pub checkpoint: String,
+    /// the terminal session that asked (an agent's tool call), so the result can be shown in its chat; empty otherwise
+    pub owner: String,
 }
 
 pub const NOT_SET_UP: &str = "Pictures and video are not set up on this computer yet. Ask the user to open Create in ezCLI's sidebar and press \"Set up\"; it is a one-time download.";
@@ -465,21 +467,22 @@ pub fn start_job_with(run: impl FnOnce(&std::sync::atomic::AtomicBool) -> Result
     id
 }
 
-type MadeFn = Box<dyn Fn(&str, &str) + Send + Sync>;
+type MadeFn = Box<dyn Fn(&str, &str, &str) + Send + Sync>;
 static ON_MADE: OnceLock<MadeFn> = OnceLock::new();
 
-/// Who to tell when a picture or clip is finished (the app shows it). Given the saved path and the description.
+/// Who to tell when a picture or clip is finished (the app shows it). Given the saved path, the description and the session that asked.
 pub fn on_made(f: MadeFn) {
     let _ = ON_MADE.set(f);
 }
 
 pub fn start_job(req: Request) -> String {
     let prompt = req.prompt.clone();
+    let owner = req.owner.clone();
     start_job_with(
         move |cancel| generate(&req, cancel),
         move |path| {
             if let Some(f) = ON_MADE.get() {
-                f(path, &prompt);
+                f(path, &prompt, &owner);
             }
         },
     )
@@ -594,7 +597,7 @@ mod making_tests {
     #[test]
     fn a_picture_job_uses_the_asked_checkpoint_or_the_first_and_its_links_resolve() {
         let inst = Installed { checkpoints: vec!["a.safetensors".into(), "sd_xl_base_1.0.safetensors".into()], ..Default::default() };
-        let req = |ckpt: &str| Request { kind: Kind::Image, prompt: " a red bicycle ".into(), shape: Shape::Wide, seconds: 3, checkpoint: ckpt.into() };
+        let req = |ckpt: &str| Request { kind: Kind::Image, prompt: " a red bicycle ".into(), shape: Shape::Wide, seconds: 3, checkpoint: ckpt.into(), owner: String::new() };
         let job = plan(&req("sd_xl_base_1.0.safetensors"), &inst).unwrap();
         links_resolve(&job);
         assert_eq!(job["1"]["inputs"]["ckpt_name"], "sd_xl_base_1.0.safetensors");
@@ -612,7 +615,7 @@ mod making_tests {
         let mut part = wan();
         part.vaes = vec!["ae.safetensors".into()];
         assert!(video_model(&part).is_none());
-        let req = Request { kind: Kind::Video, prompt: "waves at dusk".into(), shape: Shape::Wide, seconds: 3, checkpoint: String::new() };
+        let req = Request { kind: Kind::Video, prompt: "waves at dusk".into(), shape: Shape::Wide, seconds: 3, checkpoint: String::new(), owner: String::new() };
         assert_eq!(plan(&req, &part).unwrap_err(), NO_VIDEO_MODEL);
         let job = plan(&req, &wan()).unwrap();
         links_resolve(&job);

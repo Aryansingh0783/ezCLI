@@ -13,6 +13,7 @@ import { addSession, setActive, state, touchSessions } from './stores/app';
 import type { Session } from './stores/app';
 import * as Usage from './lib/usage-parser';
 import { isContinuationMode, freshModeId, modelSwitchPlan } from './lib/session-routing';
+import { echoKey } from './core/echo';
 
 export { invoke, listen };
 export const T = window.__TAURI__;
@@ -1448,6 +1449,27 @@ export async function prepareToSend(s, { quiet = false } = {}) {
   return !cliBlocker(s);
 }
 
+/** A CLI that is still drawing its first screen can swallow what is typed at it (OpenCode does). After
+ *  the first message is sent, look for it on screen; if it is not there, the CLI never got it, so type
+ *  it again once the screen has settled. Seen on screen means delivered, so nothing is sent twice. */
+async function confirmFirstMessage(s, text) {
+  const key = echoKey(text);
+  if (key.length < 6) return;
+  const ptyId = s.ptyId;
+  const shown = () => screenTail(s, s.term.rows * 3).replace(/\s+/g, ' ').includes(key);
+  for (let tries = 0; tries < 3; tries++) {
+    await sleep(2500);
+    if (s.ptyId !== ptyId || s.status !== 'running' || shown()) return;
+    if (cliBlocker(s)) return;
+    const bracketed = Boolean(s.term.modes && s.term.modes.bracketedPasteMode);
+    const body = text.replace(/\r?\n/g, bracketed ? '\r' : ' ');
+    await invoke('send_input', { id: ptyId, data: bracketed ? `\x1b[200~${body}\x1b[201~` : body }).catch(() => {});
+    await sleep(600);
+    if (s.ptyId !== ptyId) return;
+    await invoke('send_input', { id: ptyId, data: '\r' }).catch(() => {});
+  }
+}
+
 /** Deliver the first message typed on the home screen once the CLI is ready.
  *  If the CLI is stuck on a question, keep the message and try again. */
 async function deliverPending(s) {
@@ -1459,6 +1481,7 @@ async function deliverPending(s) {
         const text = s.pendingPrompt;
         s.pendingPrompt = '';
         await sendText(s, text);
+        await confirmFirstMessage(s, text);
         return;
       }
       await sleep(2500);

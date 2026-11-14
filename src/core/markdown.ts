@@ -46,20 +46,16 @@ export function codeSpan(text: string): string {
   return `<code class="cm-path" role="link" tabindex="0" data-path="${esc(text)}" title="Open in the explorer">${esc(text)}</code>`;
 }
 
-/** Bold, italic, code spans and links within one line. */
+/** Bold, italic, code spans and links within one line. Code spans are set aside first, so bold or a link
+ *  can wrap one (`**Using `extend()`**`) and nothing inside a code span is formatted. */
 export function inline(src: string): string {
-  const parts = String(src).split(/(`[^`\n]+`)/g);
-  return parts
-    .map((p, i) => {
-      if (i % 2) return codeSpan(p.slice(1, -1));
-      let t = esc(p);
-      t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-      t = t.replace(/(^|[^*\w])\*([^*\s][^*\n]*)\*(?![*\w])/g, '$1<em>$2</em>');
-      t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
-      t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2">$2</a>');
-      return t;
-    })
-    .join('');
+  const codes: string[] = [];
+  let t = esc(String(src).replace(/`([^`\n]+)`/g, (_, c) => `\u0000${codes.push(c) - 1}\u0000`));
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/(^|[^*\w])\*([^*\s][^*\n]*)\*(?![*\w])/g, '$1<em>$2</em>');
+  t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
+  t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)\u0000]+)/g, '$1<a href="$2">$2</a>');
+  return t.replace(/\u0000(\d+)\u0000/g, (_, i) => codeSpan(codes[Number(i)] ?? ''));
 }
 
 /**
