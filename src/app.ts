@@ -3630,6 +3630,8 @@ function ellipsisLeft(s, max) {
 export function autoGrow(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+  // a scroll bar only once the text is taller than the box can grow (a rounding pixel showed one on a single line)
+  el.style.overflowY = el.scrollHeight > 200 ? 'auto' : 'hidden';
 }
 
 /* ------------------------------------------------------------------ wiring */

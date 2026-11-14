@@ -499,7 +499,8 @@ export const Models = {
       const status = busy ? 'Installing…' : this.latest.checking ? 'Checking for a newer version…' : newer ? `Update available: ${this.latest.tag} (you have ${have})` : have && this.latest.tag ? `Up to date (${have})` : have ? `Version ${have}` : 'Installed (not by ezCLI, so its version is unknown)';
       return this.el(
         'div',
-        { class: 'msetup' },
+        // installed and working is not something to act on, so it is not drawn as a warning
+        { class: newer || (d && d.state === 'error') ? 'msetup' : 'msetup msetup-ok' },
         this.el(
           'div',
           { class: 'mrow-main' },
