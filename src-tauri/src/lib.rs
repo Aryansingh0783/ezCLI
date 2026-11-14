@@ -342,6 +342,18 @@ fn start_session(
         validate_mcp_url(&c.url).map_err(|e| format!("{} connector: {e}", c.name))?;
     }
     let mut connectors_active = Vec::new();
+    // Ask OpenCode whether it has --standalone before taking the agents lock: the first ask runs
+    // `opencode --help`, which must not hold up anything else that needs the agent list.
+    let opencode_cmd = {
+        let agents_g = state.agents.lock().unwrap();
+        agents_g
+            .iter()
+            .find(|x| x.id == agent_id && x.mcp_style() == Some(agents::McpStyle::OpenCode))
+            .map(|x| x.command.clone())
+    };
+    let standalone = opencode_cmd
+        .and_then(|c| agents::resolve_command(&c))
+        .is_some_and(|r| opencode_has_standalone(&r));
     let (launch, argv_for_log, resolved_cwd, extra_env) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
@@ -442,6 +454,17 @@ fn start_session(
                 None => extra_env.push(("OPENCODE_CONFIG_CONTENT".into(), serialized)),
             }
             shown.push(format!("(model {model} via OPENCODE_CONFIG_CONTENT)"));
+        }
+
+        // OpenCode 2 runs one shared background server for every window, started with the
+        // environment of whichever window came first. That server would keep this ezCLI's tool
+        // address (and the first session's token) after ezCLI restarts, so every later session's
+        // pictures and videos fail to connect or land in the wrong chat. A private server per
+        // session reads this session's own settings and exits with it.
+        if standalone && style == Some(agents::McpStyle::OpenCode) {
+            let at = a.args.len().min(argv.len());
+            argv.insert(at, "--standalone".into());
+            shown.insert(at.min(shown.len()), "--standalone".into());
         }
 
         // Start under a known conversation id, or resume one. The id is checked
@@ -555,6 +578,36 @@ pub(crate) fn run_catalog(resolved: &str, args: &[String]) -> Result<String, Str
 
 /// Like `run_catalog`, run from `dir`. Some CLIs (OpenCode's session list) only see the
 /// sessions of the folder they run in.
+/// Whether this OpenCode lists `--standalone` in its help (OpenCode 2 and later); an older
+/// OpenCode would refuse the flag, so it is only passed when listed. The answer is kept per
+/// install path and file version (size and time), so an updated OpenCode is asked again, and a
+/// failed ask is not kept, so the next session asks again.
+fn opencode_has_standalone(resolved: &str) -> bool {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static SEEN: Mutex<Option<HashMap<String, bool>>> = Mutex::new(None);
+    let stamp = std::fs::metadata(resolved)
+        .ok()
+        .map(|m| format!("{}|{:?}", m.len(), m.modified().ok()))
+        .unwrap_or_default();
+    let key = format!("{resolved}|{stamp}");
+    if let Some(known) = SEEN.lock().ok().and_then(|g| g.as_ref().and_then(|m| m.get(&key).copied())) {
+        return known;
+    }
+    let Ok(out) = run_catalog_in(resolved, &["--help".to_string()], None) else {
+        return false;
+    };
+    let has = help_lists_standalone(&out);
+    if let Ok(mut g) = SEEN.lock() {
+        g.get_or_insert_with(HashMap::new).insert(key, has);
+    }
+    has
+}
+
+fn help_lists_standalone(help: &str) -> bool {
+    help.split(|c: char| c.is_whitespace() || c == ',' || c == '[' || c == ']').any(|w| w == "--standalone")
+}
+
 pub(crate) fn run_catalog_in(resolved: &str, args: &[String], dir: Option<&std::path::Path>) -> Result<String, String> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
@@ -1397,6 +1450,14 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn standalone_is_only_passed_when_the_help_lists_it() {
+        assert!(super::help_lists_standalone("Options:\n  --standalone  run with a private server\n  --server <url>"));
+        assert!(super::help_lists_standalone("  [--standalone, --server]"));
+        assert!(!super::help_lists_standalone("Options:\n  --server <url>\n  --standalone-ish"));
+        assert!(!super::help_lists_standalone(""));
+    }
+
     use super::*;
 
     #[test]
