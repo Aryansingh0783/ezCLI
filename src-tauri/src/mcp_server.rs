@@ -246,7 +246,7 @@ fn make_report(job: &str, state: Option<crate::comfy::JobState>) -> (bool, Strin
     use crate::comfy::JobState::*;
     match state {
         None => (true, "There is no job with that id.".into()),
-        Some(Done { path }) => (false, format!("Saved to {path}. The user can see it in ezCLI's Create panel. Tell them where it is; do not try to open or read the file.")),
+        Some(Done { path }) => (false, format!("Saved to {path}. The user can see it in ezCLI's Create panel. You have not seen the result: tell the user it is ready and where it is saved, and do not describe what it looks like or open the file.")),
         Some(Failed { why }) => (true, why),
         Some(Working { seconds }) => (false, format!("Still being made after {seconds} s (job {job}). Call create_status with job \"{job}\" to wait for it.")),
     }

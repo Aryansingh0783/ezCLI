@@ -43,3 +43,8 @@ export function findEchoRows(flat: readonly string[], heads: readonly (string | 
   }
   return at;
 }
+
+/** The start of a message as it would appear on the terminal: enough to recognise it, short enough to sit on one line. */
+export function echoKey(text: unknown): string {
+  return String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 18);
+}
