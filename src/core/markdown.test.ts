@@ -92,3 +92,12 @@ describe('safeCut', () => {
     }
   });
 });
+
+describe('bold around a code span', () => {
+  it('formats bold that wraps inline code, and leaves the code itself alone', () => {
+    const out = inline('**Method 2: Using `extend()` Method**');
+    expect(out).toBe('<strong>Method 2: Using <code>extend()</code> Method</strong>');
+    expect(inline('use `**not bold**` here')).toBe('use <code>**not bold**</code> here');
+    expect(inline('[the `docs`](https://example.com)')).toBe('<a href="https://example.com">the <code>docs</code></a>');
+  });
+});
