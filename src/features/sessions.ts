@@ -1,4 +1,4 @@
-import { $, ICONS, __set_renderHome, addSpace, agent, basename, confirmDialog, copy, createSession, esc, fmtAgo, hooks, invoke, openMenu, prefs, renderHome, savePrefs, selectSpace, snapshotParked, space, spaceIdFor, state, toast } from '../app';
+import { $, ICONS, __set_renderHome, addSpace, agent, basename, confirmDialog, copy, createSession, esc, fmtAgo, hooks, invoke, openMenu, prefs, renderHome, savePrefs, selectSpace, snapshotParked, space, spaceIdFor, state, toast, shownTitle } from '../app';
 import { late } from '../late';
 import { saveTranscript } from './transcripts';
 import { registerCommand } from './palette';
@@ -42,7 +42,7 @@ export const Sessions = (() => {
       kind: 'saved',
       key: `s:${m.id}`,
       id: m.id,
-      title: m.title || 'Untitled session',
+      title: shownTitle(m.title || 'Untitled session', m.agentLabel || m.agentId),
       agentId: m.agentId,
       agentLabel: m.agentLabel || m.agentId,
       cwd: m.cwd || '',
