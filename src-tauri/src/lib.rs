@@ -4,6 +4,7 @@
 //! and listens to pty-data/pty-exit events. No HTTP server, no WebSocket.
 
 mod agents;
+mod agy_mcp;
 mod backends;
 mod capture;
 mod chat_feed;
@@ -192,6 +193,7 @@ fn detach_pc_control(state: &AppState, mcp: &mcp_server::McpServer, pty_id: &str
     state.pc_control.revoke(pty_id);
     mcp.unregister(pty_id);
     let _ = std::fs::remove_file(mcp_config_file(pty_id));
+    agy_mcp::detach(pty_id);
 }
 
 type McpAttach = (Vec<String>, Vec<String>, Vec<(String, String)>);
@@ -292,6 +294,8 @@ fn mcp_attach_args(style: agents::McpStyle, pty_id: &str, entries: &[McpEntry]) 
             (args, shown)
         }
         agents::McpStyle::OpenCode | agents::McpStyle::Gemini => unreachable!("handled above"),
+        // Written to the session folder by start_session, which knows the folder.
+        agents::McpStyle::Antigravity => (Vec::new(), Vec::new()),
     };
     Ok((args, shown, Vec::new()))
 }
@@ -413,7 +417,14 @@ fn start_session(
             // session still starts, just without them. PC control and the user's own connectors were asked for, so
             // for those a failure is reported.
             let only_the_bonus = !want_pc && connectors.is_empty();
-            let (attach, attach_shown, env) = match mcp_attach_args(style, &id, &entries) {
+            let attached = if style == agents::McpStyle::Antigravity {
+                let folder = cwd.as_deref().map(std::path::PathBuf::from).filter(|p| p.is_dir()).unwrap_or_else(|| std::path::PathBuf::from(default_start_dir()));
+                let servers = entries.iter().map(|e| (e.name.to_string(), e.url.to_string())).collect();
+                agy_mcp::attach(&folder, &id, servers).map(|_| (Vec::new(), Vec::new(), Vec::new()))
+            } else {
+                mcp_attach_args(style, &id, &entries)
+            };
+            let (attach, attach_shown, env) = match attached {
                 Ok(v) => v,
                 Err(_) if only_the_bonus => {
                     detach_pc_control(&state, &mcp, &id);
@@ -1444,6 +1455,7 @@ pub fn run() {
             // ezCLI's own ComfyUI must not outlive it
             if let tauri::RunEvent::Exit = event {
                 studio::stop();
+                agy_mcp::detach_all();
             }
         });
 }
