@@ -486,7 +486,14 @@ fn start_session(
             shown.extend(extra);
         }
 
-        let launch = agents::launch_command(&resolved, &argv).map_err(|e| e.to_string())?;
+        let launch = match agents::launch_command(&resolved, &argv) {
+            Ok(l) => l,
+            Err(e) => {
+                // Nothing was started: take back the tool registration (and any config written for it).
+                detach_pc_control(&state, &mcp, &id);
+                return Err(e.to_string());
+            }
+        };
 
         let resolved_cwd = cwd
             .filter(|c| std::path::Path::new(c).is_dir())
