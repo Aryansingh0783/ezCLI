@@ -422,6 +422,12 @@ export const spaceIdFor = (path) => String(path).replace(/[\\/]+$/, '').toLowerC
 
 /** A `.cmd` shim may set the terminal title to its shell executable. That is
  * useful shell metadata, but never a useful session name. */
+/** A saved title, unless it is only a program's path (older versions saved those): then the agent's name. */
+export function shownTitle(title, fallback) {
+  const t = String(title ?? '').trim();
+  return t && isMeaningfulTerminalTitle(t) ? t : fallback || t || 'Session';
+}
+
 function isMeaningfulTerminalTitle(title) {
   const text = String(title ?? '').trim();
   if (!text || text.length >= 80) return false;
@@ -1040,7 +1046,7 @@ function buildParked(sn) {
     modeId: sn.modeId,
     effortId: sn.effortId || pick(a).effort,
     cwd: sn.cwd,
-    title: sn.title,
+    title: shownTitle(sn.title, sn.modelId && a.requiresModelSelection ? modelLabel(a, sn.modelId) : a.label),
     status: 'parked',
     exitCode: sn.exitCode,
     startedAt: Date.now(),
