@@ -342,6 +342,18 @@ fn start_session(
         validate_mcp_url(&c.url).map_err(|e| format!("{} connector: {e}", c.name))?;
     }
     let mut connectors_active = Vec::new();
+    // Ask OpenCode whether it has --standalone before taking the agents lock: the first ask runs
+    // `opencode --help`, which must not hold up anything else that needs the agent list.
+    let opencode_cmd = {
+        let agents_g = state.agents.lock().unwrap();
+        agents_g
+            .iter()
+            .find(|x| x.id == agent_id && x.mcp_style() == Some(agents::McpStyle::OpenCode))
+            .map(|x| x.command.clone())
+    };
+    let standalone = opencode_cmd
+        .and_then(|c| agents::resolve_command(&c))
+        .is_some_and(|r| opencode_has_standalone(&r));
     let (launch, argv_for_log, resolved_cwd, extra_env) = {
         let agents_g = state.agents.lock().unwrap();
         let a = agents_g
@@ -449,7 +461,7 @@ fn start_session(
         // address (and the first session's token) after ezCLI restarts, so every later session's
         // pictures and videos fail to connect or land in the wrong chat. A private server per
         // session reads this session's own settings and exits with it.
-        if style == Some(agents::McpStyle::OpenCode) && opencode_has_standalone(&resolved) {
+        if standalone && style == Some(agents::McpStyle::OpenCode) {
             let at = a.args.len().min(argv.len());
             argv.insert(at, "--standalone".into());
             shown.insert(at.min(shown.len()), "--standalone".into());
@@ -566,18 +578,28 @@ pub(crate) fn run_catalog(resolved: &str, args: &[String]) -> Result<String, Str
 
 /// Like `run_catalog`, run from `dir`. Some CLIs (OpenCode's session list) only see the
 /// sessions of the folder they run in.
-/// Whether this OpenCode lists `--standalone` in its help (OpenCode 2 and later). Asked once per
-/// install path; an older OpenCode would refuse the flag, so it is only passed when listed.
+/// Whether this OpenCode lists `--standalone` in its help (OpenCode 2 and later); an older
+/// OpenCode would refuse the flag, so it is only passed when listed. The answer is kept per
+/// install path and file version (size and time), so an updated OpenCode is asked again, and a
+/// failed ask is not kept, so the next session asks again.
 fn opencode_has_standalone(resolved: &str) -> bool {
     use std::collections::HashMap;
     use std::sync::Mutex;
     static SEEN: Mutex<Option<HashMap<String, bool>>> = Mutex::new(None);
-    if let Some(known) = SEEN.lock().ok().and_then(|g| g.as_ref().and_then(|m| m.get(resolved).copied())) {
+    let stamp = std::fs::metadata(resolved)
+        .ok()
+        .map(|m| format!("{}|{:?}", m.len(), m.modified().ok()))
+        .unwrap_or_default();
+    let key = format!("{resolved}|{stamp}");
+    if let Some(known) = SEEN.lock().ok().and_then(|g| g.as_ref().and_then(|m| m.get(&key).copied())) {
         return known;
     }
-    let has = run_catalog_in(resolved, &["--help".to_string()], None).map(|out| help_lists_standalone(&out)).unwrap_or(false);
+    let Ok(out) = run_catalog_in(resolved, &["--help".to_string()], None) else {
+        return false;
+    };
+    let has = help_lists_standalone(&out);
     if let Ok(mut g) = SEEN.lock() {
-        g.get_or_insert_with(HashMap::new).insert(resolved.to_string(), has);
+        g.get_or_insert_with(HashMap::new).insert(key, has);
     }
     has
 }
