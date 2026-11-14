@@ -1,0 +1,99 @@
+/* Local models panel: a fixed-size sheet with a header, an always-visible setup banner, three tabs and one
+   scrolling body. Rows live in a single bordered list; the brand colour is kept for the one main action. */
+
+.models-sheet.sheet {
+  width: min(780px, calc(100vw - 32px));
+  height: min(720px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.models-sheet.sheet[open] { display: flex; }
+
+.models-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 24px 10px; }
+.models-head h2 { margin: 0; }
+.models-hw { margin-top: 3px; font-size: 12px; color: var(--muted); }
+.models-hw:empty { display: none; }
+
+.models-setup:empty { display: none; }
+.models-setup { padding: 0 24px 8px; }
+.msetup {
+  display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand) 9%, var(--surface));
+}
+
+.models-tabs { display: flex; gap: 2px; padding: 0 24px; border-bottom: 1px solid var(--border); }
+.mtab {
+  appearance: none; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px;
+  padding: 9px 12px; margin-bottom: -1px; border-bottom: 2px solid transparent; cursor: pointer; border-radius: 6px 6px 0 0;
+}
+.mtab:hover { color: var(--text); }
+.mtab.on { color: var(--text); font-weight: 600; border-bottom-color: var(--brand); }
+.mtab:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.mcount:not(:empty) { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); font-size: 11px; font-weight: 500; color: var(--muted); }
+
+.models-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 24px 22px; }
+
+/* section headings */
+.msec { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 22px 0 8px; }
+.msec-t { font-size: 14px; font-weight: 600; }
+.msec-s { margin-top: 2px; font-size: 12.5px; color: var(--muted); max-width: 52ch; }
+.mbtns { display: inline-flex; gap: 6px; flex-shrink: 0; }
+
+/* lists: one container, rows separated by hairlines */
+.mlist { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.mrow, .mcard { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.mlist > .mrow { border-bottom: 1px solid var(--border); }
+.mlist > .mrow:last-child { border-bottom: 0; }
+.mlist > .mrow:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
+.mcard { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.mrow-main { flex: 1; min-width: 0; }
+.mrow-name { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.mrow-meta { margin-top: 2px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.mmuted { color: var(--muted); font-size: 12.5px; margin: 4px 0; }
+.mempty { margin: 0; padding: 22px 14px; text-align: center; color: var(--muted); font-size: 13px; }
+.mrow .btn { min-width: 74px; }
+.mclick { cursor: pointer; }
+.mclick:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* fit badges: a small dot and a short label */
+.mfit { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; color: var(--muted); }
+.mfit::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.mfit.good { color: var(--ok, #2f8a4d); }
+.mfit.ok { color: var(--warn, #a77a10); }
+.mfit.bad { color: var(--danger, #c23a2f); }
+
+/* downloads */
+.mprog { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.mbar { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
+.mbar-fill { height: 100%; background: var(--brand); transition: width 0.3s; }
+.mwarn { font-size: 12px; color: var(--warn, #a77a10); }
+.merror { margin: 6px 0 0; font-size: 12.5px; color: var(--danger, #c23a2f); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* the save-folder row */
+.mdir { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.mpath { margin-top: 2px; font-family: var(--font-mono, monospace); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+
+/* search and folders */
+.msettings, .mfolders { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; font-size: 12.5px; }
+.msettings select, .mfolder {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px;
+}
+.mfolder { flex: 1; min-width: 200px; }
+.mfolder:focus-visible, .msettings select:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.mchip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); font-size: 12px; }
+.mchip .mx { min-width: 0; padding: 0 4px; border: 0; background: transparent; cursor: pointer; color: var(--muted); }
+.mloaded { flex-wrap: wrap; }
+.mdot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint, #999); flex: none; }
+.mdot.on { background: var(--green, #3fa660); }
+.models-body code { font-size: 11.5px; }
+
+@media (max-width: 560px) {
+  .models-head, .models-tabs { padding-left: 16px; padding-right: 16px; }
+  .models-body, .models-setup { padding-left: 16px; padding-right: 16px; }
+  .mrow { flex-wrap: wrap; }
+  .msetup { flex-wrap: wrap; }
+}

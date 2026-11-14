@@ -150,6 +150,12 @@ export const TERM_THEMES = {
   }
 };
 
+// The terminal pane is always a dark surface, in the light themes too (see
+// reference.css), so it always uses the dark colour set. The light set draws
+// dark text, which is unreadable on that pane.
+const TERM_LIGHT = TERM_THEMES.light;
+TERM_THEMES.light = TERM_THEMES.dark;
+
 /* ---------------------------------------------------------- terminal setup */
 
 export const TERM_FONTS = {
@@ -160,22 +166,38 @@ export const TERM_FONTS = {
 };
 const TERM_LINES = { compact: 1.15, comfortable: 1.35, relaxed: 1.55 };
 
-/** The terminal paints an opaque background that matches its pane exactly (theme.css sets --term-bg).
- *  An opaque pane is also what the GPU renderer needs; a transparent one composites as black boxes. */
+/** The terminal paints an opaque background that matches its pane exactly (the pane
+ *  colour changes with the palette). A transparent terminal looks fine in the HTML
+ *  renderer but the GPU renderer composites it as black boxes behind the text. */
+/** How the terminal pane is painted:
+ *   clear  fully transparent; on a light window the text switches to dark ink so the
+ *          terminal simply sits on the page, on a dark window it stays light text
+ *   glass  a translucent, blurred dark pane
+ *   solid  an opaque dark pane
+ *  Transparency needs the HTML renderer; the GPU renderer always draws solid. */
+const termLook = () => (prefs.gpu === true ? 'solid' : prefs.termLook || (prefs.termGlass === false ? 'solid' : 'clear'));
+
+function cssRgb(value, fallback) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(value).trim());
+  if (!m) return fallback;
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
+
 function syncTermBackground() {
-  const css = getComputedStyle(document.documentElement);
-  const bg = css.getPropertyValue('--term-bg').trim() || '#17181A';
-  const fg = css.getPropertyValue('--text').trim();
-  for (const t of [TERM_THEMES.dark, TERM_THEMES.light]) {
-    t.background = bg;
-    t.cursorAccent = bg;
-  }
-  const cur = TERM_THEMES[document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'];
-  if (fg) {
-    cur.foreground = fg;
-    cur.cursor = fg;
-  }
-  document.documentElement.dataset.termGlass = 'off';
+  const cs = getComputedStyle(document.documentElement);
+  const bg = cs.getPropertyValue('--term-bg').trim() || '#15171d';
+  const panel = cs.getPropertyValue('--panel').trim() || '#ffffff';
+  const look = termLook();
+  const lightInk = look === 'clear' && resolvedTheme() === 'light';
+  // The channels of a transparent background still tell the contrast fixer what the text sits on.
+  TERM_THEMES.dark.background = look === 'solid' ? bg : `rgba(${look === 'clear' ? cssRgb(bg, '21, 23, 29') : '0, 0, 0'}, 0)`;
+  TERM_THEMES.dark.cursorAccent = bg;
+  TERM_THEMES.light = lightInk
+    ? { ...TERM_LIGHT, background: `rgba(${cssRgb(panel, '255, 255, 255')}, 0)`, cursorAccent: panel }
+    : TERM_THEMES.dark;
+  const root = document.documentElement.dataset;
+  root.termGlass = look === 'glass' ? 'on' : look === 'clear' ? 'clear' : 'off';
 }
 
 /** One configuration for every terminal in the app. */
@@ -198,7 +220,7 @@ function termOptions(extra = {}) {
     rescaleOverlappingGlyphs: true,
     smoothScrollDuration: 70,
     allowProposedApi: true,
-    allowTransparency: false,
+    allowTransparency: termLook() !== 'solid',
     theme: TERM_THEMES[resolvedTheme()],
     scrollback: 20000,
     ...extra
@@ -316,23 +338,34 @@ export function remeasureTerminals() {
   requestAnimationFrame(() => state.sessions.forEach(fitSession));
 }
 
-/** The look: `prefs.look` is 'system' (follow the OS), 'dark' or 'light'. */
-export const resolvedTheme = (): 'dark' | 'light' => {
-  const want = prefs.look === 'dark' || prefs.look === 'light' ? prefs.look : 'system';
-  if (want !== 'system') return want;
-  return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-};
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
+export const resolvedTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme);
 
-/** Stamp the attributes the stylesheet keys on, and give every terminal the colours. */
+/** Palettes are either light or dark. The Light / Dark / Match system switch is a mode, and a
+ *  palette from the other mode would leave light text on a white window (or the reverse), so
+ *  the matching palette is used instead. The saved choice is kept and returns with its mode. */
+const DARK_PALETTES = new Set(['midnight', 'nebula', 'ocean', 'claude-dark']);
+function effectivePalette() {
+  const p = prefs.palette || 'claude';
+  const dark = DARK_PALETTES.has(p);
+  const t = resolvedTheme();
+  if (t === 'dark' && !dark) return p === 'claude' ? 'claude-dark' : 'midnight';
+  if (t === 'light' && dark) return p === 'claude-dark' ? 'claude' : 'daylight';
+  return p;
+}
+
 export function applyTheme() {
-  const root = document.documentElement;
-  const theme = resolvedTheme();
-  root.dataset.theme = theme;
-  root.dataset.layout = 'calm';
-  delete root.dataset.palette;
-  delete root.dataset.style;
+  const t = resolvedTheme();
+  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.palette = effectivePalette();
+  document.documentElement.dataset.layout = prefs.calm === false ? 'dashboard' : 'calm';
   syncTermBackground();
-  for (const s of state.sessions) s.term.options.theme = TERM_THEMES[theme];
+  for (const s of state.sessions) s.term.options.theme = TERM_THEMES[t];
+  document.querySelectorAll('[data-theme-opt]').forEach((b) => {
+    const on = b.dataset.themeOpt === prefs.theme;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  });
 }
 
 /* ------------------------------------------------------------------ icons */
@@ -392,9 +425,10 @@ export const spaceIdFor = (path) => String(path).replace(/[\\/]+$/, '').toLowerC
 function isMeaningfulTerminalTitle(title) {
   const text = String(title ?? '').trim();
   if (!text || text.length >= 80) return false;
+  // a full path to a program (llama-cli.exe, a .cmd shim) is not a name for the session
+  if (/[\\/]/.test(text) && /\.(exe|cmd|bat|sh)$/i.test(text)) return false;
   // Console hosts title a window "Windows PowerShell", "Administrator: Command
   // Prompt" or a full exe path; none of those name the session.
-  if (/[\\/]/.test(text) && /\.(exe|cmd|bat|sh)$/i.test(text)) return false;
   const shell = basename(text).toLowerCase().replace(/^administrator:\s*/, '');
   return ![
     'cmd', 'cmd.exe', 'command prompt', 'powershell', 'powershell.exe', 'windows powershell', 'pwsh', 'pwsh.exe',
@@ -1685,8 +1719,9 @@ export function renderHome() {
   const hour = new Date().getHours();
   const hello = hour < 5 ? 'Working late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-  $('homeTitle').textContent = 'What should the agent do?';
-  $('homeGreeting').textContent = today;
+  const calm = prefs.calm !== false;
+  $('homeTitle').textContent = calm ? homeGreeting() : 'Overview';
+  $('homeGreeting').textContent = calm ? today : `${hello} · ${today}`;
   $('homeProjectLabel').textContent = sp ? sp.name : 'Choose a folder';
   const projEl = $('homeProject');
   if (projEl) projEl.title = sp ? sp.path : 'Choose a folder';
@@ -1701,7 +1736,7 @@ export function renderHome() {
     const fill = (id, cap, val, show = true) => {
       const el = $(id);
       el.hidden = !show;
-      el.innerHTML = `<span class="sr-only">${cap}: </span><span class="pill-val">${esc(val)}</span>${caret}`;
+      el.innerHTML = `<span class="pill-cap">${cap}</span><span class="pill-val">${esc(val)}</span>${caret}`;
       // The value can be clipped (long catalog model names); keep it readable.
       el.title = `${cap}: ${val}`;
     };
@@ -1711,19 +1746,17 @@ export function renderHome() {
     fill('homeMode', 'Mode', label(a.modes, p.mode), a.modes.length > 1);
   }
 
-  // One row per agent: name, what it costs or runs on, and whether it can start now.
   $('agentStrip').innerHTML = state.agents
-    .map((x) => {
-      const note = x.free ? 'Free' : '';
-      return `<button class="agent-option agent-row ${x.id === prefs.agentId ? 'selected' : ''} ${x.available ? '' : 'missing'}" data-agent="${esc(x.id)}"
+    .map(
+      (x) => `<button class="agent-option agent-card ${x.id === prefs.agentId ? 'selected' : ''} ${x.available ? '' : 'missing'}" data-agent="${esc(x.id)}"
         role="radio" aria-checked="${x.id === prefs.agentId}"
         title="${esc(x.available ? x.resolved || x.command : `${x.command} was not found on PATH. Click to install it.`)}">
-        <span class="agent-row-name">${esc(x.label)}</span>
-        <span class="agent-row-note">${esc(note)}</span>
-        <span class="agent-row-state">${x.available ? 'Ready' : 'Not installed'}</span>
-        <span class="agent-row-act">${x.available ? '' : 'Install'}</span>
-      </button>`;
-    })
+        <span class="agent-card-ico">${ICONS[x.icon] || ICONS.term}</span>
+        <span class="agent-card-text"><span class="agent-card-name">${esc(x.label)}</span>
+        <span class="agent-card-meta">${x.available ? (x.free ? 'Free · ready' : 'Ready') : 'Click to install'}</span></span>
+        ${x.free ? '<span class="free-badge">Free</span>' : ''}
+      </button>`
+    )
     .join('');
 
   const prompts = [
@@ -3721,6 +3754,14 @@ function wire() {
   });
 
   // settings
+  document.querySelectorAll('[data-theme-opt]').forEach((b) =>
+    b.addEventListener('click', () => {
+      prefs.theme = b.dataset.themeOpt;
+      savePrefs();
+      applyTheme();
+    })
+  );
+  systemDark.addEventListener('change', () => prefs.theme === 'system' && applyTheme());
   $('fontDown').addEventListener('click', () => setFontSize(prefs.fontSize - 1));
   $('fontUp').addEventListener('click', () => setFontSize(prefs.fontSize + 1));
   $('reloadAgents').addEventListener('click', reloadAgents);

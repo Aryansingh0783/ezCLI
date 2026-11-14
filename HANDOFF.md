@@ -18,9 +18,12 @@ Last updated: 2026-11-13 by Claude (v5.14.0; see the block directly below)
 - **VoiceStudio:** `src-tauri/src/voicestudio.rs` finds a running VoiceStudio (discovery document on port
   3900); Settings offers to connect it, which adds its MCP address to `prefs.connectors`. ezCLI does not
   install or start VoiceStudio.
-- **Interface:** 5.14.0 shipped a softer, rounder layout; the owner asked for the layout back and the
-  colours kept, so after 5.14.0 the layout is 5.13's (status bar, one-line session rows, files panel closed
-  by default) with the teal theme. Rules are at the top of `src/styles/ui.css`.
+- **Interface: the original one.** 5.13 and 5.14 replaced the interface twice; the owner asked for the
+  original back, themes included, so 5.15.0 restores it: the thirteen stylesheets in `src/styles/` in
+  their original order, the theme presets, accents and Liquid glass (`src/features/glass.ts`), and the
+  original home page and sidebar. `src/styles/later.css` styles what was added since (Create, VoiceStudio,
+  session state words) with the original theme variables. The chat drawing (no flash while a reply
+  streams) is untouched. Do not redesign the interface again unless the owner asks for a specific change.
 - **Create (5.15.0):** pictures and video, made on this computer by ComfyUI, with nothing for the user to
   install or open. `src-tauri/src/studio.rs` downloads ComfyUI's official Windows portable build into
   `~/.ezcli/studio`, starts it hidden on port 8317 when something is asked for, stops it when ezCLI quits,

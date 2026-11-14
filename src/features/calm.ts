@@ -53,7 +53,7 @@ export const RailSessions = {
     if (list.length) {
       const head = document.createElement('div');
       head.className = 'rail-sessions-head';
-      head.textContent = 'Open';
+      head.textContent = 'Recents';
       this.box.append(head);
     }
     for (const s of list) {
@@ -241,7 +241,7 @@ hooks.boot.push(() => {
   b.type = 'button';
   b.className = 'rail-btn rail-instr';
   b.title = 'Edit the project instructions the agent reads';
-  b.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z" /><path d="M9 12h7M9 16h7M9 8h3" /></svg><span class="rail-label">Rules</span>';
+  b.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z" /><path d="M9 12h7M9 16h7M9 8h3" /></svg><span class="rail-label">Instructions</span>';
   b.addEventListener('click', () => ProjectInstructions.open());
   brain.before(b);
 });
