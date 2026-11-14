@@ -1,0 +1,457 @@
+/* ezCLI 4.0: the Claude-desktop pass.
+ * Loaded last. Everything here is scoped to the calm layout (html[data-layout='calm']),
+ * so the dashboard layout keeps its own look. */
+
+/* ===================== Sand Dark: Claude's dark theme ===================== */
+:root:root:root[data-palette='claude-dark'] {
+  --page: #1f1e1d;
+  --panel: #262624;
+  --rail-dark: #1f1e1d;
+  --term-bg: #262624;
+  --ink: #f5f4ef;
+  --ink-soft: #c9c7bd;
+  --ink-faint: #a29f96;
+  --line: rgb(222 220 209 / 14%);
+  --tint-a: #2c2b29; --tint-b: #2a2a27; --tint-c: #2e2d2a; --tint-d: #2b2a28;
+}
+:root[data-palette='claude-dark']:root {
+  --surface: var(--panel);
+  --surface-2: #2e2d2b;
+  --raised: #34332f;
+  --text: var(--ink); --muted: var(--ink-soft); --faint: var(--ink-faint);
+  --border: var(--line);
+}
+
+/* both Sand palettes share the flat Claude window */
+@media (min-width: 980px) {
+  :root[data-palette='claude-dark'][data-layout='calm'] .app-body { gap: 0 !important; padding: 0 !important; }
+  :root[data-palette='claude-dark'][data-layout='calm'] .main { border-radius: 0 !important; box-shadow: none !important; border-left: 1px solid var(--line); }
+  :root:root[data-palette='claude-dark'][data-layout='calm'] { --rail-w: 256px; }
+  :root[data-palette='claude-dark'][data-layout='calm'] .rail { box-sizing: border-box; padding: 10px 12px; border-radius: 0; background: transparent; box-shadow: none; }
+}
+:root[data-palette='claude-dark'][data-layout='calm'] .tabbar { background: var(--page); }
+:root[data-palette='claude-dark'][data-layout='calm'] .home .dash-hero .composer-box,
+:root[data-palette='claude-dark'][data-layout='calm'] #ptyComposer {
+  background: #30302e !important; border: 1px solid rgb(222 220 209 / 14%) !important; border-radius: 22px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 18%) !important;
+}
+:root[data-palette='claude-dark'][data-layout='calm'] .home .dash-hero .composer-box:focus-within,
+:root[data-palette='claude-dark'][data-layout='calm'] #ptyComposer:focus-within { border-color: rgb(222 220 209 / 30%) !important; }
+:root[data-palette='claude-dark'][data-layout='calm'] .home #homeTitle { font-weight: 400; }
+:root:root[data-layout='calm'][data-palette='claude-dark'] { --rf: #e2e0d7; --rf-strong: #faf9f5; --rf-dim: #a9a69c; --rf-hover: rgb(255 255 255 / 6%); --rf-active: rgb(255 255 255 / 10%); }
+
+/* ===================== session composer: agent · model · effort ===================== */
+.composer-meta, .composer-mode { display: none; }
+html[data-layout='calm'] #ptyComposer .composer-meta:not([hidden]) {
+  display: inline-flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 2px;
+  height: 30px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ink, var(--text)); font-size: 13px; font-weight: 500; opacity: 1 !important; cursor: pointer;
+}
+html[data-layout='calm'] #ptyComposer .composer-mode:not([hidden]) {
+  display: inline-flex; align-items: center; height: 30px; padding: 0 8px; margin-left: 2px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft, var(--muted)); font-size: 13px; font-weight: 500; opacity: 1 !important; cursor: pointer;
+}
+html[data-layout='calm'] #ptyComposer .composer-mode:disabled { cursor: default; }
+html[data-layout='calm'] #ptyComposer .composer-meta:hover:not(:disabled),
+html[data-layout='calm'] #ptyComposer .composer-mode:hover:not(:disabled) { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); color: var(--ink, var(--text)); }
+html[data-layout='calm'] #ptyComposer .composer-meta:disabled { cursor: default; }
+html[data-layout='calm'] #ptyComposer .composer-meta .meta-effort { color: var(--ink-faint, var(--faint)); font-weight: 400; }
+html[data-layout='calm'] #ptyComposer .composer-row { align-items: center; }
+
+/* the session header keeps the agent visible, quietly, next to the title */
+html[data-layout='calm'] .session-head > .head-agent:not([hidden]) { opacity: 1; color: var(--ink-faint, var(--faint)); font-weight: 500; }
+
+/* ===================== menus ===================== */
+html[data-layout='calm'] .menu {
+  padding: 6px; border: 1px solid var(--line, var(--border)); border-radius: 12px;
+  background: var(--panel, var(--surface-2));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%), 0 12px 32px -8px rgb(0 0 0 / 22%);
+}
+html[data-layout='calm'] .menu-search { height: 32px; border-radius: 8px; border-color: var(--line, var(--border)); background: transparent; }
+html[data-layout='calm'] .menu-head { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; color: var(--ink-faint, var(--faint)); }
+html[data-layout='calm'] .header-menu-item { min-height: 32px; padding: 6px 10px; border-radius: 8px; font-size: 13px; color: var(--ink, var(--text)); }
+html[data-layout='calm'] .header-menu-item:hover:not(:disabled),
+html[data-layout='calm'] .header-menu-item.kbd-focus { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+html[data-layout='calm'] .menu-sep { background: var(--line, var(--border)); }
+
+/* ===================== dialogs ===================== */
+html[data-layout='calm'] dialog.sheet {
+  border: 1px solid var(--line, var(--border)); border-radius: 16px; background: var(--panel, var(--surface));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 6%), 0 24px 64px -16px rgb(0 0 0 / 32%);
+}
+html[data-layout='calm'] dialog.sheet::backdrop { background: rgb(20 18 14 / 36%); backdrop-filter: blur(2px); }
+html[data-layout='calm'] dialog.sheet h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink, var(--text)); }
+html[data-layout='calm'] dialog.sheet h3 { font-size: 13.5px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink, var(--text)); }
+html[data-layout='calm'] dialog.sheet :is(input[type='text'], input[type='search'], input:not([type]), textarea, select) {
+  border-radius: 8px; border: 1px solid var(--line, var(--border));
+}
+
+/* settings: section list on the left */
+#settingsSheet { width: min(880px, 94vw); max-width: none; padding-bottom: 14px; }
+#settingsSheet .settings-layout { display: grid; grid-template-columns: 176px 1fr; gap: 22px; min-height: 0; }
+#settingsSheet .settings-nav { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+#settingsSheet .settings-nav button {
+  height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; text-align: left;
+  color: var(--ink, var(--text)); font-size: 13px; font-weight: 450; cursor: pointer;
+}
+#settingsSheet .settings-nav button:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); color: var(--ink, var(--text)); }
+#settingsSheet .settings-nav button.on { background: color-mix(in srgb, var(--ink, #1f1d19) 9%, transparent); color: var(--ink, var(--text)); }
+#settingsSheet .settings-body { max-height: min(64vh, 620px); overflow-y: auto; padding-right: 6px; scrollbar-width: thin; }
+#settingsSheet .settings-body .settings-section { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line, var(--border)); }
+#settingsSheet .settings-body .settings-section:last-child { border-bottom: 0; }
+#settingsSheet > form { display: flex; justify-content: flex-end; margin-top: 12px; }
+@media (max-width: 700px) {
+  #settingsSheet .settings-layout { grid-template-columns: 1fr; }
+  #settingsSheet .settings-nav { flex-direction: row; flex-wrap: wrap; }
+}
+
+/* theme presets and segmented controls read as plain, flat choices */
+html[data-layout='calm'] .theme-preset-grid button,
+html[data-layout='calm'] .theme-preset { border-radius: 10px; box-shadow: none; }
+html[data-layout='calm'] .segmented { border-radius: 9px; box-shadow: none; }
+html[data-layout='calm'] .segmented .theme-option.on,
+html[data-layout='calm'] .segmented button.on { box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+
+/* ===================== toasts ===================== */
+html[data-layout='calm'] .toast {
+  border: 1px solid var(--line, var(--border)); border-radius: 12px; background: var(--panel, var(--surface));
+  color: var(--ink, var(--text)); box-shadow: 0 12px 32px -10px rgb(0 0 0 / 28%); font-size: 13px;
+}
+
+/* ===================== home: recent sessions as a plain list ===================== */
+html[data-layout='calm'] .home #continueRow.session-table,
+html[data-layout='calm'] .home .dash-table #continueRow {
+  background: transparent !important; box-shadow: none !important; border: 0 !important; padding: 0 !important;
+}
+html[data-layout='calm'] .home #continueRow .session-trow { border-radius: 0; border: 0; box-shadow: none; }
+html[data-layout='calm'] .home #continueRow .session-trow + .session-trow { border-top: 1px solid var(--line, var(--border)); }
+html[data-layout='calm'] .home #continueRow .session-trow:hover { border-radius: 8px; }
+html[data-layout='calm'] .home #continueRow .session-agent,
+html[data-layout='calm'] .home #continueRow .session-when { color: var(--ink-faint, var(--faint)); font-size: 12.5px; }
+
+/* composer helper chips stay flat in every theme and window style */
+:root:root[data-layout='calm'] #ptyComposer .composer-row .chip { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
+:root:root[data-layout='calm'] #ptyComposer .composer-row .chip:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 8%, transparent) !important; }
+
+/* home: folder picker in the composer footer; the floating icon cluster goes away */
+html[data-layout='calm'] .home .dash-head-actions { display: none; }
+html[data-layout='calm'] .home .composer-project {
+  margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 9px; margin-right: 2px;
+  border: 0 !important; border-radius: 8px; background: transparent !important; box-shadow: none !important;
+  color: var(--ink-soft, var(--muted)); font-size: 13px; font-weight: 500;
+}
+html[data-layout='calm'] .home .composer-project:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent) !important; color: var(--ink, var(--text)); }
+html[data-layout='calm'] .home .dash-head { margin-top: 12vh; }
+
+/* ===================== the working indicator =====================
+ * Three dots that pass each other: two slide along the baseline while the third arcs over the top. */
+.cdots { --d: 6px; --step: 9px; position: relative; display: inline-block; flex: none; width: calc(var(--step) * 2 + var(--d)); height: calc(var(--d) + 12px); vertical-align: middle; }
+.cdots i {
+  position: absolute; left: 0; bottom: 2px; width: var(--d); height: var(--d); border-radius: 50%; background: #d97757;
+  animation: cdots-x 1.35s linear infinite, cdots-y 1.35s linear infinite;
+}
+.cdots i:nth-child(2) { animation-delay: -0.45s; }
+.cdots i:nth-child(3) { animation-delay: -0.9s; }
+@keyframes cdots-x {
+  0%      { transform: translateX(0);                       animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+  33.33%  { transform: translateX(var(--step));             animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+  66.66%  { transform: translateX(calc(var(--step) * 2));   animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+  100%    { transform: translateX(0); }
+}
+@keyframes cdots-y {
+  0%, 66.66% { translate: 0 0;     animation-timing-function: cubic-bezier(.3, 0, .2, 1); }
+  83%        { translate: 0 -9px;  animation-timing-function: cubic-bezier(.8, 0, .7, 1); }
+  100%       { translate: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdots i { animation: none; }
+  .cdots i:nth-child(2) { transform: translateX(var(--step)); }
+  .cdots i:nth-child(3) { transform: translateX(calc(var(--step) * 2)); }
+}
+
+.working-ind { display: none; }
+html[data-layout='calm'] #ptyComposer .working-ind:not([hidden]) {
+  display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; margin-left: 2px; opacity: 1 !important;
+  color: var(--ink-faint, var(--faint)); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.working-ind[hidden] { display: none !important; }
+
+/* sidebar: a working session shows the dots, a smaller copy of the same indicator */
+.rail-working { display: inline-flex; flex: none; align-items: center; }
+.rail-working .cdots { --d: 4px; --step: 6px; height: 12px; }
+.rail-working .cdots i { bottom: 1px; }
+.rail-session .rail-working { width: 16px; justify-content: center; }
+html[data-layout='calm'] .rail-session .rail-working .cdots { transform: translateX(-1px); }
+
+/* links inside dialogs and menus use the accent, not the browser's default blue */
+dialog.sheet a, .menu a { color: var(--brand); text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+dialog.sheet a:hover, .menu a:hover { text-decoration-color: currentColor; }
+
+/* dashboard layout + Sand Dark: the base theme gives the active tile the rail colour as its label,
+ * which is the same dark colour as the tile here, so use light ink on a lighter tile */
+:root[data-palette='claude-dark'][data-layout='dashboard'] .space.active { background: rgb(255 255 255 / 14%) !important; color: #faf9f5; }
+:root[data-palette='claude-dark'][data-layout='dashboard'] .space.active .space-ini,
+:root[data-palette='claude-dark'][data-layout='dashboard'] .space.active .space-name { color: #faf9f5; }
+
+/* ===================== sidebar spacing scale =====================
+ * One rhythm for every row: 12px side padding, a 22px leading slot (icon, dot, initials or star),
+ * 12px between the slot and the label, 36px rows with 2px between them, 20px between groups, and a
+ * 14px inset from the sidebar's own edge so nothing touches its rounded corners. */
+@media (min-width: 980px) {
+  :root:root[data-layout='calm'] { --rail-w: 256px; }
+  :root:root[data-layout='calm'] .rail { box-sizing: border-box; padding: 14px 12px !important; gap: 2px; }
+  :root:root[data-layout='calm'] .spaces { gap: 2px; margin-bottom: 4px; }
+
+  :root:root[data-layout='calm'] :is(.rail-new, .space, .rail-add, .rail-session, .rail-btn:not(.rail-add)) {
+    box-sizing: border-box; min-height: 36px; height: 36px; padding: 0 12px; gap: 12px; border-radius: 9px;
+  }
+  :root:root[data-layout='calm'] .rail-session { height: 34px; min-height: 34px; }
+  :root:root[data-layout='calm'] .rail-new { margin: 0 0 10px; }
+  :root:root[data-layout='calm'] .rail-add { margin: 2px 0 0; }
+
+  /* the leading slot */
+  :root:root[data-layout='calm'] .space-ini,
+  :root:root[data-layout='calm'] .rail-new svg,
+  :root:root[data-layout='calm'] .rail-add svg,
+  :root:root[data-layout='calm'] .rail-btn:not(.rail-add) svg { flex: none; width: 22px; height: 22px; }
+  :root:root[data-layout='calm'] .space-ini { display: grid; place-items: center; border-radius: 7px; font-size: 10.5px; }
+  :root:root[data-layout='calm'] .rail-new svg,
+  :root:root[data-layout='calm'] .rail-add svg,
+  :root:root[data-layout='calm'] .rail-btn:not(.rail-add) svg { padding: 3px; box-sizing: border-box; }
+  :root:root[data-layout='calm'] .rail-session > .rail-working,
+  :root:root[data-layout='calm'] .rail-star { flex: none; width: 22px; display: inline-flex; justify-content: center; align-items: center; }
+  :root:root[data-layout='calm'] .rail-session > .status-dot { flex: none; width: 8px; height: 8px; margin: 0 7px; }
+  :root:root[data-layout='calm'] .rail-sessions { scrollbar-width: none; }
+  :root:root[data-layout='calm'] .rail-sessions::-webkit-scrollbar { display: none; }
+  :root:root[data-layout='calm'] .rail-session .rail-working { width: 22px; }
+  :root:root[data-layout='calm'] .rail-session-x { margin-right: -6px; }
+
+  /* groups */
+  :root:root[data-layout='calm'] .rail-sessions { margin-top: 18px; gap: 2px; padding: 0; }
+  :root:root[data-layout='calm'] .rail-sessions-head { margin: 14px 0 4px; padding: 0 12px; line-height: 1.2; }
+  :root:root[data-layout='calm'] .rail-sessions-head:first-child { margin-top: 0; }
+  :root:root[data-layout='calm'] .rail .grow { min-height: 12px; }
+  :root:root[data-layout='calm'] .rail-instr { margin-top: 0; }
+}
+
+/* the active project tile keeps the same inset as every other row, on every palette */
+:root:root[data-layout='calm'] .space.active { margin: 0; }
+
+/* ===================== usage meters (Claude-style) ===================== */
+.usage-ring { display: none; }
+html[data-layout='calm'] #ptyComposer .usage-ring:not([hidden]) {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; margin-left: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft, var(--muted)); cursor: pointer; opacity: 1 !important;
+}
+html[data-layout='calm'] #ptyComposer .usage-ring:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+.usage-ring svg { display: block; }
+.usage-ring .ring-track { fill: none; stroke: color-mix(in srgb, currentColor 22%, transparent); stroke-width: 2.4; }
+.usage-ring .ring-fill { fill: none; stroke: #d97757; stroke-width: 2.4; stroke-linecap: round; }
+.usage-ring .ring-fill.hot { stroke: #b9442a; }
+.usage-ring .ring-est { fill: color-mix(in srgb, currentColor 55%, transparent); }
+
+.usage-pop {
+  position: fixed; z-index: 70; box-sizing: border-box; max-height: 70vh; overflow-y: auto; padding: 16px 18px 12px;
+  border: 1px solid var(--line, var(--border)); border-radius: 14px; background: var(--panel, var(--surface));
+  color: var(--ink, var(--text)); box-shadow: 0 2px 6px rgb(0 0 0 / 6%), 0 18px 48px -12px rgb(0 0 0 / 30%);
+  font-size: 13px; animation: pop-in 0.14s ease both;
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(4px); } }
+.usage-pop .pop-title { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+.usage-pop .pop-title b { font-size: 14px; font-weight: 600; }
+.usage-pop .pop-title span { color: var(--ink-faint, var(--faint)); font-size: 12px; }
+.usage-pop .pop-title .pop-plan { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--ink, #1f1d19) 8%, transparent); }
+.usage-pop h4, .usage-h { margin: 16px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink-faint, var(--faint)); }
+.usage-h { margin-top: 14px; }
+
+.meter { margin: 0 0 14px; }
+.meter-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.meter-label { font-size: 13.5px; font-weight: 500; color: var(--ink, var(--text)); }
+.meter-sub { font-size: 12px; color: var(--ink-faint, var(--faint)); white-space: nowrap; }
+.meter-row { display: flex; align-items: center; gap: 12px; }
+.meter-track { flex: 1; height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--ink, #1f1d19) 11%, transparent); overflow: hidden; }
+.meter-track i { display: block; height: 100%; border-radius: 999px; background: #d97757; transition: width 0.4s cubic-bezier(.3, 0, .2, 1); }
+.meter-track i.hot { background: #b9442a; }
+.meter-pct { min-width: 64px; text-align: right; font-size: 12.5px; color: var(--ink-faint, var(--faint)); font-variant-numeric: tabular-nums; }
+.meter-note { margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; color: var(--ink-faint, var(--faint)); }
+.pop-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 10px 14px; margin: 0 0 8px; }
+.pop-stats dt { font-size: 11.5px; color: var(--ink-faint, var(--faint)); }
+.pop-stats dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.pop-link { display: block; width: 100%; margin-top: 10px; padding: 9px 0 4px; border: 0; border-top: 1px solid var(--line, var(--border)); background: none; color: var(--brand); font: inherit; font-size: 13px; font-weight: 500; text-align: left; cursor: pointer; }
+.pop-link:hover { text-decoration: underline; }
+
+.agent-meters { display: grid; gap: 12px; margin-bottom: 8px; }
+.agent-meter { padding: 14px 16px 2px; border: 1px solid var(--line, var(--border)); border-radius: 12px; }
+.agent-meter header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.agent-meter header b { font-size: 14px; font-weight: 600; }
+.agent-meter header span { font-size: 12px; color: var(--ink-faint, var(--faint)); }
+.agent-meter.is-live header span::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #3a9a5b; vertical-align: 1px; }
+
+/* a limit near its cap in the status bar: a darker amber on light windows so it stays readable */
+:root[data-theme='light'] .live-usage-item.hot { color: color-mix(in srgb, var(--warn) 72%, #000); }
+
+/* narrow message boxes (a small window, or the explorer docked beside the session): the footer
+ * wraps onto a second line instead of running past the box. Container queries, because the box
+ * is narrow when the explorer takes space even in a wide window. */
+html[data-layout='calm'] #ptyComposer, html[data-layout='calm'] #homeComposer { container: composer / inline-size; }
+@container composer (max-width: 660px) {
+  .composer-row, .composer-row.runconfig { flex-wrap: wrap !important; row-gap: 4px; }
+  #homeAgent { margin-left: 0 !important; }
+  .composer-tools { margin-left: auto !important; }
+  #ptyComposer .composer-meta { margin-left: auto; }
+}
+
+/* the session header gives up its chips, then its secondary buttons, as the session column narrows
+ * (a small window, or the explorer docked beside it) so the actions never run under the explorer */
+html[data-layout='calm'] .session-head { container: shead / inline-size; }
+@container shead (max-width: 760px) {
+  .session-head > .head-chip, .session-head > .head-branch, .session-head > .head-agent { display: none !important; }
+}
+@container shead (max-width: 520px) {
+  .session-head #actExport, .session-head .open-in-primary { display: none !important; }
+}
+
+/* ===================== composer footer, tidied ===================== */
+.composer-more, .composer-right { display: none; }
+html[data-layout='calm'] #ptyComposer .composer-more {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft, var(--muted)); cursor: pointer; opacity: 1 !important;
+}
+html[data-layout='calm'] #ptyComposer .composer-more:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 8%, transparent); color: var(--ink, var(--text)); }
+/* the small chips collapse into the menu above */
+html[data-layout='calm'] #ptyComposer .composer-row > .chip { display: none !important; }
+
+/* model and effort on top, the usage ring directly below */
+html[data-layout='calm'] #ptyComposer .composer-right {
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 0; margin-left: auto; margin-right: 4px; opacity: 1 !important;
+}
+html[data-layout='calm'] #ptyComposer .composer-right .composer-meta:not([hidden]) { margin: 0; height: 22px; padding: 0 6px; }
+html[data-layout='calm'] #ptyComposer .composer-right .usage-ring:not([hidden]) {
+  display: inline-flex; align-items: center; gap: 5px; width: auto; height: 18px; padding: 0 6px; margin: 0; font-size: 11.5px;
+  color: var(--ink-faint, var(--faint)); border-radius: 6px; font-variant-numeric: tabular-nums;
+}
+html[data-layout='calm'] #ptyComposer .composer-right .usage-ring svg { width: 14px; height: 14px; }
+html[data-layout='calm'] #ptyComposer .composer-right .usage-ring:hover { color: var(--ink, var(--text)); }
+
+/* ===================== the changes pill (review.js) ===================== */
+.head-changes { display: none; }
+html[data-layout='calm'] .session-head .head-changes:not([hidden]) {
+  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 9px; margin-left: 4px; border: 0; border-radius: 8px;
+  background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); color: var(--ink-soft, var(--muted)); font-size: 12.5px; font-weight: 500;
+  font-variant-numeric: tabular-nums; cursor: pointer; opacity: 1 !important; flex: none;
+}
+html[data-layout='calm'] .session-head .head-changes:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 11%, transparent); color: var(--ink, var(--text)); }
+.hc-add { color: #2f7d3d; font-weight: 600; }
+.hc-del { color: #b23a2a; font-weight: 600; }
+:root[data-theme='dark'] .hc-add { color: #6fcf86; }
+:root[data-theme='dark'] .hc-del { color: #f08a7a; }
+.review-pop .pop-title { align-items: center; }
+.review-pop .rv-total { margin-left: auto; display: inline-flex; gap: 8px; font-size: 12.5px; }
+.rv-list { display: grid; gap: 1px; margin: 8px -6px 4px; max-height: 320px; overflow-y: auto; }
+.rv-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.rv-row:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 7%, transparent); }
+.rv-k { flex: none; width: 18px; text-align: center; font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', Consolas, monospace; }
+.rv-k.added { color: #2f7d3d; } .rv-k.modified { color: #a1670e; } .rv-k.deleted { color: #b23a2a; }
+:root[data-theme='dark'] .rv-k.added { color: #6fcf86; } :root[data-theme='dark'] .rv-k.modified { color: #e0b15a; } :root[data-theme='dark'] .rv-k.deleted { color: #f08a7a; }
+.rv-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; overflow: hidden; }
+.rv-name b { font-weight: 550; white-space: nowrap; }
+.rv-name i { font-style: normal; color: var(--ink-faint, var(--faint)); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-nums { flex: none; display: inline-flex; gap: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.rv-nums em { font-style: normal; color: var(--ink-faint, var(--faint)); }
+
+/* box-drawing bars in the terminal read as one stroke (termfix.js) */
+.xterm-rows span.tl-bar {
+  display: inline-block; vertical-align: top; color: transparent !important;
+  background: linear-gradient(var(--bar), var(--bar)) center / 1px 100% no-repeat;
+}
+
+/* ===================== starter prompts under the home message box (starters.js) ===================== */
+.home-starters { display: none; }
+html[data-layout='calm'] .home-starters {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px 0 0; transition: opacity 0.18s ease, transform 0.18s ease;
+}
+html[data-layout='calm'] .home-starters.away { opacity: 0; transform: translateY(-4px); pointer-events: none; }
+html[data-layout='calm'] .starter {
+  height: 32px; padding: 0 14px; border: 1px solid var(--line, var(--border)); border-radius: 16px; background: transparent;
+  color: var(--ink-soft, var(--muted)); font: inherit; font-size: 13px; cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+html[data-layout='calm'] .starter:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); color: var(--ink, var(--text)); border-color: color-mix(in srgb, var(--ink, #1f1d19) 24%, transparent); }
+html[data-layout='calm'] .starter:active { transform: scale(0.97); }
+
+/* ===================== dialogs: buttons and fields that read as controls ===================== */
+:root:root[data-layout='calm'] dialog .btn:not(.primary):not(.danger) {
+  border-color: color-mix(in srgb, var(--ink, #1f1d19) 16%, transparent) !important; background: transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+:root:root[data-layout='calm'] dialog .btn:not(.primary):not(.danger):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); border-color: color-mix(in srgb, var(--ink, #1f1d19) 26%, transparent) !important;
+}
+:root:root[data-layout='calm'] dialog .btn:not(.primary):not(.danger):disabled { border-color: color-mix(in srgb, var(--ink, #1f1d19) 8%, transparent) !important; opacity: 0.55; }
+:root:root[data-layout='calm'] dialog :is(.connector-name, .connector-url) {
+  height: 34px; box-sizing: border-box; padding: 0 12px; font: inherit; font-size: 13px;
+  border-radius: 9px; background: var(--panel, #fff); color: var(--ink, var(--text));
+}
+:root:root[data-layout='calm'] dialog :is(.connector-name, .connector-url):focus {
+  outline: none; border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
+}
+
+/* team chat: sits on the same surface as the rest of the window, with example tasks to start from */
+html[data-layout='calm'] .team-view { background: inherit; }
+.team-ideas { display: grid; gap: 8px; margin: 16px auto 0; max-width: 420px; }
+.team-idea {
+  padding: 9px 14px; border: 1px solid var(--line, var(--border)); border-radius: 10px; background: transparent; color: var(--ink-soft, var(--muted));
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.team-idea:hover { background: color-mix(in srgb, var(--ink, #1f1d19) 6%, transparent); border-color: color-mix(in srgb, var(--ink, #1f1d19) 26%, transparent); color: var(--ink, var(--text)); }
+
+/* ===================== Gemini API-key setup (gemini.js) ===================== */
+.gem-notice { color: var(--ink-soft, var(--muted)); }
+.gem-row { display: flex; gap: 8px; margin: 8px 0 6px; }
+.gem-key {
+  flex: 1; min-width: 0; height: 30px; padding: 0 10px; border: 1px solid var(--line, var(--border)); border-radius: 7px;
+  background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 12.5px; outline: none;
+}
+.gem-key:focus { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+.gem-btn {
+  flex: none; height: 30px; padding: 0 14px; border: 0; border-radius: 7px; background: var(--brand); color: var(--brand-ink, #fff); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.gem-btn:hover:not(:disabled) { filter: brightness(1.07); }
+.gem-btn:disabled { opacity: 0.6; cursor: default; }
+.gem-foot { font-size: 11.5px; color: var(--ink-faint, var(--faint)); }
+.gem-link { background: none; border: 0; padding: 0; font: inherit; font-size: inherit; color: var(--brand); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.gem-msg.ok { color: #2f7d3d; }
+.gem-msg.err { color: #b23a2a; }
+:root[data-theme='dark'] .gem-msg.ok { color: #6fcf86; }
+:root[data-theme='dark'] .gem-msg.err { color: #f08a7a; }
+
+/* ===================== asking for your name (name.js) ===================== */
+.home-name-ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 2px 0 18px; font-size: 14px; color: var(--ink-soft, var(--muted)); }
+.home-name-ask input {
+  width: 180px; height: 32px; padding: 0 10px; border: 1px solid var(--line, var(--border)); border-radius: 8px;
+  background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 14px; outline: none;
+}
+.home-name-ask input:focus { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+.home-name-ask button { height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--brand); color: var(--brand-ink, #fff); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.home-name-ask button.ghost { background: transparent; color: var(--ink-faint, var(--faint)); font-weight: 500; }
+.home-name-ask button.ghost:hover { color: var(--ink, var(--text)); }
+
+/* first-run setup: your name and installing everything, aligned with the panel's text */
+.onboarding-intro { display: grid; gap: 10px; padding: 0 22px 14px; }
+.onboarding-name { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 13px; color: var(--ink-soft, var(--muted)); }
+.onboarding-name span { flex: none; width: 76px; }
+.onboarding-name input {
+  flex: 0 1 280px; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line, var(--border)); border-radius: 8px;
+  background: var(--panel, #fff); color: var(--ink, var(--text)); font: inherit; font-size: 13.5px; outline: none;
+}
+.onboarding-name input:focus { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+.onboarding-install {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line, var(--border)); border-radius: 10px;
+  font-size: 12.5px; line-height: 1.45; color: var(--ink-soft, var(--muted));
+}
+.onboarding-install span { flex: 1; }
+.onboarding-install button { flex: none; }
+.onboarding-install:has(button[hidden]) { display: none; }

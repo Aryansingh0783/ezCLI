@@ -1,0 +1,5 @@
+/* The ezCLI mark in the title bar. */
+.brand-btn .mark-img { display: block; width: 22px; height: 22px; border-radius: 6px; transition: transform 0.14s ease; }
+.brand-btn:hover .mark-img { transform: scale(1.06); }
+.brand-btn:active .mark-img { transform: scale(0.96); }
+@media (prefers-reduced-motion: reduce) { .brand-btn .mark-img { transition: none; } }

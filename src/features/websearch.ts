@@ -18,7 +18,7 @@ export const WebSearch = {
   MAX_STEPS: 4,
   /** Things a frozen model cannot know, so there is no point asking it first. */
   FRESH: /\b(latest|newest|current(ly)?|today|tonight|yesterday|this (week|month|year)|right now|news|recent(ly)?|just (released|announced)|release date|price of|stock|score|weather|who won|202[5-9]|2030)\b/i,
-  TOOLS: ['SEARCH', 'BROWSE', 'SKILL', 'RUN', 'KNOW'],
+  TOOLS: ['SEARCH', 'BROWSE', 'SKILL', 'RUN', 'KNOW', 'IMAGE', 'VIDEO'],
 
   /** The tool a reply asks for, or null. A request is a reply that is nothing but the one line
    *  ("SEARCH: weather in Delhi"), allowing for the dressing small models add: bold, backticks, a bullet,
@@ -29,10 +29,10 @@ export const WebSearch = {
     if (!lines.length || lines.length > 3 || lines.join(' ').length > 600) return null;
     for (const raw of lines) {
       const line = raw.replace(/^(?:[-*>•]|\d+[.)])\s+/, '').replace(/[*_`]+/g, '').trim();
-      const m = /^(SEARCH|BROWSE|SKILL|RUN|KNOW)\s*:\s*(.+)$/i.exec(line);
+      const m = /^(SEARCH|BROWSE|SKILL|RUN|KNOW|IMAGE|VIDEO)\s*:\s*(.+)$/i.exec(line);
       if (!m) continue;
       const arg = m[2].replace(/^["“”'<\[(]+|["“”'>\])]+$/g, '').trim().slice(0, 400);
-      if (!arg || /^<?(query|name|https address|one powershell command)>?$/i.test(arg)) return null;
+      if (!arg || /^<?(query|name|https address|one powershell command|description)>?$/i.test(arg)) return null;
       return { kind: m[1].toUpperCase(), arg };
     }
     return null;
@@ -153,6 +153,8 @@ export const WebSearch = {
     if (web) parts.push('SEARCH: <query> (look something up on the web when you do not know it or it may be out of date)', 'BROWSE: <https address> (open one web page in the in-app browser and read it)');
     if (skills.length) parts.push(`SKILL: <name> (load one of the user's skills: ${skills.slice(0, 60).map((x) => x.name).join(', ')})`);
     if (typeof late.Knowledge !== 'undefined' && late.Knowledge.usable()) parts.push('KNOW: <query> (search the files the user added to Knowledge; use it when the question may be about their own documents or code)');
+    // pictures and video are offered once they are set up (Create in the sidebar), so a model is not told about a tool that cannot work
+    if (typeof late.Create !== 'undefined' && late.Create.usable()) parts.push('IMAGE: <description> (make a picture on this computer when the user asks for one)', 'VIDEO: <description> (make a short silent video clip; it takes several minutes)');
     if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)');
     const tools = parts.map((p) => p.split(':')[0]);
     if (s.toolsIntro) {
@@ -349,6 +351,9 @@ export const WebSearch = {
         const got = typeof late.Knowledge !== 'undefined' && late.Knowledge.usable() ? await late.Knowledge.lookup(arg) : null;
         if (got) await this.reply(s, got.msg.replace(/\s*\n\s*/g, ' '), got.note, got.detail);
         else await this.reply(s, 'Knowledge is off or empty, so there are no files to search. Answer as well as you can.', 'Knowledge is off');
+      } else if (kind === 'IMAGE' || kind === 'VIDEO') {
+        const made = typeof late.Create !== 'undefined' ? await late.Create.forChat(kind === 'VIDEO' ? 'video' : 'image', arg) : { ok: false, text: 'Pictures and video are not available in this build.' };
+        await this.reply(s, made.text, made.ok ? (kind === 'VIDEO' ? 'Started making a video' : 'Made a picture') : (kind === 'VIDEO' ? 'Could not make the video' : 'Could not make the picture'), made.ok ? arg : made.text);
       } else if (kind === 'SKILL') {
         const got = await invoke('local_skill_text', { name: arg }).catch(() => null);
         const msg = got

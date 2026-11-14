@@ -32,7 +32,8 @@ const W = await load();
 const session = (...texts) => ({ chat: { turns: texts.map((text) => ({ text })) } });
 
 test('every tool line is recognised, including BROWSE and KNOW', async () => {
-  for (const k of ['SEARCH', 'BROWSE', 'SKILL', 'RUN', 'KNOW']) assert.equal(W.request(`${k}: something here`).kind, k);
+  for (const k of ['SEARCH', 'BROWSE', 'SKILL', 'RUN', 'KNOW', 'IMAGE', 'VIDEO']) assert.equal(W.request(`${k}: something here`).kind, k);
+  assert.equal(W.request('IMAGE: <description>'), null);
   assert.deepEqual({ ...W.request('browse: https://example.com/a') }, { kind: 'BROWSE', arg: 'https://example.com/a' });
 });
 
