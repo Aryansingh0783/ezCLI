@@ -26,8 +26,22 @@ export interface UsageState {
 }
 
 /** One tab: a CLI in a pseudo-terminal, or the saved description of one that is parked. */
+/** A picture or clip made for a session, shown in its chat after the reply to the message that asked. */
+export interface SessionMedia {
+  key: string;
+  path: string;
+  mime: string;
+  prompt: string;
+  /** a short blob: address for the file, so the chat's HTML stays small */
+  url: string;
+  /** how many of your messages had been sent when it was made */
+  after: number;
+}
+
 export interface Session {
   id: string;
+  /** Pictures and clips made for this session (Create's tools), shown in its chat. */
+  media?: SessionMedia[];
   /** The Rust-side terminal id while the process is alive. */
   ptyId: string | null;
   /** Bumped whenever the process is replaced, so a slow launch can tell it has been superseded. */

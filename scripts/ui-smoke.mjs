@@ -91,7 +91,7 @@ export function mockScript(agentList) {
         }
         if (n === 'media_make') return 'job1';
         if (n === 'media_job') return { state: 'done', seconds: 3, path: 'C:/Users/demo/Pictures/ezCLI/ezCLI_00001_.png', why: '' };
-        if (n === 'media_read') return { path: a.path, mime: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
+        if (n === 'media_read') return { path: a.path, mime: 'image/png', dataUrl: window.__pic || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' };
         if (n === 'studio_install' || n === 'studio_model') return 'studio';
         if (n === 'start_session') return { command: 'llama-cli', cwd: '/home/demo/project', pcControl: false, connectorsActive: [] };
         if (n in answers) return answers[n];
@@ -331,8 +331,29 @@ if (direct) (async () => {
         }
       }
       await wait(600);
-      return { hasCol: Boolean(col), checks, moved, replaced, paragraphs: col ? col.querySelectorAll('p').length : 0 };
+      // the agent's tool made a picture: it is shown in this chat, after the reply, and the reply stays where it was
+      const headTop = () => Math.round(col.querySelector('h1, h2, h3').getBoundingClientRect().top + col.parentElement.scrollTop);
+      const before = col ? headTop() : 0;
+      window.__emit('media-made', { path: 'C:/Users/demo/Pictures/ezCLI/ezCLI_00002_.png', prompt: 'a lighthouse at sunset', mime: 'image/png', pty: s.ptyId });
+      await wait(900);
+      const fig = col ? col.querySelector('.cm-media img') : null;
+      const last = col ? col.lastElementChild : null;
+      const media = { shown: Boolean(fig), last: Boolean(last && last.querySelector('.cm-media')), blob: Boolean(fig && fig.src.startsWith('blob:')), alt: fig ? fig.alt : '', stayed: col ? headTop() === before : false };
+      // a picture made from the Create panel (no session) is not put in any chat
+      window.__emit('media-made', { path: 'C:/Users/demo/Pictures/ezCLI/ezCLI_00003_.png', prompt: 'from the panel', mime: 'image/png', pty: '' });
+      await wait(600);
+      media.count = col ? col.querySelectorAll('.cm-media').length : 0;
+      return { hasCol: Boolean(col), checks, moved, replaced, paragraphs: col ? col.querySelectorAll('p').length : 0, media };
     });
+    const m = result.media || {};
+    if (!m.shown) problems.push(`media: a picture an agent made was not shown in its chat: ${JSON.stringify(m)}`);
+    else {
+      if (!m.last) problems.push('media: the picture was not placed after the reply');
+      if (!m.blob) problems.push('media: the picture was put in the chat as a data address, not a blob');
+      if (m.alt !== 'a lighthouse at sunset') problems.push(`media: the picture's description reads "${m.alt}"`);
+      if (!m.stayed) problems.push('media: showing the picture moved the reply above it');
+      if (m.count !== 1) problems.push(`media: ${m.count} pictures in the chat; one made from the Create panel should not be there`);
+    }
     if (!result.hasCol || result.checks < 20) problems.push(`stream: the chat view never showed the streamed reply: ${JSON.stringify(result)}`);
     if (result.replaced) problems.push(`stream: ${result.replaced} finished blocks were replaced while text was arriving`);
     if (result.moved) problems.push(`stream: finished blocks moved ${result.moved} times while text was arriving`);
@@ -345,5 +366,5 @@ if (direct) (async () => {
     console.error(`UI smoke test failed (${problems.length}):\n- ${[...new Set(problems)].join('\n- ')}`);
     process.exit(1);
   }
-  console.log(`UI smoke test passed: ${SCREENS.length} screens x ${SIZES.length} sizes x 2 themes, no errors, no overflow; a streamed reply replaced and moved nothing.`);
+  console.log(`UI smoke test passed: ${SCREENS.length} screens x ${SIZES.length} sizes x 2 themes, no errors, no overflow; a streamed reply replaced and moved nothing; a picture an agent made shows in its chat.`);
 })();

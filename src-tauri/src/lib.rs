@@ -831,7 +831,7 @@ fn media_make(kind: String, prompt: String, shape: Option<String>, seconds: Opti
     if prompt.trim().is_empty() {
         return Err("Describe what to make.".into());
     }
-    Ok(comfy::start_job(comfy::Request { kind, prompt, shape: comfy::Shape::parse(shape.as_deref().unwrap_or("wide")), seconds: seconds.unwrap_or(3), checkpoint: checkpoint.unwrap_or_default() }))
+    Ok(comfy::start_job(comfy::Request { kind, prompt, shape: comfy::Shape::parse(shape.as_deref().unwrap_or("wide")), seconds: seconds.unwrap_or(3), checkpoint: checkpoint.unwrap_or_default(), owner: String::new() }))
 }
 
 #[tauri::command]
@@ -1256,8 +1256,8 @@ pub fn run() {
             {
                 use tauri::Emitter;
                 let made = app.handle().clone();
-                comfy::on_made(Box::new(move |path, prompt| {
-                    let _ = made.emit("media-made", serde_json::json!({ "path": path, "prompt": prompt, "mime": comfy::mime(path) }));
+                comfy::on_made(Box::new(move |path, prompt, owner| {
+                    let _ = made.emit("media-made", serde_json::json!({ "path": path, "prompt": prompt, "mime": comfy::mime(path), "pty": owner }));
                 }));
             }
             let handle = app.handle().clone();

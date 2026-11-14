@@ -1,4 +1,4 @@
-import { $, hooks, invoke, listen, openUrl, prefs, savePrefs, toast } from '../app';
+import { $, hooks, invoke, listen, openUrl, prefs, savePrefs, state, toast } from '../app';
 import { registerCommand } from './palette';
 import { late } from '../late';
 import { esc } from '../core/html';
@@ -118,6 +118,22 @@ async function keep(path: string, prompt: string) {
   }
 }
 
+/** Show a finished picture or clip in a session's chat, after the reply to the message that asked for it. */
+async function attach(s, path: string, prompt: string, after?: number) {
+  if (!s || !path || (s.media || []).some((m) => m.path === path)) return false;
+  try {
+    const f = (await invoke('media_read', { path })) as MediaFile;
+    // a blob: address keeps the chat's HTML small however large the file is
+    const url = URL.createObjectURL(await (await fetch(f.dataUrl)).blob());
+    const users = typeof after === 'number' ? after : late.ChatView ? late.ChatView.userCount(s) : 0;
+    s.media = [...(s.media || []), { key: String(Date.now()), path: f.path, mime: f.mime, prompt, url, after: users }];
+    if (late.ChatView) late.ChatView.apply(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Ask for one picture or clip and wait for it. `tick` hears how long it has been. */
 async function run(k: Kind, prompt: string, opts: { shape?: string; seconds?: number; checkpoint?: string }, tick?: (secs: number) => void): Promise<MediaJob> {
   const id = (await invoke('media_make', { kind: k, prompt, shape: opts.shape || 'wide', seconds: opts.seconds || 3, checkpoint: opts.checkpoint || '' })) as string;
@@ -190,13 +206,22 @@ export const Create = {
   /** Whether a chat can be told it may ask for pictures: the engine is installed or one is open. */
   usable: () => info.status.installed || info.status.running,
   /** A local model asked for a picture or a clip. Pictures are waited for; a clip is left to finish on its own. */
-  async forChat(k: Kind, prompt: string): Promise<{ ok: boolean; text: string }> {
+  async forChat(k: Kind, prompt: string, s?): Promise<{ ok: boolean; text: string }> {
+    const after = s && late.ChatView ? late.ChatView.userCount(s) : undefined;
     try {
       if (k === 'video') {
-        await invoke('media_make', { kind: 'video', prompt, shape: 'wide', seconds: 3, checkpoint: '' });
+        // a clip takes minutes: let it finish on its own and show it in the chat when it does
+        void run('video', prompt, { shape: 'wide', seconds: 3 })
+          .then((done) => {
+            if (done.state === 'done') void attach(s, done.path, prompt, after);
+            else if (done.why) toast(`The video could not be made: ${done.why}`, 'error');
+          })
+          .catch(() => {});
         return chatReply('video', { state: 'working' });
       }
-      return chatReply('image', await run('image', prompt, { checkpoint: prefs.comfyCheckpoint || '' }));
+      const done = await run('image', prompt, { checkpoint: prefs.comfyCheckpoint || '' });
+      if (done.state === 'done') await attach(s, done.path, prompt, after);
+      return chatReply('image', done);
     } catch (e) {
       return chatReply(k, { state: 'failed', why: String(e) });
     }
@@ -220,9 +245,15 @@ hooks.boot.push(() => {
     listen('model-download', (e) => onDownload(e.payload as Parameters<typeof onDownload>[0]));
     // a picture or clip finished, whoever asked for it: the panel, an agent's tool call, or a local-model chat
     listen('media-made', (e) => {
-      const p = e.payload as { path: string; prompt: string; mime: string };
+      const p = e.payload as { path: string; prompt: string; mime: string; pty?: string };
       if (!p || !p.path) return;
       void keep(p.path, p.prompt || '');
+      // an agent asked for it: show it in that agent's chat
+      const owner = p.pty ? state.sessions.find((x) => x.ptyId === p.pty) : null;
+      if (owner) {
+        void attach(owner, p.path, p.prompt || '');
+        if (owner.id === state.activeId) return;
+      }
       if (!sheet()?.open) toast(p.mime.startsWith('video/') ? 'A video is ready. Click to see it.' : 'A picture is ready. Click to see it.', '', open, 'Show');
     });
   } catch {
@@ -263,6 +294,13 @@ hooks.boot.push(() => {
       status(String(err), 'err');
       render();
     }
+  });
+  // "Show in folder" under a picture or clip in a chat
+  document.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.cm-media-open');
+    if (!b || !b.dataset.path) return;
+    const dir = b.dataset.path.replace(/[\\/][^\\/]*$/, '');
+    invoke('open_in', { target: 'files', path: dir }).catch((err) => toast(String(err), 'error'));
   });
   $('createGo')?.addEventListener('click', () => void make());
   $('createPrompt')?.addEventListener('keydown', (e) => {

@@ -62,10 +62,10 @@ export function bytesText(bytes: number): string {
 /** What a local model is told after it asked for a picture or a clip. */
 export function chatReply(kind: Kind, result: { state: string; path?: string; why?: string }): { ok: boolean; text: string } {
   if (result.state === 'done') {
-    return { ok: true, text: `The picture was made and saved to ${result.path}. The user can already see it in the Create panel. Tell them it is ready and where it was saved, in one or two sentences. Do not describe what it looks like: you have not seen it.` };
+    return { ok: true, text: `The picture was made and is already shown to the user in this chat (saved to ${result.path}). Say in one sentence that it is ready. Do not describe what it looks like: you have not seen it.` };
   }
   if (result.state === 'working') {
-    return { ok: true, text: `The ${kind} is being made now. It takes several minutes and will appear in the Create panel when it is done. Tell the user that, in one sentence.` };
+    return { ok: true, text: `The ${kind} is being made now. It takes several minutes and will appear in this chat when it is done. Tell the user that, in one sentence.` };
   }
   return { ok: false, text: `The ${kind} could not be made: ${result.why || 'no reason was given'} Tell the user that plainly.` };
 }

@@ -225,6 +225,35 @@ export const ChatView = {
   },
 
   /** The conversation plus, while a reply is being written, the live text of it. */
+  /** Pictures and clips this session asked for, each placed after the reply to the message that asked
+   *  for it (before your next message), or at the end. */
+  withMedia(s, items) {
+    const media = s.media || [];
+    if (!media.length) return items;
+    const out = [];
+    let users = 0;
+    let mi = 0;
+    const sorted = [...media].sort((a, b) => a.after - b.after);
+    for (const it of items) {
+      if (it.k === 'user') {
+        while (mi < sorted.length && sorted[mi].after <= users) out.push(this.mediaItem(s, sorted[mi++]));
+        users++;
+      }
+      out.push(it);
+    }
+    while (mi < sorted.length) out.push(this.mediaItem(s, sorted[mi++]));
+    return out;
+  },
+
+  mediaItem(s, m) {
+    return { k: 'media', key: `${s.id}:m:${m.key}`, media: m };
+  },
+
+  /** How many of your messages this session has, for placing a picture after the right reply. */
+  userCount(s) {
+    return this.model(s).filter((it) => it.k === 'user').length;
+  },
+
   withLive(s, items) {
     const last = items[items.length - 1];
     if (!last || !(last.k === 'user' || last.k === 'tools') || !s.working) return items;
@@ -519,7 +548,12 @@ export const ChatView = {
         if (s.unverifiedFor === it.key && s.unverified && s.unverified.length) add(`${it.key}:warn`, `<div class="cm cm-warn" role="note"><b>Check these links.</b> They were not in anything the model was given, so it may have made them up: ${s.unverified.map((u) => `<code>${esc(u)}</code>`).join(' ')}</div>`);
       } else if (it.k === 'tools') add(it.key, this.toolsHtml(it));
       else if (it.k === 'thinking') segs.push({ key: it.key, stream: 'think', text: it.text, hard: Boolean(it.hard), streaming: Boolean(it.live), live: Boolean(it.live), open: this.open.has(it.key) });
-      else if (it.k === 'note') add(it.key, it.detail ? `<details class="cm cm-note cm-note-out"><summary>${esc(it.text)}</summary><pre>${esc(it.detail)}</pre></details>` : `<div class="cm cm-note">${esc(it.text)}</div>`);
+      else if (it.k === 'media') {
+        const m = it.media;
+        const video = m.mime.startsWith('video/');
+        const body = video ? `<video src="${m.url}" controls loop muted playsinline></video>` : `<img src="${m.url}" alt="${esc(m.prompt)}" />`;
+        add(it.key, `<figure class="cm cm-media">${body}<figcaption><span>${esc(m.prompt)}</span><button type="button" class="cm-media-open" data-path="${esc(m.path)}" title="${esc(m.path)}">Show in folder</button></figcaption></figure>`);
+      } else if (it.k === 'note') add(it.key, it.detail ? `<details class="cm cm-note cm-note-out"><summary>${esc(it.text)}</summary><pre>${esc(it.detail)}</pre></details>` : `<div class="cm cm-note">${esc(it.text)}</div>`);
       else if (it.k === 'empty') add(it.key, `<div class="cm cm-empty"><b>${esc((agent(s.agentId) || { label: '' }).label || 'Agent')} is ready</b><span>Type below to start. Use Terminal above for its own screen.</span></div>`);
     });
     // A CLI repaints its screen when you switch to it, which reads as "working"; only show the
@@ -654,6 +688,9 @@ export const ChatView = {
     el.id = 'chatView';
     el.className = 'chat-view';
     el.hidden = true;
+    // a picture or clip gets its height only once it has loaded: stay at the newest message when it does
+    el.addEventListener('load', (e) => { if ((e.target as HTMLElement).closest('.cm-media')) this.pinToBottom(); }, true);
+    el.addEventListener('loadedmetadata', (e) => { if ((e.target as HTMLElement).closest('.cm-media')) this.pinToBottom(); }, true);
     el.setAttribute('role', 'log');
     el.setAttribute('aria-label', 'Conversation');
     el.innerHTML = '<div class="chat-col" id="chatCol"></div><button type="button" id="chatLatest" class="chat-latest" aria-label="Jump to the latest message" hidden>Latest</button>';
@@ -843,7 +880,7 @@ export const ChatView = {
   apply(force?) {
     if (!this.el) return;
     const s = active();
-    const items = s && prefs.chatView !== false ? this.withLive(s, this.model(s)) : [];
+    const items = s && prefs.chatView !== false ? this.withMedia(s, this.withLive(s, this.model(s))) : [];
     const on = Boolean(s && items.length && this.st(s).mode !== 'terminal' && !late.Team.isOpen() && !this.stale(s));
     const toggle = $('headView');
     if (toggle) {

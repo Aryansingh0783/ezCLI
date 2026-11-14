@@ -352,7 +352,7 @@ export const WebSearch = {
         if (got) await this.reply(s, got.msg.replace(/\s*\n\s*/g, ' '), got.note, got.detail);
         else await this.reply(s, 'Knowledge is off or empty, so there are no files to search. Answer as well as you can.', 'Knowledge is off');
       } else if (kind === 'IMAGE' || kind === 'VIDEO') {
-        const made = typeof late.Create !== 'undefined' ? await late.Create.forChat(kind === 'VIDEO' ? 'video' : 'image', arg) : { ok: false, text: 'Pictures and video are not available in this build.' };
+        const made = typeof late.Create !== 'undefined' ? await late.Create.forChat(kind === 'VIDEO' ? 'video' : 'image', arg, s) : { ok: false, text: 'Pictures and video are not available in this build.' };
         await this.reply(s, made.text, made.ok ? (kind === 'VIDEO' ? 'Started making a video' : 'Made a picture') : (kind === 'VIDEO' ? 'Could not make the video' : 'Could not make the picture'), made.ok ? arg : made.text);
       } else if (kind === 'SKILL') {
         const got = await invoke('local_skill_text', { name: arg }).catch(() => null);
