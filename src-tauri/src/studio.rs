@@ -8,6 +8,7 @@
 //! Only github.com (the ComfyUI release) and huggingface.co (the model files listed below) are
 //! contacted, and only after the user presses a button.
 
+use crate::lock::LockExt;
 use crate::hub::{self, FetchOpts, Progress, Transfer};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -297,16 +298,16 @@ pub fn ensure_running() -> Result<u16, String> {
     cmd.args(launch_args()).current_dir(portable(&root)).stdin(Stdio::null()).stdout(Stdio::from(log)).stderr(Stdio::from(err));
     hidden(&mut cmd);
     let child = cmd.spawn().map_err(|e| format!("ComfyUI could not be started: {e}"))?;
-    *CHILD.lock().unwrap() = Some(child);
+    *CHILD.lock_ok() = Some(child);
     let started = Instant::now();
     loop {
         std::thread::sleep(Duration::from_millis(1000));
         if crate::comfy::get(crate::comfy::MANAGED_PORT, "/system_stats").is_some_and(|b| crate::comfy::is_comfy(&b)) {
             return Ok(crate::comfy::MANAGED_PORT);
         }
-        let exited = CHILD.lock().unwrap().as_mut().and_then(|c| c.try_wait().ok().flatten()).is_some();
+        let exited = CHILD.lock_ok().as_mut().and_then(|c| c.try_wait().ok().flatten()).is_some();
         if exited {
-            *CHILD.lock().unwrap() = None;
+            *CHILD.lock_ok() = None;
             return Err(format!("ComfyUI started and then stopped. Its last words: {}. Updating the graphics driver is the usual fix.", log_tail()));
         }
         if started.elapsed() > Duration::from_secs(300) {
@@ -318,7 +319,7 @@ pub fn ensure_running() -> Result<u16, String> {
 
 /// Stop the ComfyUI ezCLI started. Called when ezCLI quits, and safe to call when none is running.
 pub fn stop() {
-    if let Some(mut c) = CHILD.lock().unwrap().take() {
+    if let Some(mut c) = CHILD.lock_ok().take() {
         let _ = c.kill();
         let _ = c.wait();
     }

@@ -9,6 +9,7 @@
 //! (claude-mem observer sessions and similar) are counted but never listed.
 //! Webview code only ever sees opaque ids, never file paths.
 
+use crate::lock::LockExt;
 use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
@@ -124,11 +125,11 @@ pub struct ImportStore {
 
 impl ImportStore {
     pub fn replace(&self, list: Vec<ImportEntry>) {
-        *self.entries.lock().unwrap() = list.into_iter().map(|e| (e.summary.id.clone(), e)).collect();
+        *self.entries.lock_ok() = list.into_iter().map(|e| (e.summary.id.clone(), e)).collect();
     }
 
     pub fn get(&self, id: &str) -> Option<ImportEntry> {
-        self.entries.lock().unwrap().get(id).cloned()
+        self.entries.lock_ok().get(id).cloned()
     }
 }
 
