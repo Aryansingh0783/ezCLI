@@ -1118,10 +1118,10 @@ async fn provider_session_exists(agent_id: String, session_id: String) -> bool {
 
 /// Codex chooses its own session id; read it back so the tab can be resumed.
 #[tauri::command]
-async fn find_provider_session(agent_id: String, cwd: String, since_ms: u64) -> Option<String> {
+async fn find_provider_session(agent_id: String, cwd: String, since_ms: u64, exclude: Option<Vec<String>>) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || match agent_id.as_str() {
         "codex" => import::find_codex_session(&cwd, since_ms),
-        "opencode" | "deepseek" => usage_live::find_opencode_session(&cwd, since_ms),
+        "opencode" | "deepseek" => usage_live::find_opencode_session(&cwd, since_ms, &exclude.unwrap_or_default()),
         _ => None,
     })
         .await

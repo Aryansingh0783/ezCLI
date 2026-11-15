@@ -508,7 +508,7 @@ export const Sessions = (() => {
     const a = agent(s.agentId);
     if (!a || !a.sessionResume || a.sessionNew || s.providerSessionId || !s.ptyId) return; // Codex and OpenCode choose their own ids
     try {
-      const id = await invoke('find_provider_session', { agentId: s.agentId, cwd: s.cwd, sinceMs: Math.max(0, (s.startedAt || Date.now()) - 5000) });
+      const id = await invoke('find_provider_session', { agentId: s.agentId, cwd: s.cwd, sinceMs: Math.max(0, (s.startedAt || Date.now()) - 5000), exclude: state.sessions.filter((o) => o !== s && o.agentId === s.agentId && o.providerSessionId).map((o) => o.providerSessionId) });
       if (id && !s.providerSessionId) {
         s.providerSessionId = id;
         snapshotParked();

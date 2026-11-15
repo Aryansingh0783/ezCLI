@@ -581,7 +581,7 @@ export interface Commands {
   /** Sample still frames from a local video with the user's ffmpeg. Runs off the command thread because ffmpeg can take a few seconds. (lib.rs) */
   extract_video_frames: { args: { path: string; count?: number | null; workspace?: string | null }; result: VideoFrames };
   /** Codex chooses its own session id; read it back so the tab can be resumed. (lib.rs) */
-  find_provider_session: { args: { agentId: string; cwd: string; sinceMs: number }; result: string | null };
+  find_provider_session: { args: { agentId: string; cwd: string; sinceMs: number; exclude?: string[] | null }; result: string | null };
   /** Store the user's own Gemini API key and switch Gemini CLI to API-key auth. (lib.rs) */
   gemini_connect: { args: { key: string }; result: GeminiStatus };
   /** Remove the stored Gemini API key. (lib.rs) */
