@@ -23,6 +23,8 @@ prompt on several agents at once.
 
 ![A live session with the file explorer docked beside it](docs/screenshot-session.png)
 
+![Create: describe a picture and ezCLI makes it on this computer; agents can do the same in a chat](docs/screenshot-create.png)
+
 ![Team chat: several agents working together in one conversation](docs/screenshot-team.png)
 
 ![Compare mode: one prompt sent to three agents](docs/screenshot-compare.png)
@@ -49,6 +51,11 @@ prompt on several agents at once.
 - **A transparent terminal.** The terminal sits directly on the window, in dark ink on a
   light theme and light ink on a dark one. Dark glass and Solid are in Settings, with the
   JetBrains Mono font, line spacing and cursor shape.
+- **Pictures and video, made on your computer.** The Create button (and the `create_image`,
+  `create_video` and `create_status` tools every agent that takes MCP gets, free ones too) make
+  pictures and short clips with ComfyUI, nothing uploaded and no account. A finished picture or
+  clip appears right in the chat with a Show in folder link. ezCLI only downloads ComfyUI or a
+  model after you press the button.
 - **Settings with a section list**, an editor for the project's `CLAUDE.md`, `AGENTS.md` or
   `GEMINI.md`, and menus, dialogs and toasts in one consistent style.
 
@@ -184,6 +191,75 @@ catalog entry.
 ## Changelog
 
 Every release, newest first.
+
+### New in 5.15.7
+
+- **One failed background task no longer breaks the rest of the app.** A panic in one thread used
+  to make every later command that touched the same list or map fail too. Those locks now recover.
+- **A missing CLI says how to fix it.** If an agent's command has gone missing by the time a
+  session starts, the message now names the CLI, gives the install command and says to use Reload
+  agents in Settings.
+- **Under the hood:** the file explorer moved out of `app.ts` into `src/features/explorer.ts`
+  (no change in how it works).
+
+### New in 5.15.6
+
+- **Antigravity CLI gets ezCLI's picture, video and web tools.** The CLI only reads tool servers
+  from a config file, so ezCLI writes one into the project's `.agents` folder for the session and
+  removes what it created when the session ends. Your own entries are kept and never overwritten.
+
+### New in 5.15.5
+
+- **OpenCode keeps its picture and video tools.** OpenCode 2 shares one background server between
+  sessions, which kept an old ezCLI address and refused connections (ECONNREFUSED). Sessions now
+  ask OpenCode for a private server, when your OpenCode supports it.
+
+### New in 5.15.4
+
+- **The sidebar stops saying "working" once a reply has finished**, and says it again when more of
+  a reply arrives.
+
+### New in 5.15.3
+
+- **Layout fixes found on a real PC:** thin scrollbars everywhere, a visible ring on the selected
+  colour swatch in dark themes, agent names in the Earlier list, and the footer buttons on one line.
+
+### New in 5.15.2
+
+- **Pictures and clips show in the chat.** What an agent makes with the picture and video tools
+  appears after its reply, with Show in folder. The first message you type reaches a CLI that is
+  still starting.
+
+### New in 5.15.1
+
+- **Home pickers show their full text**, and old sessions titled with a folder path now show the
+  agent's name.
+
+### New in 5.15.0
+
+- **The original interface is back**, with all its themes, accents and Liquid glass.
+- **Create: pictures and video made on this computer** with ComfyUI. ezCLI downloads ComfyUI and
+  the model files only after you press the button, and stops it when ezCLI quits. Agents can use
+  the same engine through the built-in `create_image`, `create_video` and `create_status` tools.
+
+### New in 5.14
+
+- **Continue on another free model.** When a free model runs out of usage, the same chat continues
+  on the next free one (never anything paid, at most four switches per chat). Turn it off in
+  Settings.
+- **VoiceStudio connector.** Settings can connect a VoiceStudio you already run, so agents can use it.
+
+### New in 5.13.0
+
+- **A Vite and TypeScript front end** with zero-flash chat drawing: a finished block of a streaming
+  reply is never redrawn.
+- **Local-model fixes:** a llama.cpp crash on the GPU restarts the same model on the CPU once, and
+  files that are not real GGUF models are left out of the list.
+
+### New in 5.12
+
+- **Local models** can use the web tools and the in-app browser, and the Models panel was polished.
+  Numbered lists with bullets under them no longer restart at 1 in chat.
 
 ### New in 2.1
 
