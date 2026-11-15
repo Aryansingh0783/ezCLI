@@ -192,6 +192,11 @@ catalog entry.
 
 Every release, newest first.
 
+### New in 5.15.8
+
+- **Two OpenCode tabs in one folder no longer share a chat.** A new tab could show the steps of another
+  tab's running session. Each tab now skips sessions that other tabs own.
+
 ### New in 5.15.7
 
 - **One failed background task no longer breaks the rest of the app.** A panic in one thread used
