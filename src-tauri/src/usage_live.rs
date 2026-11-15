@@ -151,21 +151,22 @@ fn opencode_run_in(args: &[&str], dir: Option<&Path>) -> Option<String> {
     crate::run_catalog_in(&resolved, &args, dir).ok()
 }
 
-/// The newest OpenCode session in `cwd` created after `since_ms`.
-pub fn find_opencode_session(cwd: &str, since_ms: u64) -> Option<String> {
+/// The newest OpenCode session in `cwd` created after `since_ms`, leaving out the ids other tabs already own
+/// (two tabs in one folder would otherwise both pick whichever session was written to last).
+pub fn find_opencode_session(cwd: &str, since_ms: u64, exclude: &[String]) -> Option<String> {
     let dir = Some(Path::new(cwd));
     // OpenCode 2: the same `api` route the chat feed reads through.
     if let Some(out) = opencode_run_in(&["api", "session.list"], dir) {
-        if let Some(id) = pick_opencode2_session(&out, cwd, since_ms) {
+        if let Some(id) = pick_opencode2_session(&out, cwd, since_ms, exclude) {
             return Some(id);
         }
     }
     let out = opencode_run_in(&["session", "list", "--format", "json", "-n", "25"], dir)?;
-    pick_opencode_session(&out, cwd, since_ms)
+    pick_opencode_session(&out, cwd, since_ms, exclude)
 }
 
 /// `api session.list` prints `{ data: [{ id, time: { created, updated }, location: { directory } }] }`.
-fn pick_opencode2_session(json: &str, cwd: &str, since_ms: u64) -> Option<String> {
+fn pick_opencode2_session(json: &str, cwd: &str, since_ms: u64, exclude: &[String]) -> Option<String> {
     let v: Value = serde_json::from_str(&json[json.find('{')?..]).ok()?;
     let want = cwd.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase();
     v.get("data")?
@@ -176,11 +177,16 @@ fn pick_opencode2_session(json: &str, cwd: &str, since_ms: u64) -> Option<String
                 .and_then(Value::as_str)
                 .is_some_and(|d| d.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase() == want)
         })
+        .filter(|s| !s.get("id").and_then(Value::as_str).is_some_and(|id| exclude.iter().any(|e| e == id)))
         .filter(|s| {
             let t = |k: &str| s.pointer(k).and_then(Value::as_u64).unwrap_or(0);
             t("/time/updated") + 5_000 >= since_ms || t("/time/created") + 5_000 >= since_ms
         })
-        .max_by_key(|s| s.pointer("/time/updated").and_then(Value::as_u64).unwrap_or(0))
+        // A session created since this tab opened is this tab's; one only touched since is a continued one.
+        .max_by_key(|s| {
+            let t = |k: &str| s.pointer(k).and_then(Value::as_u64).unwrap_or(0);
+            (t("/time/created") + 5_000 >= since_ms, t("/time/updated"))
+        })
         .and_then(|s| s.get("id").and_then(Value::as_str))
         .map(str::to_string)
 }
@@ -197,15 +203,16 @@ fn first_json_array(text: &str) -> Option<Vec<Value>> {
     None
 }
 
-fn pick_opencode_session(json: &str, cwd: &str, since_ms: u64) -> Option<String> {
+fn pick_opencode_session(json: &str, cwd: &str, since_ms: u64, exclude: &[String]) -> Option<String> {
     let list = first_json_array(json)?;
     let want = cwd.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase();
     list.iter()
         .filter(|s| s.get("directory").and_then(Value::as_str).is_some_and(|d| d.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase() == want))
+        .filter(|s| !s.get("id").and_then(Value::as_str).is_some_and(|id| exclude.iter().any(|e| e == id)))
         // Created or touched since this tab opened: a continued session was created days ago
         // but is written to as soon as the tab sends a message.
         .filter(|s| s.get("updated").and_then(Value::as_u64).unwrap_or(0) + 5_000 >= since_ms || s.get("created").and_then(Value::as_u64).unwrap_or(0) + 5_000 >= since_ms)
-        .max_by_key(|s| s.get("updated").and_then(Value::as_u64).unwrap_or(0))
+        .max_by_key(|s| (s.get("created").and_then(Value::as_u64).unwrap_or(0) + 5_000 >= since_ms, s.get("updated").and_then(Value::as_u64).unwrap_or(0)))
         .and_then(|s| s.get("id").and_then(Value::as_str))
         .map(str::to_string)
 }
@@ -386,8 +393,8 @@ mod tests {
         assert_eq!(u.context_tokens, 120 + 150 + 10);
         assert!((u.cost.unwrap() - 0.03).abs() < 1e-9);
         let list = "[{\"id\":\"ses_old\",\"created\":100,\"updated\":500,\"directory\":\"F:\\\\WORK\\\\a\"},{\"id\":\"ses_new\",\"created\":9000,\"updated\":9500,\"directory\":\"f:/work/a/\"},{\"id\":\"ses_other\",\"created\":9100,\"updated\":9900,\"directory\":\"F:\\\\WORK\\\\b\"}]";
-        assert_eq!(pick_opencode_session(list, "F:\\WORK\\a", 8000).as_deref(), Some("ses_new"));
-        assert_eq!(pick_opencode_session(list, "F:\\WORK\\a", 20000), None);
+        assert_eq!(pick_opencode_session(list, "F:\\WORK\\a", 8000, &[]).as_deref(), Some("ses_new"));
+        assert_eq!(pick_opencode_session(list, "F:\\WORK\\a", 20000, &[]), None);
     }
 
     #[test]
@@ -422,9 +429,9 @@ mod session_pick_tests {
             {"id":"ses_other0001","time":{"created":1,"updated":9},"location":{"directory":"G:\\Other"}},
             {"id":"ses_mine00001","time":{"created":5,"updated":10},"location":{"directory":"G:\\Unity Game Project"}}],"cursor":{}}"#;
         let dir = r"G:\Unity Game Project";
-        assert_eq!(pick_opencode2_session(out, dir, 0).as_deref(), Some("ses_mine00001"));
-        assert_eq!(pick_opencode2_session(out, dir, 8).as_deref(), Some("ses_mine00001"));
-        assert_eq!(pick_opencode2_session(out, dir, 99_999), None);
+        assert_eq!(pick_opencode2_session(out, dir, 0, &[]).as_deref(), Some("ses_mine00001"));
+        assert_eq!(pick_opencode2_session(out, dir, 8, &[]).as_deref(), Some("ses_mine00001"));
+        assert_eq!(pick_opencode2_session(out, dir, 99_999, &[]), None);
     }
 
     #[test]
@@ -438,9 +445,25 @@ mod session_pick_tests {
         let parsed = first_json_array(out);
         assert_eq!(parsed.as_ref().map(Vec::len), Some(1), "array not found in {out:?}");
         assert_eq!(parsed.unwrap()[0].get("directory").and_then(Value::as_str), Some(dir));
-        assert_eq!(pick_opencode_session(out, dir, 0).as_deref(), Some("ses_abc12345"));
+        assert_eq!(pick_opencode_session(out, dir, 0, &[]).as_deref(), Some("ses_abc12345"));
         // a continued session: created before this tab opened, updated after
-        assert_eq!(pick_opencode_session(out, dir, 8).as_deref(), Some("ses_abc12345"));
-        assert_eq!(pick_opencode_session(out, r"G:\Other", 0), None);
+        assert_eq!(pick_opencode_session(out, dir, 8, &[]).as_deref(), Some("ses_abc12345"));
+        assert_eq!(pick_opencode_session(out, r"G:\Other", 0, &[]), None);
+    }
+
+    #[test]
+    fn two_tabs_in_one_folder_do_not_pick_each_others_session() {
+        // "old" belongs to an earlier tab and is being written to right now; "mine" was created after this tab opened.
+        let out = r#"{"data":[
+            {"id":"ses_old","time":{"created":1000,"updated":90000},"location":{"directory":"C:\\Users\\a\\Downloads"}},
+            {"id":"ses_mine","time":{"created":60000,"updated":61000},"location":{"directory":"C:\\Users\\a\\Downloads"}}]}"#;
+        let dir = "C:\\Users\\a\\Downloads";
+        // the newly created session wins even though the other was touched later
+        assert_eq!(pick_opencode2_session(out, dir, 55_000, &[]).as_deref(), Some("ses_mine"));
+        // before this tab's session exists, the busy one belongs to the other tab and is left out
+        let before = r#"{"data":[{"id":"ses_old","time":{"created":1000,"updated":90000},"location":{"directory":"C:\\Users\\a\\Downloads"}}]}"#;
+        assert_eq!(pick_opencode2_session(before, dir, 55_000, &["ses_old".to_string()]), None);
+        // a tab that continues an older conversation still finds it when nobody else owns it
+        assert_eq!(pick_opencode2_session(before, dir, 55_000, &[]).as_deref(), Some("ses_old"));
     }
 }
