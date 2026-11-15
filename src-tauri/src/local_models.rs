@@ -3,6 +3,7 @@
 //!
 //! The scan only reads directory listings and file sizes. It never opens, runs or uploads a file.
 
+use crate::lock::LockExt;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -23,7 +24,7 @@ pub struct Found {
 static EXTRA: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 pub fn set_extra(folders: &[String]) {
-    *EXTRA.lock().unwrap() = folders.iter().filter(|f| !f.trim().is_empty()).cloned().collect();
+    *EXTRA.lock_ok() = folders.iter().filter(|f| !f.trim().is_empty()).cloned().collect();
 }
 
 const MIN_BYTES: u64 = 50 * 1024 * 1024;
@@ -218,7 +219,7 @@ pub fn scan(deep: bool) -> Vec<Found> {
     let started = Instant::now();
     let budget = Duration::from_secs(if deep { 40 } else { 12 });
     let mut roots = default_roots();
-    roots.extend(EXTRA.lock().unwrap().iter().map(PathBuf::from));
+    roots.extend(EXTRA.lock_ok().iter().map(PathBuf::from));
     if deep {
         roots.extend(deep_roots());
     }

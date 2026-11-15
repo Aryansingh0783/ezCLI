@@ -2,6 +2,7 @@
 //! updates, remote view, windows, web chat, dictation and notifications.
 //! Session plumbing stays in lib.rs; these commands only call into it.
 
+use crate::lock::LockExt;
 use crate::{git_api, group, health, install, remote, transcripts, updater, AppState};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -112,7 +113,7 @@ pub fn team_delete(id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn health_report(state: State<'_, AppState>) -> Result<health::HealthReport, String> {
-    let defs = state.agents.lock().unwrap().clone();
+    let defs = state.agents.lock_ok().clone();
     tauri::async_runtime::spawn_blocking(move || health::report(&defs))
         .await
         .map_err(|e| e.to_string())
@@ -222,7 +223,7 @@ pub fn stash_handoff(json: String, handoffs: State<Handoffs>) -> Result<String, 
         return Err("handoff too large".into());
     }
     let id = format!("h{}", handoffs.next.fetch_add(1, Ordering::SeqCst) + 1);
-    let mut items = handoffs.items.lock().unwrap();
+    let mut items = handoffs.items.lock_ok();
     if items.len() > 32 {
         items.clear();
     }
@@ -232,7 +233,7 @@ pub fn stash_handoff(json: String, handoffs: State<Handoffs>) -> Result<String, 
 
 #[tauri::command]
 pub fn take_handoff(id: String, handoffs: State<Handoffs>) -> Option<String> {
-    handoffs.items.lock().unwrap().remove(&id)
+    handoffs.items.lock_ok().remove(&id)
 }
 
 static WINDOW_SEQ: AtomicU32 = AtomicU32::new(1);
@@ -308,9 +309,9 @@ pub async fn group_turn(
     app: AppHandle,
 ) -> Result<group::TurnDone, String> {
     let prepared = {
-        let agents_g = state.agents.lock().unwrap();
+        let agents_g = state.agents.lock_ok();
         let a = agents_g.iter().find(|x| x.id == agent_id).ok_or("unknown agent")?;
-        let catalogs = state.catalogs.lock().unwrap();
+        let catalogs = state.catalogs.lock_ok();
         group::prepare(a, &run_id, &model_id, allow_edits, catalogs.get(&a.id).map(Vec::as_slice), &prompt)?
     };
     if !std::path::Path::new(&cwd).is_dir() {
@@ -343,7 +344,7 @@ pub async fn install_agent(
     app: AppHandle,
 ) -> Result<install::InstallDone, String> {
     let (command_line, target_command, label) = {
-        let agents_g = state.agents.lock().unwrap();
+        let agents_g = state.agents.lock_ok();
         let a = agents_g.iter().find(|x| x.id == agent_id).ok_or("unknown agent")?;
         let install = a.install.clone().ok_or_else(|| format!("No install command is configured for {}.", a.label))?;
         (install, a.command.clone(), a.label.clone())

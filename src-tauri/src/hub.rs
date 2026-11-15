@@ -5,6 +5,7 @@
 //! Only huggingface.co and the llama.cpp release on github.com are contacted, only after the user clicks, and
 //! every name that reaches a URL or a path is checked first. Downloads go to `~/.ezcli/models`.
 
+use crate::lock::LockExt;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -53,12 +54,12 @@ pub(crate) fn prog(key: &str, state: &'static str) -> Progress {
 static STATUS: Mutex<Option<HashMap<String, Progress>>> = Mutex::new(None);
 
 fn remember(p: &Progress) {
-    STATUS.lock().unwrap().get_or_insert_with(HashMap::new).insert(p.key.clone(), p.clone());
+    STATUS.lock_ok().get_or_insert_with(HashMap::new).insert(p.key.clone(), p.clone());
 }
 
 /// The latest state of every download started in this run.
 pub fn status() -> Vec<Progress> {
-    STATUS.lock().unwrap().as_ref().map(|m| m.values().cloned().collect()).unwrap_or_default()
+    STATUS.lock_ok().as_ref().map(|m| m.values().cloned().collect()).unwrap_or_default()
 }
 
 /// Cancel switches of running downloads, by key.
@@ -233,14 +234,14 @@ pub fn fetch(sink: &dyn Fn(Progress), t: &Transfer, cancel: &AtomicBool, opts: &
         std::thread::spawn(move || {
             let mut text = String::new();
             let _ = e.read_to_string(&mut text);
-            *sink.lock().unwrap() = text;
+            *sink.lock_ok() = text;
         })
     });
     let said = |reader: &mut Option<std::thread::JoinHandle<()>>| -> String {
         if let Some(r) = reader.take() {
             let _ = r.join();
         }
-        let text = errors.lock().unwrap().trim().to_string();
+        let text = errors.lock_ok().trim().to_string();
         text.chars().take(300).collect()
     };
     let mut last_size: Option<u64> = None;
@@ -327,7 +328,7 @@ pub(crate) type Job = Box<dyn FnOnce(&AppHandle, &str, &AtomicBool) -> Result<St
 pub(crate) fn start(app: AppHandle, key: String, job: Job) -> Result<(), String> {
     let flag = Arc::new(AtomicBool::new(false));
     {
-        let mut g = RUNNING.lock().unwrap();
+        let mut g = RUNNING.lock_ok();
         let map = g.get_or_insert_with(HashMap::new);
         if map.contains_key(&key) {
             return Err("That download is already running.".into());
@@ -338,7 +339,7 @@ pub(crate) fn start(app: AppHandle, key: String, job: Job) -> Result<(), String>
     remember(&prog(&key, "downloading"));
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(&app, &key, &flag))).unwrap_or_else(|_| Err("The download stopped unexpectedly.".into()));
-        if let Some(m) = RUNNING.lock().unwrap().as_mut() {
+        if let Some(m) = RUNNING.lock_ok().as_mut() {
             m.remove(&key);
         }
         let p = match result {
@@ -352,7 +353,7 @@ pub(crate) fn start(app: AppHandle, key: String, job: Job) -> Result<(), String>
 }
 
 pub fn cancel(key: &str) {
-    if let Some(f) = RUNNING.lock().unwrap().as_ref().and_then(|m| m.get(key)) {
+    if let Some(f) = RUNNING.lock_ok().as_ref().and_then(|m| m.get(key)) {
         f.store(true, Ordering::Relaxed);
     }
 }
@@ -887,7 +888,7 @@ mod tests {
         let n = c.read(&mut buf).unwrap_or(0);
         let request = String::from_utf8_lossy(&buf[..n]).to_string();
         let from = range_start(&request);
-        asked.lock().unwrap().push(from);
+        asked.lock_ok().push(from);
         match mode {
             Mode::Missing => {
                 let _ = c.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
@@ -973,7 +974,7 @@ mod tests {
     fn run(url: &str, dest: &Path, total: u64, sha: &str, cancel: &AtomicBool) -> (Result<PathBuf, String>, Vec<Progress>) {
         let events = Mutex::new(Vec::new());
         let t = Transfer { key: "k", url, dest, total, sha };
-        let r = fetch(&|p| events.lock().unwrap().push(p), &t, cancel, &local_opts());
+        let r = fetch(&|p| events.lock_ok().push(p), &t, cancel, &local_opts());
         (r, events.into_inner().unwrap())
     }
 
@@ -1071,7 +1072,7 @@ mod tests {
         assert_eq!(r.unwrap(), dest);
         assert_eq!(std::fs::read(&dest).unwrap(), body, "the resumed file differs from the original");
         // and it really did ask only for the missing part, not the whole file again
-        assert_eq!(*srv.asked.lock().unwrap(), vec![800_000], "the download did not resume from byte 800000");
+        assert_eq!(*srv.asked.lock_ok(), vec![800_000], "the download did not resume from byte 800000");
         let _ = std::fs::remove_dir_all(dir);
     }
 

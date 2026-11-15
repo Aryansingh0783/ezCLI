@@ -3,6 +3,7 @@
 //! tracked, and a saved position is ignored unless it is still on a connected
 //! monitor, so unplugging a screen can never strand the window off-screen.
 
+use crate::lock::LockExt;
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
@@ -116,7 +117,7 @@ pub fn on_event(app: &AppHandle, label: &str, event: &WindowEvent) {
     }
     match event {
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
-            let mut last = LAST_SAVE.lock().unwrap();
+            let mut last = LAST_SAVE.lock_ok();
             if last.is_some_and(|t| t.elapsed() < Duration::from_millis(500)) {
                 return;
             }

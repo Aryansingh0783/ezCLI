@@ -6,6 +6,7 @@
 //! The front end decides what to ask (see `src/core/comfy.ts`); this file only carries the request,
 //! and refuses any path or file name outside the short list the panel needs.
 
+use crate::lock::LockExt;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -453,14 +454,14 @@ fn job_id() -> String {
 pub fn start_job_with(run: impl FnOnce(&std::sync::atomic::AtomicBool) -> Result<PathBuf, String> + Send + 'static, done: impl FnOnce(&str) + Send + 'static) -> String {
     let id = job_id();
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    jobs().lock().unwrap().insert(id.clone(), Job { started: Instant::now(), result: None, cancel: cancel.clone() });
+    jobs().lock_ok().insert(id.clone(), Job { started: Instant::now(), result: None, cancel: cancel.clone() });
     let key = id.clone();
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&cancel))).unwrap_or_else(|_| Err("Making it stopped unexpectedly.".into())).map(|p| p.to_string_lossy().into_owned());
         if let Ok(path) = &result {
             done(path);
         }
-        if let Some(j) = jobs().lock().unwrap().get_mut(&key) {
+        if let Some(j) = jobs().lock_ok().get_mut(&key) {
             j.result = Some(result);
         }
     });
@@ -496,7 +497,7 @@ pub fn saved_file(path: &str) -> bool {
 }
 
 pub fn job_state(id: &str) -> Option<JobState> {
-    let g = jobs().lock().unwrap();
+    let g = jobs().lock_ok();
     let j = g.get(id)?;
     Some(match &j.result {
         None => JobState::Working { seconds: j.started.elapsed().as_secs() },
@@ -517,7 +518,7 @@ pub fn wait_job(id: &str, secs: u64) -> Option<JobState> {
 }
 
 pub fn cancel_job(id: &str) {
-    if let Some(j) = jobs().lock().unwrap().get(id) {
+    if let Some(j) = jobs().lock_ok().get(id) {
         j.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
@@ -649,12 +650,12 @@ mod making_tests {
                 std::thread::sleep(Duration::from_millis(400));
                 Ok(PathBuf::from("/tmp/x.png"))
             },
-            move |p| *s2.lock().unwrap() = p.to_string(),
+            move |p| *s2.lock_ok() = p.to_string(),
         );
         assert!(matches!(job_state(&id), Some(JobState::Working { .. })));
         assert!(matches!(wait_job(&id, 0), Some(JobState::Working { .. })), "a zero wait returns at once");
         assert_eq!(wait_job(&id, 5), Some(JobState::Done { path: "/tmp/x.png".into() }));
-        assert_eq!(seen.lock().unwrap().as_str(), "/tmp/x.png");
+        assert_eq!(seen.lock_ok().as_str(), "/tmp/x.png");
         let bad = start_job_with(|_| Err("no".into()), |_| panic!("not told about a failure"));
         assert_eq!(wait_job(&bad, 5), Some(JobState::Failed { why: "no".into() }));
         assert!(job_state("nope").is_none());

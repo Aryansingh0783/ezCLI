@@ -4,6 +4,7 @@
 //! and listens to pty-data/pty-exit events. No HTTP server, no WebSocket.
 
 mod agents;
+mod lock;
 mod agy_mcp;
 mod backends;
 mod capture;
@@ -45,6 +46,7 @@ mod tray;
 mod winstate;
 mod updater;
 
+use crate::lock::LockExt;
 use agents::{AgentDef, AgentOut};
 use pty_mgr::{SessionStore, SpawnArgs};
 use serde::{Deserialize, Serialize};
@@ -75,7 +77,7 @@ struct AgentsResponse {
 
 #[tauri::command]
 fn list_agents(state: State<AppState>) -> AgentsResponse {
-    let a = state.agents.lock().unwrap();
+    let a = state.agents.lock_ok();
     AgentsResponse {
         // Launched-from-Start-Menu puts the process cwd in Program Files,
         // which is not where anyone wants to start a coding session. Default
@@ -95,7 +97,7 @@ fn list_agents(state: State<AppState>) -> AgentsResponse {
 fn reload_agents(state: State<AppState>) -> Result<Vec<AgentOut>, String> {
     let next = agents::load_agents(&state.agents_path).map_err(|e| e.to_string())?;
     let out = agents::describe(&next);
-    *state.agents.lock().unwrap() = next;
+    *state.agents.lock_ok() = next;
     Ok(out)
 }
 
@@ -349,7 +351,7 @@ fn start_session(
     // Ask OpenCode whether it has --standalone before taking the agents lock: the first ask runs
     // `opencode --help`, which must not hold up anything else that needs the agent list.
     let opencode_cmd = {
-        let agents_g = state.agents.lock().unwrap();
+        let agents_g = state.agents.lock_ok();
         agents_g
             .iter()
             .find(|x| x.id == agent_id && x.mcp_style() == Some(agents::McpStyle::OpenCode))
@@ -359,7 +361,7 @@ fn start_session(
         .and_then(|c| agents::resolve_command(&c))
         .is_some_and(|r| opencode_has_standalone(&r));
     let (launch, argv_for_log, resolved_cwd, extra_env) = {
-        let agents_g = state.agents.lock().unwrap();
+        let agents_g = state.agents.lock_ok();
         let a = agents_g
             .iter()
             .find(|x| x.id == agent_id)
@@ -367,7 +369,7 @@ fn start_session(
 
         let resolved = agents::resolve_command(&a.command)
             .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
-        let catalogs = state.catalogs.lock().unwrap();
+        let catalogs = state.catalogs.lock_ok();
         let catalog = catalogs.get(&a.id).map(Vec::as_slice);
         if !agents::model_selection_is_valid(a, &model_id, catalog) {
             return Err(format!(
@@ -758,11 +760,11 @@ async fn agent_models(agent_id: String, folders: Option<Vec<String>>, state: Sta
         }
         let list = tauri::async_runtime::spawn_blocking(|| local_models::scan(false)).await.map_err(|e| e.to_string())?;
         let ids: Vec<String> = list.into_iter().map(|f| f.path).collect();
-        state.catalogs.lock().unwrap().insert(agent_id, ids.clone());
+        state.catalogs.lock_ok().insert(agent_id, ids.clone());
         return Ok(ids);
     }
     let (resolved, args, from, pricing) = {
-        let agents_g = state.agents.lock().unwrap();
+        let agents_g = state.agents.lock_ok();
         let a = agents_g
             .iter()
             .find(|x| x.id == agent_id)
@@ -792,13 +794,13 @@ async fn agent_models(agent_id: String, folders: Option<Vec<String>>, state: Sta
     // Free routes only: an agent whose pricing says everything else is paid
     // never gets a paid model into the catalog that launches are checked against.
     let list = agents::keep_free_models(list, pricing.as_ref());
-    state.catalogs.lock().unwrap().insert(agent_id, list.clone());
+    state.catalogs.lock_ok().insert(agent_id, list.clone());
     Ok(list)
 }
 
 #[tauri::command]
 fn detect_backends(state: State<AppState>) -> backends::BackendReport {
-    let defs = state.agents.lock().unwrap().clone();
+    let defs = state.agents.lock_ok().clone();
     backends::detect(&defs)
 }
 
@@ -990,7 +992,7 @@ async fn lms_action(action: String, model: Option<String>, gpu: Option<String>, 
 async fn local_models_scan(folders: Vec<String>, deep: bool, state: State<'_, AppState>) -> Result<Vec<local_models::Found>, String> {
     local_models::set_extra(&folders);
     let found = tauri::async_runtime::spawn_blocking(move || local_models::scan(deep)).await.map_err(|e| e.to_string())?;
-    state.catalogs.lock().unwrap().insert("gguf".to_string(), found.iter().map(|f| f.path.clone()).collect());
+    state.catalogs.lock_ok().insert("gguf".to_string(), found.iter().map(|f| f.path.clone()).collect());
     Ok(found)
 }
 
