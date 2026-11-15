@@ -8,6 +8,7 @@
 //! listener and invalidates the token. Traffic is plain HTTP on the local
 //! network; the settings screen says so.
 
+use crate::lock::LockExt;
 use crate::mcp_server::{http, read_request, Request};
 use crate::pty_mgr::SessionStore;
 use serde::{Deserialize, Serialize};
@@ -85,7 +86,7 @@ fn qr_svg(url: &str) -> Option<String> {
 
 impl Remote {
     pub fn status(&self) -> RemoteStatus {
-        let running = self.running.lock().unwrap();
+        let running = self.running.lock_ok();
         RemoteStatus {
             enabled: running.is_some(),
             allow_input: self.allow_input.load(Ordering::SeqCst),
@@ -95,7 +96,7 @@ impl Remote {
     }
 
     pub fn set_sessions(&self, list: Vec<RemoteSession>) {
-        *self.sessions.lock().unwrap() = list.into_iter().take(64).collect();
+        *self.sessions.lock_ok() = list.into_iter().take(64).collect();
     }
 
     pub fn set_allow_input(&self, allow: bool) {
@@ -103,7 +104,7 @@ impl Remote {
     }
 
     pub fn stop(&self) {
-        if let Some(r) = self.running.lock().unwrap().take() {
+        if let Some(r) = self.running.lock_ok().take() {
             r.stop.store(true, Ordering::SeqCst);
         }
         // Typing permission never carries over to the next time it is enabled.
@@ -111,7 +112,7 @@ impl Remote {
     }
 
     pub fn start(&self, store: Arc<SessionStore>) -> Result<RemoteStatus, String> {
-        if self.running.lock().unwrap().is_some() {
+        if self.running.lock_ok().is_some() {
             return Ok(self.status());
         }
         let listener = TcpListener::bind(("0.0.0.0", 0)).map_err(|e| e.to_string())?;
@@ -148,13 +149,13 @@ impl Remote {
                 }
             })
             .map_err(|e| e.to_string())?;
-        *self.running.lock().unwrap() = Some(Running { token: tok, url, stop });
+        *self.running.lock_ok() = Some(Running { token: tok, url, stop });
         Ok(self.status())
     }
 
     #[cfg(test)]
     fn token_for_test(&self) -> Option<String> {
-        self.running.lock().unwrap().as_ref().map(|r| r.token.clone())
+        self.running.lock_ok().as_ref().map(|r| r.token.clone())
     }
 }
 
@@ -206,7 +207,7 @@ fn route(req: &Request, ctx: &Ctx) -> Vec<u8> {
         ("GET", "xterm.js") => http(200, "text/javascript", XTERM_JS.as_bytes().to_vec(), NO_STORE),
         ("GET", "xterm.css") => http(200, "text/css", XTERM_CSS.as_bytes().to_vec(), NO_STORE),
         ("GET", "api/sessions") => {
-            let list = ctx.sessions.lock().unwrap().clone();
+            let list = ctx.sessions.lock_ok().clone();
             let live: Vec<_> = list
                 .into_iter()
                 .map(|s| {
@@ -218,7 +219,7 @@ fn route(req: &Request, ctx: &Ctx) -> Vec<u8> {
         }
         ("GET", "api/output") => {
             let id = query(&req.path, "id").unwrap_or("");
-            let known = ctx.sessions.lock().unwrap().iter().any(|s| s.id == id);
+            let known = ctx.sessions.lock_ok().iter().any(|s| s.id == id);
             let since = query(&req.path, "since").and_then(|s| s.parse().ok()).unwrap_or(0);
             match known.then(|| ctx.store.tail(id, since)).flatten() {
                 Some((seq, data)) => json(serde_json::json!({ "seq": seq, "data": data, "alive": ctx.store.is_live(id) })),
@@ -237,7 +238,7 @@ fn route(req: &Request, ctx: &Ctx) -> Vec<u8> {
             let Ok(input) = serde_json::from_slice::<Input>(&req.body) else {
                 return http(400, "text/plain", b"bad request".to_vec(), NO_STORE);
             };
-            let known = ctx.sessions.lock().unwrap().iter().any(|s| s.id == input.id);
+            let known = ctx.sessions.lock_ok().iter().any(|s| s.id == input.id);
             if !known || input.data.len() > 8192 {
                 return http(400, "text/plain", b"bad request".to_vec(), NO_STORE);
             }

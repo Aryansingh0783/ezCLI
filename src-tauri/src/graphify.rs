@@ -5,6 +5,7 @@
 //! reaches the shell, and the frontend shows each exact command and waits
 //! for a confirming click first.
 
+use crate::lock::LockExt;
 use crate::{agents, install, AppState};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -78,7 +79,7 @@ fn folder_arg(cwd: Option<String>) -> Result<PathBuf, String> {
 
 /// Installed built-in agents Graphify supports: (label, setup command).
 fn setup_targets(state: &AppState) -> Vec<(String, &'static str)> {
-    let agents_g = state.agents.lock().unwrap();
+    let agents_g = state.agents.lock_ok();
     let mut seen = std::collections::HashSet::new();
     agents_g
         .iter()
