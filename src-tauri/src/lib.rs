@@ -23,6 +23,7 @@ mod files_api;
 mod git_api;
 mod group;
 mod browser;
+mod gpu_pick;
 mod graphify;
 mod import;
 mod input;
@@ -385,6 +386,19 @@ fn start_session(
             catalog,
         );
         drop(catalogs);
+        // llama.cpp spreads a model over every GPU it sees, so a built-in GPU next to the graphics card slows it to the
+        // built-in one's speed. Name the card, unless the user already chose a device or runs on the CPU.
+        if a.id == "gguf" && a.command.eq_ignore_ascii_case("llama-cli") {
+            let cpu_only = argv.windows(2).any(|w| w[0] == "-ngl" && w[1] == "0");
+            let chosen = argv.iter().any(|x| x == "--device" || x == "-dev");
+            if !cpu_only && !chosen {
+                let out = run_catalog_in(&resolved, &["--list-devices".to_string()], None).unwrap_or_default();
+                if let Some(d) = gpu_pick::pick(&gpu_pick::parse_devices(&out)) {
+                    argv.push("--device".into());
+                    argv.push(d.id.clone());
+                }
+            }
+        }
         let mut shown = argv.clone();
         let mut extra_env = Vec::new();
 
