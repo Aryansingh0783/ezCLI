@@ -192,6 +192,12 @@ catalog entry.
 
 Every release, newest first.
 
+### New in 5.15.9
+
+- **Local models run on your graphics card.** With a built-in GPU next to a graphics card, llama.cpp could
+  spread the model over both and run at the slower one's speed. ezCLI now names the card when a local-model
+  session starts.
+
 ### New in 5.15.8
 
 - **Two OpenCode tabs in one folder no longer share a chat.** A new tab could show the steps of another
