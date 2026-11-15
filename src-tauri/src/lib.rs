@@ -746,8 +746,7 @@ fn ollama_cloud_catalog_command() -> Result<(String, Vec<String>), String> {
 async fn agent_models(agent_id: String, folders: Option<Vec<String>>, state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let is_gguf = state
         .agents
-        .lock()
-        .unwrap()
+        .lock_ok()
         .iter()
         .find(|x| x.id == agent_id)
         .and_then(|a| a.models_from.as_ref())

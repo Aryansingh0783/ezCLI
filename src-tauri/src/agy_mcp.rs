@@ -12,6 +12,7 @@
 //! One lock covers every read-modify-write, so sessions starting or ending together cannot drop
 //! each other's entries.
 
+use crate::lock::LockExt;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -125,7 +126,7 @@ pub fn set(config: &mut Map<String, Value>, name: &str, url: Option<&str>) {
 
 /// Add ezCLI's servers to `<folder>/.agents/mcp_config.json` for the session `pty_id`.
 pub fn attach(folder: &Path, pty_id: &str, servers: Servers) -> Result<(), String> {
-    let mut guard = STATE.lock().map_err(|_| "busy".to_string())?;
+    let mut guard = STATE.lock_ok();
     let state = guard.get_or_insert_with(State::default);
     let file = config_file(folder);
     let dir = file.parent().expect("has a parent").to_path_buf();
@@ -162,7 +163,7 @@ pub fn attach(folder: &Path, pty_id: &str, servers: Servers) -> Result<(), Strin
 /// Does nothing for a session that added none. If the file cannot be updated, the record is kept
 /// so a later call (ezCLI closing) tries again.
 pub fn detach(pty_id: &str) {
-    let Ok(mut guard) = STATE.lock() else { return };
+    let mut guard = STATE.lock_ok();
     let Some(state) = guard.as_mut() else { return };
     let Some(file) = state.owner.get(pty_id).cloned() else { return };
     let Some(folder) = state.folders.get_mut(&file) else {
@@ -210,7 +211,7 @@ pub fn detach(pty_id: &str) {
 
 /// Take out every session's servers (ezCLI is closing).
 pub fn detach_all() {
-    let ids: Vec<String> = STATE.lock().ok().and_then(|g| g.as_ref().map(|s| s.owner.keys().cloned().collect())).unwrap_or_default();
+    let ids: Vec<String> = STATE.lock_ok().as_ref().map(|s| s.owner.keys().cloned().collect()).unwrap_or_default();
     for id in ids {
         detach(&id);
     }
