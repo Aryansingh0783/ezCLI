@@ -368,7 +368,7 @@ fn start_session(
             .ok_or_else(|| "unknown agent".to_string())?;
 
         let resolved = agents::resolve_command(&a.command)
-            .ok_or_else(|| format!("\"{}\" is not on PATH", a.command))?;
+            .ok_or_else(|| agents::not_found_message(a))?;
         let catalogs = state.catalogs.lock_ok();
         let catalog = catalogs.get(&a.id).map(Vec::as_slice);
         if !agents::model_selection_is_valid(a, &model_id, catalog) {

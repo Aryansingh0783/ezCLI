@@ -1308,8 +1308,29 @@ pub fn launch_command(resolved: &str, args: &[String]) -> Result<LaunchCommand> 
     }
 }
 
+/// What to tell someone whose agent command can't be found. Names the command and,
+/// when the agent definition knows one, the install command, plus the way to re-detect it.
+pub fn not_found_message(a: &AgentDef) -> String {
+    let how = match a.install.as_deref().filter(|i| !i.trim().is_empty()) {
+        Some(cmd) => format!("Install it with: {cmd}"),
+        None => format!("Install the {} CLI so \"{}\" runs in a terminal", a.label, a.command),
+    };
+    format!("{} CLI not found (\"{}\" is not on PATH). {how}, then use Reload agents in Settings.", a.label, a.command)
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_not_found_message_names_the_command_and_the_way_to_install_it() {
+        let mut a = def("zedcli", None);
+        a.label = "Zed".into();
+        a.install = Some("npm i -g zedcli".into());
+        let m = not_found_message(&a);
+        assert!(m.contains("\"zedcli\" is not on PATH") && m.contains("npm i -g zedcli") && m.contains("Reload agents"));
+        a.install = None;
+        assert!(not_found_message(&a).contains("so \"zedcli\" runs in a terminal"));
+    }
     use super::*;
 
     /// Launch a `.cmd` shim through the exact production path (launch_command
