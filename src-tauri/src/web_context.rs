@@ -527,6 +527,17 @@ pub fn query_terms(q: &str) -> Vec<String> {
     seen
 }
 
+/// Does a result mention what the query asks for? At least two of its words (one for a short query) must appear in
+/// the title, snippet or address. Headlines from the news feed were already chosen by topic, so they pass.
+fn is_relevant(h: &Hit, terms: &[String]) -> bool {
+    if h.url.contains("news.google.com/") || terms.is_empty() {
+        return true;
+    }
+    let text = format!("{} {} {}", h.title, h.snippet, h.url).to_lowercase();
+    let found = terms.iter().filter(|t| text.contains(t.as_str())).count();
+    found >= terms.len().min(2)
+}
+
 /// Page text cut into pieces of about `size` characters, on sentence ends.
 pub fn passages(text: &str, size: usize) -> Vec<String> {
     let mut out = Vec::new();
@@ -604,6 +615,14 @@ pub fn context_for(query: &str, today: &str) -> Option<String> {
         return None;
     }
     let terms = query_terms(q);
+    // A search engine always returns something. Keep only results that actually mention what was asked, so a generic
+    // page that matched one common word does not reach the model as if it answered.
+    let hits: Vec<Hit> = hits.into_iter().filter(|h| is_relevant(h, &terms)).collect();
+    if hits.is_empty() {
+        let note = format!("[Web search run by the app on {today} for \"{}\" found nothing relevant. Say you could not find it; do not guess or answer from unrelated pages.]", clip(q, 120));
+        cache_put(&key, &note);
+        return Some(note);
+    }
     let mut hosts: Vec<String> = Vec::new();
     let mut picks: Vec<&Hit> = Vec::new();
     for h in &hits {
@@ -669,6 +688,15 @@ mod tests {
         let best = best_passages(text, &query_terms("when was Claude Sonnet 5.5 released"), 1, 90);
         assert_eq!(best.len(), 1);
         assert!(best[0].contains("September 28"), "{best:?}");
+    }
+
+    #[test]
+    fn a_result_must_mention_what_was_asked() {
+        let hit = |title: &str, snippet: &str| Hit { title: title.into(), url: "https://example.com/x".into(), snippet: snippet.into() };
+        let terms = query_terms("qwen3 8b release date");
+        assert!(is_relevant(&hit("Qwen3 8B released", "The 8B model came out in April"), &terms));
+        assert!(!is_relevant(&hit("Best budget laptops", "Our picks for students, with a release roundup"), &terms));
+        assert!(is_relevant(&hit("Weather", "Sunny"), &query_terms("weather")), "a one-word query needs one match");
     }
 
     #[test]
