@@ -150,7 +150,7 @@ export const WebSearch = {
     const web = this.mode() !== 'off';
     const skills = web || this.terminalOn() ? await this.loadSkills() : [];
     const parts = [];
-    if (web) parts.push('SEARCH: <query> (look something up on the web when you do not know it or it may be out of date)', 'BROWSE: <https address> (open one web page in the in-app browser and read it)');
+    if (web) parts.push('SEARCH: <query> (only for facts that may have changed since your training: recent events, current prices, versions or office-holders, or a name you do not recognise; never for explanations, advice, code, tuning yourself or this app, or anything you already know)', 'BROWSE: <https address> (open one web page in the in-app browser and read it)');
     if (skills.length) parts.push(`SKILL: <name> (load one of the user's skills: ${skills.slice(0, 60).map((x) => x.name).join(', ')})`);
     if (typeof late.Knowledge !== 'undefined' && late.Knowledge.usable()) parts.push('KNOW: <query> (search the files the user added to Knowledge; use it when the question may be about their own documents or code)');
     // pictures and video are offered once they are set up (Create in the sidebar), so a model is not told about a tool that cannot work
@@ -158,12 +158,12 @@ export const WebSearch = {
     if (this.terminalOn()) parts.push('RUN: <one PowerShell command> (the user approves it first; use it only when the user asks you to do something on their PC)');
     const tools = parts.map((p) => p.split(':')[0]);
     if (s.toolsIntro) {
-      return { text: ` [Reminder: you are ${s.modelId || 'a local model'}, not Claude. Do not guess.${tools.length ? ` Tools as before (real, run by the app; you do have web access through them): ${tools.join(', ')}; reply with only that one line when you use one.` : ''}]`, tools: tools.length };
+      return { text: ` [Reminder: you are ${s.modelId || 'a local model'}, not Claude. Do not guess.${tools.length ? ` Tools as before (real, run by the app; you do have web access through them, but search only for facts newer than your training): ${tools.join(', ')}; reply with only that one line when you use one.` : ''}]`, tools: tools.length };
     }
     s.toolsIntro = true;
     const who = `You are ${s.modelId || 'a local model'}, running on this PC. You are not Claude, ChatGPT or any other model, even if web results or the conversation mention them.`;
     const rules =
-      'Accuracy rules. Work out the answer step by step and check it before you reply. Do not guess: if you are not sure of a fact, say so or look it up. A name, paper, product, person or number you do not recognise may not exist; do not describe it as if it does. Never invent facts, numbers, quotes, links, file names or sources. When you use web results, say which source each fact came from; if they do not answer the question, say that. Keep answers short and direct.';
+      'Accuracy rules. Work out the answer step by step and check it before you reply. Do not guess: if you are not sure of a fact, say so or look it up. A name, paper, product, person or number you do not recognise may not exist; do not describe it as if it does. Never invent facts, numbers, quotes, links, file names or sources. The web is only for facts newer than your training: do not search for how-to advice, explanations, coding help or questions about yourself, answer those from what you know. When you use web results, say which source each fact came from; if they do not answer the question, say that. Keep answers short and direct.';
     const use = tools.length ? ` Tools: these are real. The app runs them for you, so you do have web access through them; do not say you cannot browse. Web results the app already fetched appear in square brackets after the user's message; use them. When you need a tool, reply with only one line and nothing else: ${parts.join(' | ')}. Otherwise just answer.` : '';
     return { text: ` [${who} ${rules}${use}]`, tools: tools.length };
   },
