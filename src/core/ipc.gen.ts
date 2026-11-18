@@ -674,6 +674,8 @@ export interface Commands {
   model_delete: { args: { path: string }; result: string };
   /** Show a system notification. (features.rs) */
   notify: { args: { title: string; body: string }; result: void };
+  /** `ollama ps` or `ollama show <model>`, which the chat reads to size the context and offer thinking levels. Fixed programs and arguments, so they need no approval; the model name is checked here. (lib.rs) */
+  ollama_info: { args: { what: string; model?: string | null }; result: string };
   /** Open (or bring forward) the same browser window agents drive with PC control, so the user can watch it or browse in it themselves. Async so the window is built while the main thread stays free to create it. (lib.rs) */
   open_agent_browser: { args: { url?: string | null }; result: void };
   /** lib.rs */
@@ -718,7 +720,7 @@ export interface Commands {
   remote_stop: { args: Record<string, never>; result: RemoteStatus };
   /** lib.rs */
   resize_session: { args: { id: string; cols: number; rows: number }; result: void };
-  /** Run one PowerShell command and return what it printed. The chat calls this only after the user clicks Run on that exact command. (lib.rs) */
+  /** Run one PowerShell command that a local model proposed, and return what it printed. The approval is a native dialog shown from here, with the exact command in it: the page cannot click it, so script that got into the page cannot run commands. A command too long or with line breaks is refused, because the dialog must show all of it. (lib.rs) */
   run_approved_command: { args: { command: string; cwd: string }; result: CommandResult };
   /** How many sessions still have a live process. The window's close guard asks this before quitting so it never kills work without a prompt. (lib.rs) */
   running_sessions: { args: Record<string, never>; result: number };
@@ -833,6 +835,7 @@ export const COMMAND_NAMES = [
   'media_read',
   'model_delete',
   'notify',
+  'ollama_info',
   'open_agent_browser',
   'open_in',
   'open_targets',

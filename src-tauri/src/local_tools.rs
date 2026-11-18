@@ -83,6 +83,36 @@ pub fn read_skill(wanted: &str) -> Option<(String, String)> {
     None
 }
 
+/// A command the approval dialog can show whole: one line, at most 1,000 characters, nothing hidden.
+pub fn check_shown_in_full(command: &str) -> Result<(), String> {
+    if command.is_empty() {
+        return Err("There is no command to run.".into());
+    }
+    if command.chars().count() > 1000 {
+        return Err("That command is too long to show for approval, so it was not run.".into());
+    }
+    if command.chars().any(|c| c.is_control() || matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}')) {
+        return Err("That command has line breaks or hidden characters, so it was not run. Ask for a one-line command.".into());
+    }
+    Ok(())
+}
+
+/// The arguments for `ollama ps` or `ollama show <model>`, refusing anything else.
+pub fn ollama_args(what: &str, model: Option<&str>) -> Result<Vec<String>, String> {
+    match what {
+        "ps" => Ok(vec!["ps".into()]),
+        "show" => {
+            let m = model.unwrap_or("").trim();
+            let ok = !m.is_empty() && m.len() <= 200 && !m.starts_with('-') && m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '-'));
+            if !ok {
+                return Err("That is not an Ollama model name.".into());
+            }
+            Ok(vec!["show".into(), m.to_string()])
+        }
+        _ => Err("Unknown Ollama query.".into()),
+    }
+}
+
 #[derive(Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandResult {
@@ -203,6 +233,24 @@ mod tests {
         assert!(!safe_name("../secrets"));
         assert!(!safe_name("a/b"));
         assert!(safe_name("agents:health".replace(':', "-").as_str()));
+    }
+
+    #[test]
+    fn only_a_command_the_dialog_can_show_whole_is_accepted() {
+        assert!(check_shown_in_full("Get-ChildItem").is_ok());
+        assert!(check_shown_in_full("").is_err());
+        assert!(check_shown_in_full("dir\nRemove-Item x").is_err(), "a second line would be off screen");
+        assert!(check_shown_in_full("dir\u{202e}txt.exe").is_err(), "a direction override can disguise a command");
+        assert!(check_shown_in_full(&"a".repeat(1001)).is_err());
+    }
+
+    #[test]
+    fn ollama_queries_take_only_a_model_name() {
+        assert_eq!(ollama_args("ps", None).unwrap(), ["ps"]);
+        assert_eq!(ollama_args("show", Some("qwen3:8b")).unwrap(), ["show", "qwen3:8b"]);
+        assert!(ollama_args("show", Some("x; rm -rf /")).is_err());
+        assert!(ollama_args("show", Some("--help")).is_err());
+        assert!(ollama_args("run", Some("qwen3")).is_err());
     }
 
     #[test]
