@@ -192,6 +192,12 @@ catalog entry.
 
 Every release, newest first.
 
+### New in 5.15.10
+
+- **Local models search the web only for fresh facts.** They are told to look up only what may have changed
+  since their training, not how-to advice or questions about themselves, and results that do not mention
+  what was asked are dropped.
+
 ### New in 5.15.9
 
 - **Local models run on your graphics card.** With a built-in GPU next to a graphics card, llama.cpp could
