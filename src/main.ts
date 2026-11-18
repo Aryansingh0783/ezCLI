@@ -14,6 +14,7 @@ import './styles/models.css';
 import './styles/knowledge.css';
 import './styles/later.css';
 import './app';
+import './core/cspreport';
 import './features/palette';
 import './features/prompts';
 import './features/health';
