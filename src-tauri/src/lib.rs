@@ -1080,11 +1080,46 @@ fn local_skill_text(name: String) -> Option<(String, String)> {
     local_tools::read_skill(&name)
 }
 
-/// Run one PowerShell command and return what it printed. The chat calls this only after the user clicks
-/// Run on that exact command.
+/// Run one PowerShell command that a local model proposed, and return what it printed. The approval is a
+/// native dialog shown from here, with the exact command in it: the page cannot click it, so script that got
+/// into the page cannot run commands. A command too long or with line breaks is refused, because the dialog
+/// must show all of it.
 #[tauri::command]
-async fn run_approved_command(command: String, cwd: String) -> local_tools::CommandResult {
-    tauri::async_runtime::spawn_blocking(move || local_tools::run_command(&command, &cwd, 60)).await.unwrap_or_default()
+async fn run_approved_command(command: String, cwd: String, app: AppHandle) -> Result<local_tools::CommandResult, String> {
+    let command = command.trim().to_string();
+    local_tools::check_shown_in_full(&command)?;
+    let approved = {
+        let app = app.clone();
+        let command = command.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+            let mut d = app
+                .dialog()
+                .message(format!("A local model wants to run this on your PC:\n\n{command}\n\nIt runs with your permissions. Only run it if you understand it."))
+                .title("Run this command?")
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::OkCancelCustom("Run".into(), "Don't run".into()));
+            if let Some(w) = app.get_webview_window("main") {
+                d = d.parent(&w);
+            }
+            d.blocking_show()
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
+    if !approved {
+        return Err("You chose not to run it.".into());
+    }
+    Ok(tauri::async_runtime::spawn_blocking(move || local_tools::run_command(&command, &cwd, 60)).await.unwrap_or_default())
+}
+
+/// `ollama ps` or `ollama show <model>`, which the chat reads to size the context and offer thinking levels.
+/// Fixed programs and arguments, so they need no approval; the model name is checked here.
+#[tauri::command]
+async fn ollama_info(what: String, model: Option<String>) -> Result<String, String> {
+    let args = local_tools::ollama_args(&what, model.as_deref())?;
+    let resolved = agents::resolve_command("ollama").ok_or("Ollama is not installed.")?;
+    tauri::async_runtime::spawn_blocking(move || run_catalog_in(&resolved, &args, None)).await.map_err(|e| e.to_string())?
 }
 
 /// Add a folder or file to the knowledge index (see `rag`). Called only after the user picks the path.
@@ -1422,6 +1457,7 @@ pub fn run() {
             local_skills,
             local_skill_text,
             run_approved_command,
+            ollama_info,
             rag_add,
             rag_sources,
             rag_remove,

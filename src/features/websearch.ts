@@ -213,8 +213,8 @@ export const WebSearch = {
   /** The context size the model really runs with, from `ollama ps` (the model must be loaded). */
   async contextTokens(s) {
     try {
-      const r = await invoke('run_approved_command', { command: 'ollama ps', cwd: '' });
-      const lines = String(r.output || '').split('\n');
+      const out = await invoke('ollama_info', { what: 'ps' });
+      const lines = String(out || '').split('\n');
       const col = (lines[0] || '').indexOf('CONTEXT');
       const row = lines.find((l, i) => i > 0 && s.modelId && l.startsWith(String(s.modelId).split(':')[0]));
       const n = col >= 0 && row ? parseInt(row.slice(col), 10) : 0;
@@ -397,7 +397,9 @@ export const WebSearch = {
       const status = r.timedOut ? 'it was stopped after 60 seconds' : `exit code ${r.exit ?? '?'}`;
       await this.reply(s, `The command ran (${status}). Output: ${out.replace(/\s*\n\s*/g, ' | ')} Now continue with my request.`, `Ran: ${ask.cmd}`, out);
     } catch (e) {
-      await this.reply(s, `The command could not run: ${e}`, `Could not run: ${ask.cmd}`);
+      const why = String(e);
+      if (/chose not to run/i.test(why)) await this.reply(s, 'The user chose not to run that command. Do not run it. Ask what they would like instead.', 'Skipped the command');
+      else await this.reply(s, `The command could not run: ${why}`, `Could not run: ${ask.cmd}`);
     } finally {
       s.webBusy = false;
     }
@@ -412,8 +414,7 @@ export const WebSearch = {
     if (this.levelCache[s.modelId]) return this.levelCache[s.modelId];
     let list = [];
     try {
-      const r = await invoke('run_approved_command', { command: `ollama show ${String(s.modelId).replace(/[^\w.:/-]/g, '')}`, cwd: '' });
-      const text = String(r.output || '');
+      const text = String((await invoke('ollama_info', { what: 'show', model: String(s.modelId) })) || '');
       const m = /^\s*levels\s+(.+)$/im.exec(text);
       if (m) list = m[1].split(',').map((x) => x.trim()).filter(Boolean);
       else if (/^\s*thinking\s*$/im.test(text)) list = ['false', 'true'];
