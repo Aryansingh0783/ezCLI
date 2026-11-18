@@ -18,6 +18,8 @@ if (!fs.existsSync(path.join(root, 'index.html'))) {
   console.error('dist/ is missing. Run `npm run build` first.');
   process.exit(1);
 }
+/** The window's content security policy, read from tauri.conf.json so the test runs under the real one. */
+const CSP = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src-tauri', 'tauri.conf.json'), 'utf8')).app.security.csp;
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json' };
 // The agents as the backend sends them to the screen (see AgentOut in agents.rs): a live model catalog is
 // `dynamic_models`, and one with no safe default is `requiresModelSelection`.
@@ -43,7 +45,7 @@ export function serve() {
       if (!file.startsWith(root)) return res.writeHead(403).end();
       fs.readFile(file, (e, d) => {
         if (e) return res.writeHead(404).end();
-        res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' }).end(d);
+        res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream', ...(p.endsWith('.html') ? { 'content-security-policy': CSP } : {}) }).end(d);
       });
     }).listen(0, '127.0.0.1', () => resolve(srv));
   });
